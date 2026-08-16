@@ -87,13 +87,13 @@ async function boot() {
     src: app.logoSrc,
     depth: 0.20,
     bevel: 0.028,
-    glow: 0.7,
+    glow: 0.85,
     zoom: 1.05,
     autoSpin: 0.5,
     reveal: 0,
     interactive: false,
-    colorSide: 1000,
-    sdfSide: 380,
+    colorSide: 1400,
+    sdfSide: 520,
   });
   await app.logo.init();
   setProgress(0.42);
@@ -228,13 +228,13 @@ async function reloadLogo() {
     heroCanvas.style.display = '';
     app.heroLogo = new Logo3D(heroCanvas, {
       src: app.logoSrc,
-      depth: 0.22,
+      depth: 0.24,
       bevel: 0.026,
-      glow: 0.55,
-      zoom: 1.0,
+      glow: 0.72,
+      zoom: 1.08,
       autoSpin: 0.22,
-      colorSide: 1000,
-      sdfSide: 380,
+      colorSide: 1400,
+      sdfSide: 520,
       accent: hexToRgb(store.state.prefs.accent),
     });
     app.heroLogo.init();
@@ -366,13 +366,13 @@ function initLanding() {
   if (heroCanvas) {
     app.heroLogo = new Logo3D(heroCanvas, {
       src: app.logoSrc || 'assets/logo/nestra-mark.png',
-      depth: 0.22,
+      depth: 0.24,
       bevel: 0.026,
-      glow: 0.55,
-      zoom: 1.0,
+      glow: 0.72,
+      zoom: 1.08,
       autoSpin: 0.22,
-      colorSide: 1000,
-      sdfSide: 380,
+      colorSide: 1400,
+      sdfSide: 520,
     });
     app.heroLogo.init();
   }
@@ -646,7 +646,7 @@ function renderShell() {
   const topbar = el('header', { class: 'topbar' }, [
     burger,
     el('a', { class: 'brand', href: '#/hoje' }, [
-      el('img', { class: 'brand__mark', 'data-logo': true, src: app.logoSrc || 'assets/logo/nestra-mark.png', alt: '', width: 30, height: 30 }),
+      el('img', { class: 'brand__mark', 'data-logo': true, src: app.logoSrc || 'assets/logo/nestra-mark.png', alt: '', width: 42, height: 42 }),
       el('span', { class: 'brand__name', text: 'NESTRA' }),
     ]),
     el('span', { class: 'topbar__spacer' }),

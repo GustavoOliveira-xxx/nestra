@@ -29,10 +29,11 @@
 
 /* A marca em 3D domina a abertura */
 .hero__logo {
-  width: min(248px, 46vw);
+  width: min(320px, 54vw);
   aspect-ratio: 1;
   position: relative;
   margin-bottom: calc(var(--s-6) * -1);
+  filter: drop-shadow(0 0 46px var(--accent-glow));
 }
 .hero__logo canvas { width: 100%; height: 100%; }
 
@@ -914,7 +915,7 @@
 }
 
 @media (max-width: 620px) {
-  .hero__logo   { width: min(230px, 56vw); }
+  .hero__logo   { width: min(280px, 64vw); }
   .capture__parse { padding-left: var(--s-4); }
   .footer__grid { grid-template-columns: 1fr 1fr; }
   .detail__meta-grid { grid-template-columns: 1fr 1fr; }

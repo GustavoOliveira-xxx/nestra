@@ -55,17 +55,35 @@ body[data-view='auth'] #scene[data-ready='true'] { opacity: .55; }
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   flex: 0 0 auto;
+  position: relative;
 }
 .brand__mark {
-  width: 30px;
-  height: 30px;
+  width: 42px;
+  height: 42px;
   object-fit: contain;
-  filter: drop-shadow(0 0 10px var(--accent-glow));
-  transition: transform var(--t-slow) var(--ease-spring);
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 0 16px var(--accent-glow)) drop-shadow(0 0 3px var(--accent-glow));
+  transition: transform var(--t-slow) var(--ease-spring), filter var(--t-slow) var(--ease-out);
 }
-.brand:hover .brand__mark { transform: rotateY(24deg) scale(1.08); }
+/* Halo por trás da marca — dá peso e presença sem pesar no layout */
+.brand::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  translate: 0 -50%;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--accent-glow), transparent 70%);
+  opacity: .55;
+  animation: glowPulse 4.2s ease-in-out infinite;
+  pointer-events: none;
+}
+.brand:hover .brand__mark { transform: rotateY(24deg) scale(1.12); filter: drop-shadow(0 0 22px var(--accent-glow)) drop-shadow(0 0 5px var(--accent-glow)); }
 .brand__name {
   font-family: var(--font-display);
   font-size: var(--fs-md);

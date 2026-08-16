@@ -44,7 +44,7 @@ uniform vec3  uAccent;
 uniform float uGlow;
 uniform float uZoom;
 
-const int  MAX_STEPS = 96;
+const int  MAX_STEPS = 128;
 const float MAX_DIST = 9.0;
 
 // --- silhueta lida do arquivo original -------------------------------
@@ -145,8 +145,8 @@ void main() {
     lastD = d;
     // Brilho volumétrico: quanto mais perto a raio passa, mais acende
     glowAccum += exp(-d * 26.0) * 0.028;
-    if (d < 0.0009) { hit = true; break; }
-    t += d * 0.88;
+    if (d < 0.0006) { hit = true; break; }
+    t += d * 0.85;
     if (t > tMax) break;
   }
 
@@ -439,7 +439,7 @@ export class Logo3D {
     const gl = this.canvas.getContext('webgl2', {
       alpha: true,
       premultipliedAlpha: true,
-      antialias: false,
+      antialias: true,
       depth: false,
       powerPreference: 'high-performance',
     });
