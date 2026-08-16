@@ -1,0 +1,347 @@
+/* =====================================================================
+   NESTRA — Estrutura da aplicação
+   ===================================================================== */
+
+/* A cena 3D vive atrás de todo o conteúdo, sem capturar cliques */
+#scene {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-scene);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 1.4s var(--ease-out);
+}
+#scene[data-ready='true'] { opacity: 1; }
+
+/* Dentro da aplicação a cena recua: ela é ambiente, não conteúdo. */
+body[data-view='app'] #scene[data-ready='true'] { opacity: .22; }
+body[data-view='auth'] #scene[data-ready='true'] { opacity: .55; }
+
+#app {
+  position: relative;
+  z-index: var(--z-content);
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.screen { display: none; }
+.screen[data-active='true'] { display: block; animation: fadeIn .42s var(--ease-out); }
+
+/* ---------------------------------------------------------------------
+   BARRA SUPERIOR
+   --------------------------------------------------------------------- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  height: var(--topbar-h);
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  padding: 0 var(--s-5);
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter: blur(18px) saturate(1.2);
+}
+.topbar::after {
+  content: '';
+  position: absolute;
+  bottom: -1px; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent-line) 30%, var(--accent-line) 70%, transparent);
+  opacity: .5;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+.brand__mark {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 10px var(--accent-glow));
+  transition: transform var(--t-slow) var(--ease-spring);
+}
+.brand:hover .brand__mark { transform: rotateY(24deg) scale(1.08); }
+.brand__name {
+  font-family: var(--font-display);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  letter-spacing: .2em;
+  color: var(--text);
+}
+
+.topbar__spacer { flex: 1; }
+
+.topbar__nav { display: flex; gap: 2px; }
+.topbar__link {
+  padding: 8px 14px;
+  border-radius: var(--r-2);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-3);
+  transition: color var(--t-fast) var(--ease-out), background var(--t-fast) var(--ease-out);
+}
+.topbar__link:hover { color: var(--text); background: var(--surface); }
+
+/* Relógio do sistema — reforça que o produto é centrado no presente */
+.topbar__clock {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  letter-spacing: .08em;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  background: var(--surface);
+}
+.topbar__clock b { color: var(--blue-300); font-weight: 500; }
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-2);
+  background: linear-gradient(150deg, var(--blue-500), var(--blue-700));
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  border: 1px solid color-mix(in srgb, var(--blue-300) 40%, transparent);
+  cursor: pointer;
+  transition: transform var(--t-base) var(--ease-spring), box-shadow var(--t-base) var(--ease-out);
+}
+.avatar:hover { transform: translateY(-1px); box-shadow: 0 6px 20px -6px var(--accent-glow); }
+
+/* ---------------------------------------------------------------------
+   CORPO: BARRA LATERAL + CONTEÚDO
+   --------------------------------------------------------------------- */
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  align-items: start;
+  min-height: calc(100dvh - var(--topbar-h));
+}
+
+.sidebar {
+  position: sticky;
+  top: var(--topbar-h);
+  height: calc(100dvh - var(--topbar-h));
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  padding: var(--s-5) var(--s-4);
+  border-right: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg-2) 55%, transparent);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.side-group { display: flex; flex-direction: column; gap: 3px; }
+.side-group__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px var(--s-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+
+.side-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 10px 12px;
+  border-radius: var(--r-2);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-2);
+  text-align: left;
+  width: 100%;
+  transition: background var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out);
+}
+.side-link:hover { background: var(--surface); color: var(--text); }
+
+/* Trilho azul que marca a seção ativa */
+.side-link::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: var(--rail-w);
+  height: 0;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+  box-shadow: 0 0 12px var(--accent-glow);
+  transform: translateY(-50%);
+  transition: height var(--t-base) var(--ease-spring);
+}
+.side-link[aria-current='page'] {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--text);
+}
+.side-link[aria-current='page']::before { height: 62%; }
+
+.side-link__icon { flex: 0 0 18px; color: var(--text-3); transition: color var(--t-fast) var(--ease-out); }
+.side-link[aria-current='page'] .side-link__icon,
+.side-link:hover .side-link__icon { color: var(--blue-300); }
+.side-link__count { margin-left: auto; }
+
+/* Um ambiente na lista lateral carrega sua própria cor */
+.env-link__swatch {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  border-radius: 1px;
+  background: var(--env-color, var(--accent));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--env-color, var(--accent)) 60%, transparent);
+}
+
+.sidebar__foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--line);
+}
+
+/* Indicador de sincronização com o Neon */
+.sync-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  letter-spacing: .06em;
+}
+.sync-pill__dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--text-4);
+  flex: 0 0 6px;
+}
+.sync-pill[data-state='local']   .sync-pill__dot { background: var(--text-3); }
+.sync-pill[data-state='syncing'] .sync-pill__dot { background: var(--cyan);   animation: blink .9s steps(1) infinite; }
+.sync-pill[data-state='synced']  .sync-pill__dot { background: var(--success); box-shadow: 0 0 8px var(--success); }
+.sync-pill[data-state='offline'] .sync-pill__dot { background: var(--overdue); }
+.sync-pill[data-state='error']   .sync-pill__dot { background: var(--danger); }
+
+/* ---------------------------------------------------------------------
+   ÁREA DE CONTEÚDO
+   --------------------------------------------------------------------- */
+.main {
+  min-width: 0;
+  padding: var(--s-6) var(--s-6) var(--s-11);
+}
+.main__inner { max-width: var(--content-max); margin: 0 auto; }
+
+.view-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--s-6);
+}
+.view-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-2xl);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+.view-sub {
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  margin-top: 2px;
+}
+
+/* ---------------------------------------------------------------------
+   RESPONSIVO — §22: precisa funcionar em telas pequenas
+   --------------------------------------------------------------------- */
+.sidebar__scrim {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-drawer) - 1);
+  background: color-mix(in srgb, var(--void) 62%, transparent);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  transition: opacity var(--t-base) var(--ease-out);
+}
+
+.topbar__burger { display: none; }
+
+@media (max-width: 980px) {
+  .shell { grid-template-columns: 1fr; }
+
+  .topbar__burger { display: inline-flex; }
+  .topbar__nav    { display: none; }
+
+  .sidebar {
+    position: fixed;
+    top: var(--topbar-h);
+    left: 0;
+    bottom: 0;
+    z-index: var(--z-drawer);
+    width: min(300px, 84vw);
+    height: auto;
+    background: var(--bg-2);
+    transform: translateX(-104%);
+    transition: transform var(--t-slow) var(--ease-out);
+    box-shadow: var(--shadow-4);
+  }
+  [data-sidebar='open'] .sidebar { transform: none; }
+  [data-sidebar='open'] .sidebar__scrim { display: block; opacity: 1; }
+
+  .main { padding: var(--s-5) var(--s-4) var(--s-11); }
+}
+
+@media (max-width: 620px) {
+  .topbar { padding: 0 var(--s-3); gap: var(--s-2); }
+  .topbar__clock { display: none; }
+  .brand__name   { display: none; }
+  .view-title    { font-size: var(--fs-xl); }
+  .main          { padding: var(--s-4) var(--s-3) var(--s-12); }
+}
+
+/* Barra inferior de ações no celular — o polegar alcança */
+.mobile-bar {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: var(--z-sticky);
+  padding: 10px var(--s-3) calc(10px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(20px);
+}
+@media (max-width: 620px) {
+  .app-screen .mobile-bar { display: flex; gap: var(--s-2); }
+}
+
+/* Impressão: o conteúdo deve continuar legível fora da tela */
+@media print {
+  #scene, .topbar, .sidebar, .mobile-bar, .boot { display: none !important; }
+  body { background: #fff; color: #000; }
+  .shell { grid-template-columns: 1fr; }
+}

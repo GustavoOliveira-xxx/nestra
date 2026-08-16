@@ -1,0 +1,213 @@
+/* =====================================================================
+   NESTRA — Movimento
+   Toda animação aqui existe para explicar alguma coisa: de onde o item
+   veio, para onde ele foi, o que mudou de estado.
+   ===================================================================== */
+
+@keyframes grain {
+  0%   { transform: translate(0, 0); }
+  20%  { transform: translate(-6%, 4%); }
+  40%  { transform: translate(3%, -7%); }
+  60%  { transform: translate(-4%, -3%); }
+  80%  { transform: translate(6%, 5%); }
+  100% { transform: translate(0, 0); }
+}
+
+@keyframes shimmer {
+  from { background-position: 220% 0; }
+  to   { background-position: -20% 0; }
+}
+
+@keyframes ripple {
+  to { transform: scale(3.2); opacity: 0; }
+}
+
+@keyframes menuIn {
+  from { opacity: 0; transform: translateY(-6px) scale(.97); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(28px) scale(.96); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes toastOut {
+  to { opacity: 0; transform: translateX(28px) scale(.96); }
+}
+
+@keyframes floaty {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-9px); }
+}
+
+@keyframes pulseRing {
+  0%   { box-shadow: 0 0 0 0 var(--accent-glow); }
+  70%  { box-shadow: 0 0 0 12px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+@keyframes blink {
+  0%, 45%   { opacity: 1; }
+  50%, 95%  { opacity: .15; }
+  100%      { opacity: 1; }
+}
+
+@keyframes scanline {
+  from { transform: translateY(-100%); }
+  to   { transform: translateY(1200%); }
+}
+
+@keyframes spinSlow {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(22px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-18px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* O item recém-capturado chega "de fora" da tela, em profundidade */
+@keyframes captureLand {
+  0%   { opacity: 0; transform: perspective(900px) translate3d(0, -46px, 180px) rotateX(38deg); }
+  60%  { opacity: 1; }
+  100% { opacity: 1; transform: perspective(900px) translate3d(0, 0, 0) rotateX(0); }
+}
+
+/* Conclusão: o item recua em profundidade e perde contraste (§12) */
+@keyframes completeAway {
+  0%   { transform: perspective(900px) translateZ(0); }
+  35%  { transform: perspective(900px) translateZ(26px) rotateX(-4deg); }
+  100% { transform: perspective(900px) translateZ(-40px) rotateX(8deg); opacity: .42; }
+}
+
+@keyframes strikeThrough {
+  from { width: 0; }
+  to   { width: 100%; }
+}
+
+/* Um item removido cai para dentro da lixeira */
+@keyframes dropOut {
+  to { opacity: 0; transform: translateY(26px) scale(.94); max-height: 0; margin: 0; padding-top: 0; padding-bottom: 0; }
+}
+
+@keyframes borderTravel {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+@keyframes glowPulse {
+  0%, 100% { opacity: .45; }
+  50%      { opacity: 1; }
+}
+
+@keyframes typeCaret {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0; }
+}
+
+/* --- Classes utilitárias de animação --- */
+.anim-rise  { animation: riseIn .58s var(--ease-out) both; }
+.anim-fade  { animation: fadeIn .42s var(--ease-out) both; }
+.anim-slide { animation: slideInLeft .42s var(--ease-out) both; }
+.anim-land  { animation: captureLand .68s var(--ease-spring) both; }
+.anim-drop  { animation: dropOut .34s var(--ease-in-out) forwards; }
+.anim-pulse { animation: pulseRing 2.2s var(--ease-out) infinite; }
+.anim-float { animation: floaty 6s var(--ease-in-out) infinite; }
+
+/* Escada de atraso para listas — cada linha entra logo depois da anterior */
+.stagger > * { animation: riseIn .5s var(--ease-out) both; }
+.stagger > *:nth-child(1)  { animation-delay: .02s; }
+.stagger > *:nth-child(2)  { animation-delay: .06s; }
+.stagger > *:nth-child(3)  { animation-delay: .10s; }
+.stagger > *:nth-child(4)  { animation-delay: .14s; }
+.stagger > *:nth-child(5)  { animation-delay: .18s; }
+.stagger > *:nth-child(6)  { animation-delay: .22s; }
+.stagger > *:nth-child(7)  { animation-delay: .26s; }
+.stagger > *:nth-child(8)  { animation-delay: .30s; }
+.stagger > *:nth-child(9)  { animation-delay: .34s; }
+.stagger > *:nth-child(10) { animation-delay: .38s; }
+.stagger > *:nth-child(n+11) { animation-delay: .42s; }
+
+/* Revelação no rolar — o JS liga o atributo quando o elemento entra na tela */
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(30px);
+  transition:
+    opacity .82s var(--ease-out),
+    transform .82s var(--ease-out);
+}
+[data-reveal='in'] { opacity: 1; transform: none; }
+
+[data-reveal='side'] { transform: translateX(-40px); }
+[data-reveal='side'][data-reveal-state='in'] { opacity: 1; transform: none; }
+
+/* Borda animada, para o cartão de captura */
+.border-travel {
+  position: relative;
+}
+.border-travel::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(90deg,
+    transparent, var(--accent), var(--cyan), var(--accent), transparent);
+  background-size: 200% 100%;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity var(--t-base) var(--ease-out);
+  pointer-events: none;
+}
+.border-travel:focus-within::before {
+  opacity: 1;
+  animation: borderTravel 3.4s linear infinite;
+}
+
+/* Cursor luminoso que segue o ponteiro na página inicial */
+.cursor-glow {
+  position: fixed;
+  width: 420px;
+  height: 420px;
+  margin: -210px 0 0 -210px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 9%, transparent), transparent 62%);
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity .6s var(--ease-out);
+  mix-blend-mode: screen;
+}
+.cursor-glow[data-active='true'] { opacity: calc(var(--glow-strength) * 1); }
+
+/* Linha de varredura sobre os painéis de destaque */
+.scanlines {
+  position: relative;
+  overflow: hidden;
+}
+.scanlines::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 46px;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--accent) 8%, transparent), transparent);
+  animation: scanline 7s linear infinite;
+  pointer-events: none;
+}
+
+/* Contadores que sobem — o JS anima o número, o CSS cuida do brilho */
+.count-up { font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+.count-up[data-counting='true'] { color: var(--blue-300); text-shadow: 0 0 18px var(--accent-glow); }

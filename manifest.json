@@ -1,0 +1,81 @@
+{
+  "id": "/nestra/",
+  "name": "Nestra — seu espaço para o que importa",
+  "short_name": "Nestra",
+  "description": "Organizador pessoal simples e rápido: escreva uma frase natural e o Nestra entende o tipo, a data e o ambiente. Escuro, direto e centrado no hoje.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "start_url": "./index.html#/hoje",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#04060A",
+  "theme_color": "#070911",
+  "categories": ["productivity", "utilities", "lifestyle"],
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icons/maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "assets/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "assets/icons/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Capturar agora",
+      "short_name": "Capturar",
+      "description": "Abre direto na caixa de captura rápida",
+      "url": "./index.html#/hoje",
+      "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Meus ambientes",
+      "short_name": "Ambientes",
+      "description": "Trabalho, Estudos, Pessoal e o que mais você criar",
+      "url": "./index.html#/ambientes",
+      "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Caixa de entrada",
+      "short_name": "Entrada",
+      "description": "Capturas que ainda não têm ambiente",
+      "url": "./index.html#/entrada",
+      "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "share_target": {
+    "action": "./index.html#/hoje",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
+}

@@ -1,0 +1,219 @@
+/* =====================================================================
+   NESTRA — Base: fontes, reset e fundamentos
+   ===================================================================== */
+
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('../assets/fonts/SpaceGrotesk-Variable.ttf') format('truetype-variations');
+  font-weight: 300 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('../assets/fonts/InterVariable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('../assets/fonts/JetBrainsMono-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+* { margin: 0; padding: 0; }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+  height: 100%;
+}
+
+body {
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--fs-base);
+  line-height: var(--lh-body);
+  font-feature-settings: 'cv05' 1, 'cv08' 1, 'ss03' 1, 'tnum' 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+  overscroll-behavior-y: none;
+}
+
+/* O fundo vivo: gradientes de profundidade + a cena WebGL por trás de tudo */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -3;
+  background:
+    radial-gradient(120% 80% at 50% -10%, rgba(47,107,255,.14), transparent 60%),
+    radial-gradient(70% 55% at 88% 8%,   rgba(79,216,255,.07), transparent 62%),
+    radial-gradient(80% 60% at 6% 96%,   rgba(47,107,255,.09), transparent 66%),
+    linear-gradient(180deg, var(--bg) 0%, var(--void) 100%);
+  pointer-events: none;
+}
+
+/* Grão sutil — impede que os gradientes formem faixas (banding) */
+body::after {
+  content: '';
+  position: fixed;
+  inset: -50%;
+  z-index: -2;
+  opacity: .028;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation: grain 6s steps(6) infinite;
+}
+
+h1, h2, h3, h4, h5 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: var(--lh-snug);
+  letter-spacing: var(--tracking-tight);
+  color: var(--text);
+}
+
+h1 { font-size: var(--fs-3xl); }
+h2 { font-size: var(--fs-2xl); }
+h3 { font-size: var(--fs-xl); }
+h4 { font-size: var(--fs-lg); }
+
+p { color: var(--text-2); }
+
+a {
+  color: var(--blue-300);
+  text-decoration: none;
+  transition: color var(--t-fast) var(--ease-out);
+}
+a:hover { color: var(--blue-200); }
+
+button, input, textarea, select {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  outline: none;
+}
+button { cursor: pointer; }
+
+ul, ol { list-style: none; }
+
+img, canvas, svg { display: block; max-width: 100%; }
+
+hr {
+  border: none;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--line-2), transparent);
+}
+
+code, kbd, .mono {
+  font-family: var(--font-mono);
+  font-size: .92em;
+}
+
+kbd {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border: 1px solid var(--line-2);
+  border-bottom-width: 2px;
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  line-height: 1;
+}
+
+/* --- Foco visível e previsível (§22: navegação por teclado) --- */
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-1);
+}
+.focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--bg), 0 0 0 3px var(--accent);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 34%, transparent);
+  color: var(--blue-100);
+}
+
+/* --- Barras de rolagem --- */
+* { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--line-2);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--line-hi); background-clip: content-box; }
+
+/* --- Utilitários --- */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: fixed;
+  top: -80px;
+  left: var(--s-4);
+  z-index: 200;
+  padding: 10px 18px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  border-radius: var(--r-2);
+  transition: top var(--t-base) var(--ease-out);
+}
+.skip-link:focus { top: var(--s-4); }
+
+.hidden { display: none !important; }
+.invisible { visibility: hidden; }
+
+.mono-label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.text-dim  { color: var(--text-3); }
+.text-body { color: var(--text-2); }
+.stack     { display: flex; flex-direction: column; }
+.row       { display: flex; align-items: center; }
+.gap-1 { gap: var(--s-1); } .gap-2 { gap: var(--s-2); }
+.gap-3 { gap: var(--s-3); } .gap-4 { gap: var(--s-4); }
+.gap-6 { gap: var(--s-6); }
+.grow  { flex: 1; }
+
+/* Gradiente de texto usado nos títulos de destaque */
+.grad-text {
+  background: linear-gradient(180deg, var(--text) 12%, #93A6C8 96%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.grad-blue {
+  background: linear-gradient(105deg, var(--blue-300), var(--blue-500) 48%, var(--cyan));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}

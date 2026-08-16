@@ -1,0 +1,217 @@
+/* =====================================================================
+   NESTRA — Tokens de tema
+   §29: "defina o tema visual em tokens — cores, tipografia, espaçamento,
+   bordas, sombras e estados — em vez de espalhar valores fixos pelo código."
+   ===================================================================== */
+
+:root {
+  /* --- Preto suave, evitando contraste absoluto em toda a tela (§12) --- */
+  --void:        #04060A;
+  --bg:          #070911;
+  --bg-2:        #0A0D16;
+  --surface:     #0E1220;
+  --surface-2:   #131829;
+  --surface-3:   #182034;
+  --surface-hi:  #1D2740;
+
+  /* --- Linhas e separadores discretos --- */
+  --line:        #1B2236;
+  --line-2:      #242E47;
+  --line-hi:     #33415F;
+
+  /* --- Azul: cor principal, usada com parcimônia (§12) --- */
+  --blue-100: #E6EEFF;
+  --blue-200: #C2D6FF;
+  --blue-300: #8FB4FF;
+  --blue-400: #5B8CFF;
+  --blue-500: #2F6BFF;   /* cor de ação e identidade */
+  --blue-600: #1E4FD8;
+  --blue-700: #143AA6;
+  --blue-800: #0D2870;
+  --blue-900: #071842;
+
+  --accent:      var(--blue-500);
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --accent-line: color-mix(in srgb, var(--accent) 42%, transparent);
+  --accent-glow: color-mix(in srgb, var(--accent) 55%, transparent);
+
+  --cyan:   #4FD8FF;
+  --violet: #9B7BFF;
+
+  /* --- Texto: branco suave para títulos, cinza azulado para o resto --- */
+  --text:    #E9EDF7;
+  --text-2:  #A3AEC6;
+  --text-3:  #6B7692;
+  --text-4:  #495468;
+
+  /* --- Estados (§12): âmbar/vermelho discretos, sem competir com o azul --- */
+  --overdue:     #FFA23D;
+  --overdue-dim: color-mix(in srgb, var(--overdue) 14%, transparent);
+  --danger:      #FF5F6B;
+  --danger-dim:  color-mix(in srgb, var(--danger) 14%, transparent);
+  --success:     #3ED9A4;
+  --success-dim: color-mix(in srgb, var(--success) 14%, transparent);
+  --done:        #4B5670;
+
+  /* --- Cores por tipo de item (§6) --- */
+  --type-task:       var(--blue-400);
+  --type-reminder:   var(--cyan);
+  --type-commitment: var(--violet);
+  --type-idea:       #FFC96B;
+
+  /* --- Prioridade --- */
+  --prio-low:    var(--text-4);
+  --prio-normal: var(--text-3);
+  --prio-high:   var(--overdue);
+  --prio-urgent: var(--danger);
+
+  /* --- Cantos
+     A geometria continua reta e técnica, mas o traço ganhou um raio
+     mínimo: as arestas param de "cortar" e o conjunto fica mais limpo,
+     sem virar um produto de cantos redondos. --- */
+  --r-0: 0px;
+  --r-1: 2px;
+  --r-2: 5px;
+  --r-3: 8px;
+  --r-4: 11px;
+  --r-pill: 6px;
+
+  /* --- Espaçamento (escala de 4) --- */
+  --s-1:  4px;
+  --s-2:  8px;
+  --s-3:  12px;
+  --s-4:  16px;
+  --s-5:  20px;
+  --s-6:  24px;
+  --s-7:  32px;
+  --s-8:  40px;
+  --s-9:  56px;
+  --s-10: 72px;
+  --s-11: 96px;
+  --s-12: 128px;
+
+  /* --- Tipografia --- */
+  --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  --font-body:    'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --fs-micro: 10px;
+  --fs-xs:    11px;
+  --fs-sm:    13px;
+  --fs-base:  14px;
+  --fs-md:    15px;
+  --fs-lg:    18px;
+  --fs-xl:    22px;
+  --fs-2xl:   28px;
+  --fs-3xl:   38px;
+  --fs-4xl:   52px;
+  --fs-5xl:   clamp(36px, 6vw, 72px);
+  --fs-hero:  clamp(38px, 6.6vw, 92px);
+
+  --lh-tight: 1.05;
+  --lh-snug:  1.28;
+  --lh-body:  1.62;
+
+  --tracking-hero:  -0.045em;
+  --tracking-tight: -0.02em;
+  --tracking-wide:  0.14em;
+  --tracking-mega:  0.34em;
+
+  /* --- Sombras e brilhos --- */
+  --shadow-1: 0 1px 2px rgba(0,0,0,.5);
+  --shadow-2: 0 4px 14px rgba(0,0,0,.5);
+  --shadow-3: 0 12px 40px rgba(0,0,0,.6);
+  --shadow-4: 0 28px 90px rgba(0,0,0,.72);
+  --glow-blue: 0 0 0 1px var(--accent-line), 0 0 26px -6px var(--accent-glow);
+  --glow-soft: 0 0 34px -12px var(--accent-glow);
+
+  /* Intensidade de brilho — controlada nas preferências (§12, §21) */
+  --glow-strength: 0.7;
+
+  /* --- Movimento --- */
+  --ease-out:    cubic-bezier(.16,1,.3,1);
+  --ease-in-out: cubic-bezier(.65,0,.35,1);
+  --ease-spring: cubic-bezier(.34,1.56,.64,1);
+  --ease-snap:   cubic-bezier(.2,.9,.15,1);
+
+  --t-fast:  .14s;
+  --t-base:  .24s;
+  --t-slow:  .42s;
+  --t-lazy:  .8s;
+
+  /* --- Camadas --- */
+  --z-scene:    0;
+  --z-content:  10;
+  --z-sticky:   40;
+  --z-drawer:   60;
+  --z-modal:    80;
+  --z-toast:    90;
+  --z-loader:   100;
+
+  /* --- Medidas do layout --- */
+  --sidebar-w:  268px;
+  --topbar-h:   62px;
+  --content-max: 1180px;
+  --rail-w:     4px;
+}
+
+/* ---------------------------------------------------------------------
+   Densidade visual (§21) — o usuário escolhe quanta informação cabe na tela
+   --------------------------------------------------------------------- */
+[data-density='compact'] {
+  --s-4: 12px; --s-5: 14px; --s-6: 18px; --s-7: 24px;
+  --fs-base: 13px; --fs-md: 14px;
+  --row-pad: 9px 12px;
+}
+[data-density='comfortable'] { --row-pad: 13px 16px; }
+[data-density='spacious'] {
+  --s-4: 20px; --s-5: 26px; --s-6: 32px; --s-7: 42px;
+  --fs-base: 15px; --fs-md: 16px;
+  --row-pad: 18px 20px;
+}
+
+/* ---------------------------------------------------------------------
+   Alto contraste (§22) — a acessibilidade é parte do produto
+   --------------------------------------------------------------------- */
+[data-contrast='high'] {
+  --bg:        #000000;
+  --bg-2:      #04060B;
+  --surface:   #0B0F1A;
+  --surface-2: #121826;
+  --line:      #3A4665;
+  --line-2:    #4A5878;
+  --text:      #FFFFFF;
+  --text-2:    #C9D3E6;
+  --text-3:    #97A3BC;
+  --accent:    #6C9BFF;
+  --overdue:   #FFC061;
+  --danger:    #FF8A93;
+  --glow-strength: 0.25;
+}
+
+/* ---------------------------------------------------------------------
+   Cantos arredondados — alternativa opcional ao padrão reto (§12)
+   --------------------------------------------------------------------- */
+[data-corners='soft'] {
+  --r-2: 8px; --r-3: 10px; --r-4: 14px; --r-pill: 999px;
+}
+
+/* ---------------------------------------------------------------------
+   Movimento reduzido (§22) — respeita a preferência do sistema
+   --------------------------------------------------------------------- */
+[data-motion='reduced'],
+[data-motion='reduced'] * {
+  --t-fast: .01ms; --t-base: .01ms; --t-slow: .01ms; --t-lazy: .01ms;
+  animation-duration: .01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .01ms !important;
+  scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion='full']) * {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

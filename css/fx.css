@@ -1,0 +1,396 @@
+/* =====================================================================
+   NESTRA — Efeitos e decoração
+   Clique, carregamento, transições, cursor e peças 3D dos ambientes.
+   ===================================================================== */
+
+/* ---------------------------------------------------------------------
+   CAMADA DE EFEITOS — fica acima de tudo e nunca captura o ponteiro
+   --------------------------------------------------------------------- */
+.fx-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Anel que abre no ponto do clique */
+.fx-ring {
+  position: absolute;
+  width: 72px;
+  height: 72px;
+  margin: 0;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  pointer-events: none;
+}
+
+/* Clarão curto sob o anel */
+.fx-flash {
+  position: absolute;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+/* Faíscas */
+.fx-spark {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 8px currentColor;
+  pointer-events: none;
+}
+
+/* Confete da conclusão */
+.fx-confetti {
+  position: absolute;
+  width: 7px;
+  height: 11px;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+/* Lâmina de luz que percorre o conteúdo na troca de tela */
+.fx-sweep {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 120px;
+  pointer-events: none;
+  z-index: 5;
+  background: linear-gradient(180deg,
+    transparent,
+    color-mix(in srgb, var(--accent) 16%, transparent) 45%,
+    color-mix(in srgb, var(--cyan) 24%, transparent) 52%,
+    transparent);
+  filter: blur(6px);
+}
+
+/* Cortina da troca de tela inteira */
+.fx-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 88;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--accent) 22%, var(--void)) 0%,
+      var(--void) 42%,
+      var(--void) 100%);
+}
+.fx-veil::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--accent) 20%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 20%, transparent) 1px, transparent 1px);
+  background-size: 46px 46px;
+  opacity: .25;
+  mask-image: radial-gradient(circle at 50% 50%, #000, transparent 72%);
+}
+
+/* ---------------------------------------------------------------------
+   CURSOR
+   --------------------------------------------------------------------- */
+.fx-cursor {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 1.5px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  pointer-events: none;
+  z-index: 96;
+  opacity: 0;
+  transition: opacity .4s var(--ease-out), background .25s var(--ease-out), border-color .25s var(--ease-out);
+  will-change: transform;
+}
+.fx-cursor[data-active='true'] { opacity: calc(.55 + var(--glow-strength) * .45); }
+.fx-cursor[data-over='true'] {
+  background: transparent;
+  border-color: var(--cyan);
+  box-shadow: 0 0 18px -2px var(--accent-glow);
+}
+@media (hover: none) { .fx-cursor { display: none; } }
+
+/* ---------------------------------------------------------------------
+   CARREGAMENTO NOS BOTÕES
+   --------------------------------------------------------------------- */
+[data-loading] { position: relative; }
+
+/* Só a operação de verdade bloqueia novos cliques. O retorno visual de
+   uma ação já executada (data-loading="auto") não trava nada. */
+.btn[data-loading='true'],
+.side-link[data-loading='true'],
+.settings-nav__tab[data-loading='true'],
+.segmented__opt[data-loading='true'],
+.chip[data-loading='true'] {
+  pointer-events: none;
+}
+
+/* O conteúdo recua sem sumir: o botão não muda de tamanho */
+.btn[data-loading] { color: color-mix(in srgb, currentColor 46%, transparent); }
+.side-link[data-loading] > *:not(.btn__spin) { opacity: .55; }
+.settings-nav__tab[data-loading],
+.segmented__opt[data-loading] { color: color-mix(in srgb, currentColor 50%, transparent); }
+
+.btn__spin {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 15px;
+  height: 15px;
+  margin: -7.5px 0 0 -7.5px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-top-color: currentColor;
+  animation: spinnerTurn .62s linear infinite;
+  pointer-events: none;
+  z-index: 3;
+}
+.side-link .btn__spin,
+.settings-nav__tab .btn__spin,
+.segmented__opt .btn__spin,
+.chip .btn__spin {
+  left: auto;
+  right: 10px;
+  margin-left: 0;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+}
+
+@keyframes spinnerTurn { to { transform: rotate(360deg); } }
+
+/* Trilho de progresso indeterminado no pé do botão */
+.btn[data-loading]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  top: auto;
+  height: 2px;
+  width: 40%;
+  transform: none;
+  background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+  animation: railSlide 1.05s var(--ease-in-out) infinite;
+  z-index: 2;
+}
+@keyframes railSlide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(320%); }
+}
+
+/* ---------------------------------------------------------------------
+   PEÇA 3D DO AMBIENTE
+   --------------------------------------------------------------------- */
+.env-orb {
+  position: relative;
+  width: 78px;
+  height: 78px;
+  flex: 0 0 78px;
+  margin: -6px 0 -4px -6px;
+}
+.env-orb canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Halo por trás da peça, na cor do ambiente */
+.env-orb::before {
+  content: '';
+  position: absolute;
+  inset: -18%;
+  border-radius: 50%;
+  background: radial-gradient(circle,
+    color-mix(in srgb, var(--env-color, var(--accent)) 30%, transparent),
+    transparent 66%);
+  filter: blur(6px);
+  opacity: .55;
+  transition: opacity var(--t-slow) var(--ease-out), transform var(--t-slow) var(--ease-out);
+  pointer-events: none;
+}
+.env-card:hover .env-orb::before { opacity: 1; transform: scale(1.16); }
+
+/* Plano B: um cubo em CSS quando não há WebGL disponível */
+.orb-css {
+  position: absolute;
+  inset: 18%;
+  transform-style: preserve-3d;
+  animation: orbSpin 9s linear infinite;
+}
+.orb-css i {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--orb-color, var(--accent));
+  background: color-mix(in srgb, var(--orb-color, var(--accent)) 14%, transparent);
+  border-radius: 6px;
+}
+.orb-css i:nth-child(1) { transform: translateZ(20px); }
+.orb-css i:nth-child(2) { transform: rotateY(180deg) translateZ(20px); }
+.orb-css i:nth-child(3) { transform: rotateY(90deg)  translateZ(20px); }
+.orb-css i:nth-child(4) { transform: rotateY(-90deg) translateZ(20px); }
+.orb-css i:nth-child(5) { transform: rotateX(90deg)  translateZ(20px); }
+.orb-css i:nth-child(6) { transform: rotateX(-90deg) translateZ(20px); }
+
+@keyframes orbSpin {
+  from { transform: rotateX(-18deg) rotateY(0deg); }
+  to   { transform: rotateX(-18deg) rotateY(360deg); }
+}
+
+/* ---------------------------------------------------------------------
+   TRILHO ANIMADO DA NAVEGAÇÃO
+   --------------------------------------------------------------------- */
+.side-link[aria-current='page'] {
+  background:
+    linear-gradient(90deg,
+      color-mix(in srgb, var(--accent) 16%, transparent),
+      transparent 72%);
+}
+.side-link[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(90deg,
+    transparent,
+    color-mix(in srgb, var(--cyan) 12%, transparent),
+    transparent);
+  background-size: 220% 100%;
+  animation: navShimmer 3.6s linear infinite;
+}
+@keyframes navShimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -20% 0; }
+}
+
+/* ---------------------------------------------------------------------
+   CABEÇALHO DA TELA COM ANEL DE PROGRESSO DO DIA
+   --------------------------------------------------------------------- */
+.day-ring {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+}
+.day-ring svg { transform: rotate(-90deg); }
+.day-ring__track { stroke: var(--surface-3); }
+.day-ring__fill {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 6px var(--accent-glow));
+  transition: stroke-dashoffset .9s var(--ease-out);
+}
+.day-ring__label {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+}
+
+/* ---------------------------------------------------------------------
+   ENTRADA DAS LINHAS DE ITEM — chegam com profundidade
+   --------------------------------------------------------------------- */
+@keyframes itemArrive {
+  from {
+    opacity: 0;
+    transform: perspective(900px) translate3d(0, 18px, -60px) rotateX(10deg);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: perspective(900px) translate3d(0, 0, 0) rotateX(0);
+    filter: blur(0);
+  }
+}
+.item-list.stagger > * { animation: itemArrive .58s var(--ease-out) both; }
+
+/* ---------------------------------------------------------------------
+   PAINEL COM BRILHO QUE SEGUE O PONTEIRO
+   --------------------------------------------------------------------- */
+.glow-follow {
+  position: relative;
+  overflow: hidden;
+}
+.glow-follow::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(320px circle at var(--px, 50%) var(--py, 50%),
+    color-mix(in srgb, var(--accent) 13%, transparent), transparent 62%);
+  transition: opacity var(--t-base) var(--ease-out);
+}
+.glow-follow:hover::after { opacity: 1; }
+
+/* ---------------------------------------------------------------------
+   RESPEITO AO MOVIMENTO REDUZIDO
+   --------------------------------------------------------------------- */
+[data-motion='reduced'] .fx-layer,
+[data-motion='reduced'] .fx-cursor,
+[data-motion='reduced'] .fx-sweep,
+[data-motion='reduced'] .fx-veil { display: none !important; }
+
+[data-motion='reduced'] .btn[data-loading]::before,
+[data-motion='reduced'] .side-link[aria-current='page']::after { animation: none; }
+
+/* ---------------------------------------------------------------------
+   ESCOLHA DA MARCA
+   --------------------------------------------------------------------- */
+.logo-drop {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-4);
+  border: 1px dashed var(--line-2);
+  border-radius: var(--r-3);
+  background: var(--surface);
+  cursor: pointer;
+  transition:
+    border-color var(--t-base) var(--ease-out),
+    background var(--t-base) var(--ease-out),
+    transform var(--t-base) var(--ease-out);
+}
+.logo-drop:hover,
+.logo-drop:focus-visible { border-color: var(--accent-line); background: var(--surface-2); }
+.logo-drop[data-over='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  transform: scale(1.008);
+}
+
+.logo-drop__preview {
+  position: relative;
+  width: 68px;
+  height: 68px;
+  flex: 0 0 68px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-2);
+  background:
+    linear-gradient(135deg, var(--surface-2), var(--surface-3));
+  overflow: hidden;
+}
+.logo-drop__preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 0 12px var(--accent-glow));
+}

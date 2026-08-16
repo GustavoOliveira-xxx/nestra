@@ -1,0 +1,242 @@
+/* =====================================================================
+   NESTRA — Caixa de captura rápida (§7.1)
+
+   "O sistema registra primeiro e pergunta depois. Uma frase nunca deve
+   ser perdida apenas porque a interpretação automática não foi perfeita."
+
+   Enquanto o usuário digita, o que foi entendido aparece em fichas
+   abaixo do campo. Cada ficha pode ser descartada com um clique — a
+   confirmação é compacta e não bloqueia a captura.
+   ===================================================================== */
+
+import { store } from '../store.js';
+import { parse, humanDate, TYPE_LABELS, PRIORITY_LABELS, PERIOD_LABELS } from '../nlp.js';
+import { el, icon, esc, toast } from '../ui.js';
+import { burstAt } from '../../gfx/fx.js';
+
+const CHIP_ICON = {
+  date: 'calendar',
+  time: 'clock',
+  period: 'moon',
+  priority: 'flag',
+  type: 'sparkle',
+  env: 'layers',
+  desc: 'list',
+  vague: 'clockBack',
+};
+
+export function createCapture({ environmentId = null, onCreated = null } = {}) {
+  const root = el('div', { class: 'capture border-travel' });
+
+  const input = el('textarea', {
+    class: 'capture__input',
+    rows: 1,
+    placeholder: 'Escreva o que precisa lembrar…',
+    'aria-label': 'Captura rápida',
+    autocomplete: 'off',
+    spellcheck: 'true',
+  });
+
+  const send = el('button', {
+    class: 'btn btn--primary btn--icon capture__send',
+    'aria-label': 'Registrar',
+    html: icon('plus', 18),
+  });
+
+  const parseRow = el('div', { class: 'capture__parse', 'aria-live': 'polite' });
+
+  const hints = el('div', { class: 'capture__hints' }, [
+    el('span', { html: '<kbd>Enter</kbd> registra · <kbd>Shift</kbd>+<kbd>Enter</kbd> quebra linha' }),
+    el('span', { class: 'grow' }),
+    el('span', { html: '<kbd>@</kbd> ambiente · <kbd>#</kbd> etiqueta · <kbd>!!</kbd> prioridade' }),
+  ]);
+
+  root.append(
+    el('div', { class: 'capture__row' }, [
+      el('div', { class: 'capture__glyph', html: icon('bolt', 18) }),
+      input,
+      send,
+    ]),
+    parseRow,
+    hints,
+  );
+
+  /** Campos que o usuário descartou manualmente nesta frase. */
+  let dismissed = new Set();
+  let current = null;
+
+  function context() {
+    return {
+      environments: store.activeEnvironments,
+      timezone: store.state.prefs.timezone,
+      defaultEnvironmentId: environmentId ?? store.state.prefs.defaultEnvironmentId,
+    };
+  }
+
+  function refresh() {
+    const text = input.value;
+
+    // altura acompanha o conteúdo
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 200) + 'px';
+
+    if (!text.trim() || !store.state.prefs.nlParsingEnabled) {
+      parseRow.replaceChildren();
+      current = null;
+      return;
+    }
+
+    current = parse(text, context());
+    dismissed.forEach((kind) => {
+      if (kind === 'date') { current.dueDate = null; current.dueTime = null; }
+      if (kind === 'time') current.dueTime = null;
+      if (kind === 'priority') current.priority = 'normal';
+      if (kind === 'env') { current.environmentId = null; current.environmentName = null; }
+      if (kind === 'period') current.timePeriod = 'any';
+      if (kind === 'type') current.type = 'task';
+    });
+
+    renderChips();
+  }
+
+  function renderChips() {
+    parseRow.replaceChildren();
+    if (!current) return;
+
+    const chips = [];
+
+    if (current.type !== 'task') {
+      chips.push({ kind: 'type', label: TYPE_LABELS[current.type] });
+    }
+    if (current.dueDate) {
+      chips.push({
+        kind: 'date',
+        label: humanDate(current.dueDate, store.state.prefs.timezone),
+      });
+    }
+    if (current.dueTime) chips.push({ kind: 'time', label: current.dueTime });
+    if (current.timePeriod !== 'any' && !current.dueTime) {
+      chips.push({ kind: 'period', label: PERIOD_LABELS[current.timePeriod] });
+    }
+    if (current.priority !== 'normal') {
+      chips.push({ kind: 'priority', label: 'prioridade ' + PRIORITY_LABELS[current.priority] });
+    }
+    if (current.environmentName) chips.push({ kind: 'env', label: current.environmentName });
+    if (current.description) chips.push({ kind: 'desc', label: 'com descrição' });
+
+    const vague = current.matches.find((m) => m.kind === 'vague');
+    if (vague) chips.push({ kind: 'vague', label: 'sem prazo definido', locked: true });
+
+    chips.forEach((chip, i) => {
+      const node = el('span', {
+        class: 'parse-chip',
+        style: { animationDelay: (i * 0.04) + 's' },
+        title: chip.locked
+          ? 'O Nestra não inventa uma data quando a frase é vaga.'
+          : 'Clique no × para descartar',
+      }, [
+        el('span', { html: icon(CHIP_ICON[chip.kind] || 'sparkle', 13) }),
+        el('b', { text: chip.label }),
+      ]);
+
+      if (!chip.locked) {
+        node.appendChild(el('button', {
+          class: 'parse-chip__x',
+          'aria-label': `Descartar ${chip.label}`,
+          text: '×',
+          onClick: (ev) => {
+            ev.stopPropagation();
+            dismissed.add(chip.kind);
+            refresh();
+          },
+        }));
+      }
+
+      parseRow.appendChild(node);
+    });
+
+    if (current.needsReview) {
+      parseRow.appendChild(el('span', {
+        class: 'parse-chip',
+        style: { borderColor: 'var(--overdue)', color: 'var(--overdue)' },
+        html: icon('alert', 13) + '<b style="color:inherit">confirmar depois</b>',
+        title: 'A frase foi salva por inteiro. Você ajusta os detalhes quando quiser.',
+      }));
+    }
+  }
+
+  function submit() {
+    const text = input.value.trim();
+    if (!text) {
+      input.focus();
+      return;
+    }
+
+    const parsed = current && store.state.prefs.nlParsingEnabled
+      ? current
+      : { title: text, type: 'task', priority: 'normal', dueDate: null, dueTime: null,
+          timePeriod: 'any', environmentId: environmentId ?? store.state.prefs.defaultEnvironmentId,
+          description: null, tags: [], confidence: 0.5, needsReview: false };
+
+    const item = store.createItem({
+      title: parsed.title,
+      description: parsed.description,
+      type: parsed.type,
+      priority: parsed.priority,
+      dueDate: parsed.dueDate,
+      dueTime: parsed.dueTime,
+      timePeriod: parsed.timePeriod,
+      environmentId: environmentId ?? parsed.environmentId,
+      tags: parsed.tags,
+      source: 'quick_capture',
+      rawInput: text,
+      parseConfidence: parsed.confidence,
+      needsReview: parsed.needsReview,
+    });
+
+    if (!item) return;
+
+    // A cena de fundo reage à captura
+    window.nestraScene?.pulseAt(0.9);
+    const r = send.getBoundingClientRect();
+    burstAt(r.left + r.width / 2, r.top + r.height / 2, '#2F6BFF', 12);
+
+    input.value = '';
+    dismissed = new Set();
+    current = null;
+    refresh();
+    input.focus();
+
+    const where = item.environmentId
+      ? store.environmentById(item.environmentId)?.name
+      : 'Caixa de entrada';
+
+    toast(`Registrado em ${where}.`, {
+      kind: 'success',
+      action: 'Desfazer',
+      onAction: () => {
+        store.trashItem(item.id);
+        toast('Captura desfeita.');
+      },
+    });
+
+    onCreated?.(item);
+  }
+
+  input.addEventListener('input', refresh);
+  input.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter' && !ev.shiftKey) {
+      ev.preventDefault();
+      submit();
+    }
+    if (ev.key === 'Escape') {
+      input.value = '';
+      refresh();
+      input.blur();
+    }
+  });
+  send.addEventListener('click', submit);
+
+  root.focusInput = () => input.focus();
+  return root;
+}
