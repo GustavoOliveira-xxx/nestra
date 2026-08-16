@@ -199,8 +199,8 @@ export async function swapView(container, render, options = {}) {
   container.replaceChildren();
   render(container);
 
-  // varredura de luz percorrendo a área de conteúdo
-  sweep(container);
+  // (removido) a varredura de luz no topo causava um artefato visual
+  // ao trocar de tela; a entrada em escada abaixo já dá o movimento.
 
   // entrada, em escada
   const incoming = Array.from(container.children);
