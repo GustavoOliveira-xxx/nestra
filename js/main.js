@@ -394,7 +394,22 @@ function navigate(name, param) {
     settings: '#/config',
     landing: '#/',
   };
-  location.hash = map[name] || '#/hoje';
+  const target = map[name] || '#/hoje';
+
+  /* Clicar na seção em que já se está.
+     Antes isso não fazia absolutamente nada: o endereço não mudava, o
+     `hashchange` não disparava e a tela ficava parada — que é a
+     definição de botão quebrado, do ponto de vista de quem clicou.
+     Agora a seção é remontada, com o mesmo carregamento das outras
+     trocas, e a página volta ao topo. */
+  if (location.hash === target) {
+    if (store.state.user) renderCurrentView({ animate: true });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    document.body.dataset.sidebar = 'closed';
+    return;
+  }
+
+  location.hash = target;
 }
 
 /* =====================================================================
@@ -945,6 +960,8 @@ function renderCurrentView({ animate = false } = {}) {
      branco. Por isso a limpeza é entregue ao `swapView`, que a executa
      no instante exato em que o conteúdo antigo sai do documento. */
   const cleanup = () => {
+    // Sair da tela com o microfone aberto seria péssimo: encerra junto
+    root.captureBox?.stopVoice?.();
     clearOrbs();
     if (r.name !== 'environment') {
       clearEnvHeroes();
@@ -1071,6 +1088,11 @@ function openPalette() {
 
   function close() {
     palette.dataset.open = 'false';
+    /* A paleta só some da vista: o nó continua no documento. Sem soltar
+       o foco, o campo de busca invisível continuava recebendo o que era
+       digitado — e todos os atalhos de teclado paravam de funcionar,
+       porque a interface entendia que a pessoa estava escrevendo. */
+    input.blur();
   }
 
   draw();

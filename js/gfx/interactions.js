@@ -268,6 +268,14 @@ export async function swapView(container, render, options = {}) {
   onSwap?.();
 
   container.replaceChildren();
+
+  /* As animações de saída gravam o estado final no elemento
+     (`fill: forwards`). Nós que são reaproveitados entre renderizações —
+     a marca 3D da tela Hoje e a peça do ambiente — voltariam para a tela
+     ainda apagados e desfocados, porque continuariam carregando o último
+     quadro da saída. Cancelar devolve cada um ao estado natural. */
+  outAnim.forEach((a) => { try { a.cancel(); } catch { /* já terminou */ } });
+
   render(container);
 
   // (removido) a varredura de luz no topo causava um artefato visual
@@ -360,7 +368,62 @@ export function brandLoader(label) {
  * @returns {() => Promise<void>} chame para encerrar; ela respeita o
  *          tempo mínimo antes de sumir, para não piscar.
  */
-export function viewLoading(host, { minMs = 420 } = {}) {
+/**
+ * A mesma composição da abertura do site, em tamanho de seção.
+ *
+ * Não é uma releitura: são os mesmos elementos e as mesmas animações da
+ * tela que abre o Nestra — anéis em órbita, arco, marca no centro,
+ * medidor segmentado e a palavra chegando letra a letra. O que muda é só
+ * a escala, controlada por uma classe.
+ */
+function bootPiece({ label = 'montando a tela' } = {}) {
+  const stage = document.createElement('div');
+  stage.className = 'boot-piece';
+
+  stage.innerHTML = `
+    <div class="boot-piece__logo">
+      <div class="boot__orbit" aria-hidden="true"><span></span><span></span><span></span></div>
+      <svg class="boot__arc" viewBox="0 0 120 120" aria-hidden="true">
+        <circle class="boot__arc-track" cx="60" cy="60" r="56"/>
+        <circle class="boot__arc-fill" cx="60" cy="60" r="56"/>
+      </svg>
+      <img class="boot-piece__mark" alt="" aria-hidden="true">
+    </div>
+    <div class="boot__wordmark" aria-hidden="true">
+      <span>N</span><span>E</span><span>S</span><span>T</span><span>R</span><span>A</span>
+    </div>
+    <div class="boot-piece__meter" aria-hidden="true"></div>
+    <div class="boot-piece__task">${label}</div>
+  `;
+
+  stage.querySelector('.boot-piece__mark').src =
+    window.nestraLogoSrc || 'assets/logo/nestra-mark.png';
+
+  // O medidor segmentado da abertura, com o mesmo número de blocos
+  const meter = stage.querySelector('.boot-piece__meter');
+  for (let i = 0; i < 24; i++) {
+    const seg = document.createElement('span');
+    seg.className = 'boot__seg';
+    seg.style.setProperty('--i', String(i));
+    meter.appendChild(seg);
+  }
+
+  /* O arco percorre o círculo enquanto a tela é montada. Como não há um
+     progresso real para medir — a montagem é rápida demais para isso —,
+     ele descreve o tempo de espera, não uma porcentagem inventada. */
+  const arc = stage.querySelector('.boot__arc-fill');
+  const total = 2 * Math.PI * 56;
+  arc.style.strokeDasharray = String(total);
+  arc.style.strokeDashoffset = String(total);
+  requestAnimationFrame(() => {
+    arc.style.transition = 'stroke-dashoffset .9s cubic-bezier(.4,0,.2,1)';
+    arc.style.strokeDashoffset = String(total * 0.08);
+  });
+
+  return stage;
+}
+
+export function viewLoading(host, { minMs = 620 } = {}) {
   if (reduced() || !host) return async () => {};
 
   const t0 = performance.now();
@@ -371,7 +434,7 @@ export function viewLoading(host, { minMs = 420 } = {}) {
   const veil = document.createElement('div');
   veil.className = 'view-loading';
   veil.setAttribute('aria-hidden', 'true');
-  veil.appendChild(brandLoader());
+  veil.appendChild(bootPiece());
   host.appendChild(veil);
 
   veil.animate([{ opacity: 0 }, { opacity: 1 }],

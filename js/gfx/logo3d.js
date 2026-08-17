@@ -215,14 +215,22 @@ void main() {
     alpha = 1.0;
   }
 
-  // Halo: dá corpo ao brilho sem precisar de um passe de bloom
-  float halo = clamp(glowAccum, 0.0, 1.0) * uGlow;
-  color += uAccent * halo * 0.85;
-  alpha = clamp(alpha + halo * 0.65, 0.0, 1.0);
+  /* Halo: dá corpo ao brilho sem precisar de um passe de bloom.
 
-  // Correção de gama e leve realce de contraste
+     Ele é atmosfera EM VOLTA da peça, não um véu POR CIMA dela. Antes o
+     halo era somado igualmente nos dois casos, e como ele é da cor de
+     destaque, acabava lavando a arte: a marca ficava com aspecto
+     desfocado e perdia a cor própria, justamente na peça em que ela
+     deveria aparecer melhor. Onde o raio acertou o desenho, quem manda
+     é o desenho — sobra só um resíduo, para a borda não cortar seco. */
+  float halo = clamp(glowAccum, 0.0, 1.0) * uGlow;
+  float haloOnArt = hit ? 0.10 : 1.0;
+  color += uAccent * halo * 0.85 * haloOnArt;
+  alpha = clamp(alpha + halo * 0.65 * (hit ? 0.0 : 1.0), 0.0, 1.0);
+
+  // Correção de gama e realce de contraste
   color = pow(max(color, 0.0), vec3(0.4545));
-  color = (color - 0.5) * 1.06 + 0.5;
+  color = (color - 0.5) * 1.12 + 0.5;
 
   outColor = vec4(clamp(color, 0.0, 1.0) * alpha, alpha);
 }`;
@@ -593,12 +601,16 @@ export class Logo3D {
 
   resize() {
     if (!this.gl) return;
-    // Segue o mesmo teto de resolução das outras peças: numa tela de
-    // celular com dpr 3, desenhar a marca em tamanho real custa nove
-    // vezes mais pixels do que em dpr 1, sem diferença perceptível.
-    const { w, h, dpr, changed } = sizeCanvas(this.canvas, {
-      cap: Math.min(2, quality.dprCap + 0.5),
-    });
+    /* Teto de resolução. Numa tela de celular com dpr 3, desenhar a marca
+       em tamanho real custa nove vezes mais pixels do que em dpr 1.
+       Peças pequenas não sentem falta; a marca grande da tela Hoje sim,
+       porque o desenho tem hachuras finas e texto — e é ela que pede
+       `sharp`, subindo o teto. */
+    const cap = this.opts.sharp
+      ? Math.min(2.5, quality.dprCap + 1)
+      : Math.min(2, quality.dprCap + 0.5);
+
+    const { w, h, dpr, changed } = sizeCanvas(this.canvas, { cap });
     if (changed) this.gl.viewport(0, 0, w, h);
     this._dpr = dpr;
   }

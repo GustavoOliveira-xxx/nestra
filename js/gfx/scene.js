@@ -79,29 +79,121 @@ float streak(vec2 p, vec2 head, vec2 dir, float len, float width) {
   return body * tail * tail;
 }
 
-/* Três cometas em fases diferentes, cruzando a cena de tempos em tempos.
-   Cada um some antes de chegar à borda, então nunca há corte seco. */
-float comets(vec2 p, float t) {
-  float total = 0.0;
-  for (int i = 0; i < 3; i++) {
+/* --- CHUVA DE METEOROS ---------------------------------------------
+
+   Não são três cometas esporádicos: é uma chuva. Vários riscos ao mesmo
+   tempo, em tamanhos e velocidades diferentes, cada um sorteando uma
+   trajetória nova a cada passagem. Os mais finos e rápidos dão a
+   sensação de quantidade; os poucos mais largos e lentos dão os momentos
+   que a pessoa realmente vê.
+
+   Devolve x = corpo do risco · y = cabeça (o ponto mais quente). */
+vec2 meteorShower(vec2 p, float t, int howMany) {
+  float body = 0.0;
+  float head = 0.0;
+
+  for (int i = 0; i < 14; i++) {
+    if (i >= howMany) break;
     float fi = float(i);
-    float seed = fract(sin(fi * 12.9898) * 43758.5453);
+    float seed = fract(sin(fi * 12.9898 + 4.1) * 43758.5453);
+    float seed2 = fract(sin(fi * 78.233 + 1.7) * 43758.5453);
 
-    // um ciclo longo: o cometa passa e a cena descansa
-    float cycle = t * 0.055 + seed;
+    // Um em cada quatro é "grande": mais largo, mais lento, mais brilhante
+    float big = step(0.75, seed2);
+    float speed = mix(0.30, 0.13, big) * (0.7 + seed * 0.7);
+
+    float cycle = t * speed + seed * 7.0;
     float phase = fract(cycle);
-    float run = floor(cycle);                    // muda a trajetória a cada volta
-    float jitter = fract(sin(run * 78.233 + fi * 3.7) * 43758.5453);
+    float run = floor(cycle);                  // trajetória nova a cada volta
+    float jx = fract(sin(run * 78.233 + fi * 3.7) * 43758.5453);
+    float jy = fract(sin(run * 39.425 + fi * 9.1) * 43758.5453);
 
-    vec2 dir = normalize(vec2(0.92, -0.42 - jitter * 0.3));
-    vec2 start = vec2(-1.9, 0.95 - jitter * 1.5);
-    vec2 head = start + dir * phase * 4.2;
+    /* Todos caem no mesmo sentido geral, como numa chuva de verdade, com
+       pequena variação de ângulo. Entram sempre pelo alto e à esquerda,
+       numa faixa estreita de altura: espalhar demais faria a maioria
+       passar fora do quadro, e a chuva viraria um meteoro solitário de
+       vez em quando — que era exatamente o problema. */
+    vec2 dir = normalize(vec2(0.86 + jx * 0.14, -0.50 - jy * 0.22));
+    vec2 start = vec2(-1.8 - seed * 0.5, 0.55 + jy * 0.85);
+    vec2 pos = start + dir * phase * 4.0;
 
-    // acende no meio da travessia e apaga antes do fim
-    float life = smoothstep(0.0, 0.18, phase) * smoothstep(1.0, 0.72, phase);
-    total += streak(p, head, dir, 0.62 + jitter * 0.3, 0.016 + seed * 0.012) * life;
+    float life = smoothstep(0.0, 0.08, phase) * smoothstep(1.0, 0.84, phase);
+    float len = mix(0.30, 0.62, big) * (0.75 + seed * 0.5);
+    // Riscos finos: o que faz uma chuva é a quantidade, não a grossura.
+    float wid = mix(0.0035, 0.0085, big) * (0.85 + seed * 0.4);
+
+    float s = streak(p, pos, dir, len, wid) * life;
+    body += s * mix(1.0, 1.7, big);
+
+    /* A cabeça: um ponto compacto na frente do rastro. Precisa ser
+       gaussiana — uma queda exponencial simples tem cauda longa e vira
+       um bolo de luz em vez de um ponto. */
+    float dh = length(p - pos);
+    float hr = wid * 2.0;
+    head += exp(-(dh * dh) / (hr * hr)) * life * mix(0.6, 1.1, big);
   }
-  return total;
+  return vec2(body, head);
+}
+
+/* --- AURORA BOREAL --------------------------------------------------
+
+   Uma aurora não é um borrão luminoso: é uma cortina. Tem uma base que
+   ondula, raios verticais finos que sobem a partir dela e um
+   esmaecimento com a altura, com a borda de baixo mais viva que o resto.
+   É essa estrutura que faz o olho reconhecer o fenômeno.
+
+   As proporções acompanham o quadro: os raios são medidos na mesma
+   unidade nos dois eixos, porque a coordenada já chega corrigida pela
+   proporção da tela. A cortina não estica nem achata quando a janela
+   muda de formato. */
+float auroraCurtain(vec2 p, float t, float seed, float scale) {
+  // a base serpenteia devagar, com dois períodos que não se dividem
+  float baseY = -0.34
+    + sin(p.x * 1.35 * scale + t * 0.42 + seed * 6.28) * 0.13
+    + sin(p.x * 0.62 * scale - t * 0.27 + seed * 2.10) * 0.10;
+
+  float h = p.y - baseY;              // altura acima da base da cortina
+  if (h < 0.0 || h > 1.6) return 0.0;
+
+  /* Os raios: frequência alta em x e baixa em y — é o que dá o
+     estriado vertical em vez de manchas redondas. */
+  float rays = fbm(vec2(p.x * 6.5 * scale + seed * 30.0 + t * 0.30,
+                        h * 0.85 - t * 0.16));
+  rays = pow(clamp(rays, 0.0, 1.0), 1.7);
+
+  float fall = exp(-h * 2.1);                    // apaga subindo
+  float edge = smoothstep(0.0, 0.05, h);         // borda inferior definida
+  float rim  = exp(-h * 16.0) * 0.5;             // e mais quente logo acima dela
+
+  return (rays * fall + rim * rays) * edge;
+}
+
+/* A cor sobe do verde-água para o violeta, como nas auroras reais, mas
+   puxada para a cor de destaque escolhida — assim ela pertence ao
+   produto em vez de parecer um papel de parede colado por cima. */
+vec3 auroraColor(float h, vec3 accent) {
+  vec3 low  = mix(vec3(0.30, 1.00, 0.72), accent, 0.30);
+  vec3 mid  = mix(vec3(0.35, 0.90, 1.00), accent, 0.45);
+  vec3 high = mix(vec3(0.62, 0.42, 1.00), accent, 0.30);
+  return h < 0.5 ? mix(low, mid, h * 2.0) : mix(mid, high, (h - 0.5) * 2.0);
+}
+
+/* --- ESTRELAS -------------------------------------------------------
+   O fundo é espaço: sem estrelas, a aurora flutua sobre o nada. */
+float starField(vec2 p, float t) {
+  vec2 grid = p * 26.0;
+  vec2 cell = floor(grid);
+  vec2 f = fract(grid) - 0.5;
+
+  float r = hash(cell);
+  if (r < 0.90) return 0.0;                      // só uma célula em dez tem estrela
+
+  vec2 jitter = vec2(hash(cell + 1.3), hash(cell + 7.7)) - 0.5;
+  float d = length(f - jitter * 0.6);
+
+  float size = 0.030 + hash(cell + 3.1) * 0.045;
+  float twinkle = 0.55 + 0.45 * sin(t * (1.2 + r * 2.5) + r * 40.0);
+  return exp(-(d * d) / (size * size)) * twinkle;
 }
 
 void main() {
@@ -113,48 +205,61 @@ void main() {
   p.y += uScroll * 0.14;
 
   float t = uTime * 0.055;
+  vec3 color = vec3(0.0);
 
-  /* Deformação do domínio: em vez de duas faixas correndo em linha reta,
-     o campo é dobrado por outro ruído antes de ser lido. É o que faz a
-     luz enrolar e desenrolar em vez de só deslizar. */
-  vec2 w = vec2(
-    fbm(p * 1.35 + vec2(t * 1.2, -t * 0.8)),
-    fbm(p * 1.35 + vec2(5.2 - t * 0.6, 1.3 + t * 0.9)));
-  vec2 q = mix(p, p + (w - 0.5) * 1.5, uWarp);
+  /* 1. ESPAÇO — as estrelas ficam no fundo de tudo, e por isso são as
+     primeiras a serem somadas: qualquer coisa que venha depois passa
+     por cima delas. */
+  float stars = starField(p * 1.0 + vec2(t * 0.06, 0.0), uTime);
+  color += mix(vec3(0.75, 0.86, 1.0), uAccent, 0.25) * stars * 0.55;
 
-  float band1 = fbm(vec2(q.x * 1.5 + t * 1.5, q.y * 2.2 - t * 0.9));
-  float band2 = fbm(vec2(q.x * 2.4 - t * 1.2, q.y * 1.6 + t * 0.8));
+  /* 2. AURORA — três cortinas em profundidades diferentes. A de trás é
+     larga e lenta; as da frente são mais estreitas e se mexem mais, o
+     que dá a sensação de camadas em vez de um desenho só. */
+  float aur = 0.0;
+  vec3 aurColor = vec3(0.0);
 
-  float curtain = smoothstep(0.38, 0.90, band1) * 0.80
-                + smoothstep(0.46, 0.96, band2) * 0.55;
+  for (int i = 0; i < 3; i++) {
+    float fi = float(i);
+    float seed = fi * 2.37;
+    float scale = 1.0 + fi * 0.55;
+    float depth = 1.0 - fi * 0.24;               // as de trás pesam menos
 
-  // feixes verticais atravessando devagar, atrás das cortinas
-  float beams = pow(0.5 + 0.5 * sin(q.x * 3.1 - uTime * 0.20 + band1 * 4.5), 8.0) * 0.55;
+    // cada cortina desliza no seu próprio ritmo
+    vec2 cp = vec2(p.x + sin(uTime * (0.03 + fi * 0.012)) * 0.35, p.y);
+    float c = auroraCurtain(cp, uTime, seed, scale) * depth;
 
-  // concentra a luz em cima e nas laterais, deixando o meio legível
-  float shape = smoothstep(1.02, 0.04, abs(p.y * 1.2 + 0.26));
-  shape *= 0.32 + 0.68 * smoothstep(0.0, 0.62, abs(p.x));
+    float baseY = -0.34 + sin(cp.x * 1.35 * scale + uTime * 0.42 + seed * 6.28) * 0.13;
+    float h = clamp((cp.y - baseY) / 1.1, 0.0, 1.0);
 
-  vec3 cool = mix(uAccent, vec3(0.31, 0.85, 1.0), 0.50);
-  vec3 warm = mix(uAccent, vec3(0.63, 0.45, 1.0), 0.60);
+    aur += c;
+    aurColor += auroraColor(h, uAccent) * c;
+  }
+  aurColor /= max(aur, 0.001);
 
-  // a cor migra de um lado para o outro ao longo de um minuto
-  float drift = sin(uTime * 0.075) * 0.5 + 0.5;
-  vec3 tint = mix(cool, warm, smoothstep(-0.75, 0.75, q.x + drift * 1.1 - 0.55));
+  /* Alivia a aurora no miolo da tela e deixa ela cheia nas laterais: é no
+     centro que o conteúdo do app vive, e ali o fundo precisa ceder. Nas
+     bordas ela pode brilhar à vontade. */
+  float shape = 0.52 + 0.48 * smoothstep(0.0, 0.66, abs(p.x));
+  aur *= shape * (1.05 + uPulse * 0.40);
 
-  float glow = (curtain + beams) * shape * (0.34 + uPulse * 0.30);
+  color += aurColor * aur;
 
-  // brilho difuso ao redor do ponteiro
-  float halo = exp(-length(p - uPointer * 0.5) * 2.4) * 0.075;
+  /* 3. CHUVA DE METEOROS — o número acompanha o fôlego do aparelho, mas
+     mesmo no degrau mais baixo continua sendo uma chuva, não um cometa
+     solitário de vez em quando. */
+  int quantos = uOct >= 5 ? 12 : (uOct >= 4 ? 8 : 5);
+  vec2 met = meteorShower(p, uTime, quantos);
 
-  // horizonte respirando na base da tela
-  float horizon = exp(-abs(p.y + 0.66) * 6.5) * (0.07 + 0.035 * sin(uTime * 0.45));
+  vec3 trailTint = mix(vec3(0.72, 0.92, 1.0), uAccent, 0.25);
+  color += trailTint * met.x * 1.5;              // rastro
+  color += vec3(1.0, 0.98, 0.92) * met.y * 0.9;  // cabeça, quase branca
 
-  // cometas: o movimento que se percebe de relance, sem estar olhando
-  float trail = comets(p, uTime);
-  vec3 trailTint = mix(vec3(0.62, 0.90, 1.0), uAccent, 0.35);
+  /* 4. Ambiente: brilho sob o ponteiro e horizonte respirando na base */
+  color += uAccent * exp(-length(p - uPointer * 0.5) * 2.4) * 0.075;
+  color += mix(uAccent, vec3(0.4, 0.9, 1.0), 0.3)
+         * exp(-abs(p.y + 0.66) * 6.5) * (0.07 + 0.035 * sin(uTime * 0.45));
 
-  vec3 color = tint * glow + uAccent * halo + tint * horizon + trailTint * trail * 0.85;
   outColor = vec4(color, 1.0);
 }`;
 

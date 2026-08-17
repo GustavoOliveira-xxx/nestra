@@ -179,16 +179,21 @@ function todayHero({ b, dayTotal, dayDone, onNavigate }) {
 
     brand = new Logo3D(canvas, {
       src: window.nestraLogoSrc || 'assets/logo/nestra-mark.png',
-      depth: 0.30,
-      bevel: 0.03,
-      glow: 0.95,
+      // Mais espessura = mais leitura de totem, sem custar nitidez
+      depth: 0.36,
+      bevel: 0.032,
+      /* Brilho contido de propósito. Esta é a peça em que a marca precisa
+         estar legível — as hachuras, as estrelinhas, o nome. Glow alto
+         aqui competia com o próprio desenho. */
+      glow: 0.30,
       // A câmera fica mais perto: a marca é o assunto desta abertura,
       // não um selo no canto.
-      zoom: 1.32,
+      zoom: 1.34,
       autoSpin: 0.3,
-      colorSide: 1400,
-      sdfSide: 520,
+      colorSide: 1600,
+      sdfSide: 620,
       interactive: true,
+      sharp: true,           // pede mais pixels: o desenho tem detalhe fino
       forceFallback: !roomy,
     });
 

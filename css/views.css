@@ -425,6 +425,61 @@
 
 .capture__send { flex: 0 0 auto; margin-top: 1px; }
 
+/* ---------------------------------------------------------------------
+   DITADO
+
+   O microfone fica ao lado do botão de registrar, discreto enquanto
+   está parado. Ligado, ele pulsa — e a caixa inteira ganha uma borda
+   viva, para não restar dúvida de que o aparelho está ouvindo.
+   --------------------------------------------------------------------- */
+.capture__mic { flex: 0 0 auto; margin-top: 1px; }
+
+.capture__mic[data-on='true'] {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 50%, transparent);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+/* O anel que se abre em volta do microfone, como uma onda de som */
+.capture__mic[data-on='true']::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border: 1.5px solid var(--danger);
+  border-radius: inherit;
+  animation: micWave 1.5s var(--ease-out) infinite;
+  pointer-events: none;
+}
+@keyframes micWave {
+  0%   { opacity: .75; transform: scale(1); }
+  100% { opacity: 0;   transform: scale(1.55); }
+}
+
+.capture[data-listening='true'] {
+  border-color: color-mix(in srgb, var(--danger) 55%, transparent);
+  box-shadow: var(--shadow-2), 0 0 0 1px color-mix(in srgb, var(--danger) 26%, transparent);
+}
+
+/* Uma faixa correndo no topo da caixa: o sinal de que está gravando */
+.capture[data-listening='true']::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  border-radius: var(--r-3) var(--r-3) 0 0;
+  background: linear-gradient(90deg, transparent, var(--danger), transparent);
+  background-size: 45% 100%;
+  background-repeat: no-repeat;
+  animation: micScan 1.7s var(--ease-in-out) infinite;
+}
+@keyframes micScan {
+  0%   { background-position: -45% 0; }
+  100% { background-position: 145% 0; }
+}
+
+[data-motion='reduced'] .capture__mic[data-on='true']::after,
+[data-motion='reduced'] .capture[data-listening='true']::after { animation: none; }
+
 /* O que o sistema entendeu da frase, antes de gravar (§7.1) */
 .capture__parse {
   display: flex;

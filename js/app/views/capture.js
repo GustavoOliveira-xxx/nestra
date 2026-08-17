@@ -13,6 +13,8 @@ import { store } from '../store.js';
 import { parse, humanDate, TYPE_LABELS, PRIORITY_LABELS, PERIOD_LABELS } from '../nlp.js';
 import { el, icon, esc, toast } from '../ui.js';
 import { burstAt } from '../../gfx/fx.js';
+import { VoiceCapture, voiceSupported, tidySpeech } from '../voice.js';
+import { device } from '../../core/device.js';
 
 const CHIP_ICON = {
   date: 'calendar',
@@ -31,7 +33,10 @@ export function createCapture({ environmentId = null, onCreated = null } = {}) {
   const input = el('textarea', {
     class: 'capture__input',
     rows: 1,
-    placeholder: 'Escreva o que precisa lembrar…',
+    /* Em tela estreita o convite é mais curto: com o microfone ao lado,
+       a frase inteira quebrava em duas linhas e a segunda ficava cortada
+       pela altura de uma linha só. */
+    placeholder: device.compact ? 'O que precisa lembrar?' : 'Escreva o que precisa lembrar…',
     'aria-label': 'Captura rápida',
     autocomplete: 'off',
     spellcheck: 'true',
@@ -45,6 +50,18 @@ export function createCapture({ environmentId = null, onCreated = null } = {}) {
 
   const parseRow = el('div', { class: 'capture__parse', 'aria-live': 'polite' });
 
+  /* --- Ditar em vez de digitar ---
+     Só existe onde o navegador sabe transcrever. Onde não sabe, o botão
+     não aparece — melhor não ter do que ter e não funcionar. */
+  const mic = voiceSupported()
+    ? el('button', {
+        class: 'btn btn--ghost btn--icon capture__mic tip',
+        'data-tip': 'Ditar',
+        'aria-label': 'Ditar em vez de digitar',
+        html: icon('mic', 18),
+      })
+    : null;
+
   const hints = el('div', { class: 'capture__hints' }, [
     el('span', { html: '<kbd>Enter</kbd> registra · <kbd>Shift</kbd>+<kbd>Enter</kbd> quebra linha' }),
     el('span', { class: 'grow' }),
@@ -55,6 +72,7 @@ export function createCapture({ environmentId = null, onCreated = null } = {}) {
     el('div', { class: 'capture__row' }, [
       el('div', { class: 'capture__glyph', html: icon('bolt', 18) }),
       input,
+      mic,
       send,
     ]),
     parseRow,
@@ -221,6 +239,62 @@ export function createCapture({ environmentId = null, onCreated = null } = {}) {
     });
 
     onCreated?.(item);
+  }
+
+  /* ---------------------------------------------------------------
+     Ditado
+
+     O texto reconhecido entra na caixa como se estivesse sendo digitado:
+     o mesmo `refresh()` roda, as mesmas fichas de data e ambiente
+     aparecem. O que a pessoa já tinha escrito antes de apertar o
+     microfone é preservado — o ditado acrescenta, não substitui.
+     --------------------------------------------------------------- */
+  if (mic) {
+    const voz = new VoiceCapture({ lang: store.state.prefs.locale || 'pt-BR' });
+    let textoAntes = '';
+
+    const pintar = (ouvindo) => {
+      root.dataset.listening = String(ouvindo);
+      mic.dataset.on = String(ouvindo);
+      mic.setAttribute('aria-pressed', String(ouvindo));
+      mic.dataset.tip = ouvindo ? 'Parar de ditar' : 'Ditar';
+      mic.setAttribute('aria-label', ouvindo ? 'Parar de ditar' : 'Ditar em vez de digitar');
+    };
+
+    voz.addEventListener('start', () => {
+      textoAntes = input.value.trim();
+      voz.reset();
+      pintar(true);
+      window.nestraScene?.pulseAt(0.4);
+    });
+
+    voz.addEventListener('text', () => {
+      const dito = tidySpeech(voz.text);
+      input.value = textoAntes ? `${textoAntes} ${dito}` : dito;
+      refresh();
+    });
+
+    voz.addEventListener('error', (ev) => {
+      pintar(false);
+      toast(ev.detail.message, { kind: 'error' });
+    });
+
+    voz.addEventListener('end', () => {
+      pintar(false);
+      // Nada foi entendido: devolve a caixa como estava
+      if (!voz.text) input.value = textoAntes;
+      refresh();
+      input.focus();
+    });
+
+    mic.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      if (voz.running) voz.stop();
+      else voz.start();
+    });
+
+    // Sair da tela com o microfone aberto seria péssimo: encerra junto
+    root.stopVoice = () => voz.abort();
   }
 
   input.addEventListener('input', refresh);
