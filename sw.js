@@ -6,12 +6,27 @@
    instalado, a casca precisa estar disponível mesmo sem rede.
 
    Estratégia:
-     • casca do app (HTML, CSS, JS, fontes, ícones) → cache primeiro
-     • navegação                                    → rede primeiro, cache como rede reserva
-     • chamadas /api/                               → sempre rede, nunca cacheadas
+     • código (HTML, CSS, JS, manifest) → rede primeiro, cache de reserva
+     • fontes, ícones e imagens         → cache primeiro
+     • navegação                        → rede primeiro, cache como reserva
+     • chamadas /api/                   → sempre rede, nunca cacheadas
+
+   Por que o código é rede primeiro
+   --------------------------------
+   Antes tudo era cache primeiro, e isso escondia atualizações: uma
+   correção publicada só aparecia se alguém lembrasse de mudar o VERSION
+   aqui embaixo, porque a cópia guardada tinha prioridade e o navegador
+   nunca via a nova. Um erro de memória bastava para o conserto não
+   chegar a ninguém — e foi exatamente o que aconteceu com a correção do
+   ditado.
+
+   Agora o código busca a rede primeiro e só cai no cache quando ela
+   falha. O app continua abrindo offline, com a última versão guardada,
+   mas nunca mais serve código velho quando há rede. Fonte e imagem
+   seguem em cache primeiro: elas não mudam, e são as pesadas.
    ===================================================================== */
 
-const VERSION = 'nestra-v4';
+const VERSION = 'nestra-v5';
 const SHELL = VERSION + '-shell';
 const RUNTIME = VERSION + '-runtime';
 
@@ -103,19 +118,29 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Demais recursos: cache primeiro, atualizando em segundo plano
+  const guardar = (res) => {
+    if (res && res.status === 200 && res.type === 'basic') {
+      const copy = res.clone();
+      caches.open(RUNTIME).then((c) => c.put(request, copy));
+    }
+    return res;
+  };
+
+  /* Código: rede primeiro. Publicou, chegou — sem depender de ninguém
+     lembrar de trocar o número da versão aqui em cima. */
+  if (/\.(js|css|json|html)$/i.test(url.pathname)) {
+    event.respondWith(
+      fetch(request)
+        .then(guardar)
+        .catch(() => caches.match(request)),
+    );
+    return;
+  }
+
+  // Fontes, ícones e imagens: cache primeiro, atualizando em segundo plano
   event.respondWith(
     caches.match(request).then((cached) => {
-      const network = fetch(request)
-        .then((res) => {
-          if (res && res.status === 200 && res.type === 'basic') {
-            const copy = res.clone();
-            caches.open(RUNTIME).then((c) => c.put(request, copy));
-          }
-          return res;
-        })
-        .catch(() => cached);
-
+      const network = fetch(request).then(guardar).catch(() => cached);
       return cached || network;
     }),
   );

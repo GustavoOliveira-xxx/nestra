@@ -213,11 +213,15 @@ export class VoiceCapture extends EventTarget {
    "ponto" em pt-BR; o que sobra aqui é a limpeza: espaço antes de sinal,
    inicial minúscula, repetição de espaços.
    --------------------------------------------------------------------- */
-export function tidySpeech(texto) {
-  return String(texto)
+export function tidySpeech(texto, { capitalizar = true } = {}) {
+  const limpo = String(texto)
     .replace(/\s+/g, ' ')
     .replace(/\s+([,.;:!?])/g, '$1')       // "palavra ," → "palavra,"
     .replace(/([,;:])(?=\S)/g, '$1 ')      // "palavra,outra" → "palavra, outra"
-    .replace(/^\s*(.)/, (_, c) => c.toUpperCase())
     .trim();
+
+  /* A maiúscula inicial só faz sentido quando o ditado começa a frase.
+     Emendado no que já estava escrito, ela produz coisas como "comprar
+     pão Amanhã de manhã". */
+  return capitalizar ? limpo.replace(/^(.)/, (_, c) => c.toUpperCase()) : limpo;
 }

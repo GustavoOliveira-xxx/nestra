@@ -261,15 +261,18 @@ export function createCapture({ environmentId = null, onCreated = null } = {}) {
       mic.setAttribute('aria-label', ouvindo ? 'Parar de ditar' : 'Ditar em vez de digitar');
     };
 
+    /* Só pinta. O ponto de partida do texto NÃO pode ser fixado aqui:
+       o navegador reinicia o reconhecimento sozinho depois de cada pausa
+       e este evento dispara de novo a cada reinício. Fixar o texto e
+       zerar o acumulado a cada volta era a segunda causa da frase saindo
+       repetida. Isso agora acontece uma vez só, no clique. */
     voz.addEventListener('start', () => {
-      textoAntes = input.value.trim();
-      voz.reset();
       pintar(true);
       window.nestraScene?.pulseAt(0.4);
     });
 
     voz.addEventListener('text', () => {
-      const dito = tidySpeech(voz.text);
+      const dito = tidySpeech(voz.text, { capitalizar: !textoAntes });
       input.value = textoAntes ? `${textoAntes} ${dito}` : dito;
       refresh();
     });
@@ -289,8 +292,12 @@ export function createCapture({ environmentId = null, onCreated = null } = {}) {
 
     mic.addEventListener('click', (ev) => {
       ev.preventDefault();
-      if (voz.running) voz.stop();
-      else voz.start();
+      if (voz.running) { voz.stop(); return; }
+
+      // Uma vez por ditado, e não a cada reinício do reconhecimento
+      textoAntes = input.value.trim();
+      voz.reset();
+      voz.start();
     });
 
     // Sair da tela com o microfone aberto seria péssimo: encerra junto

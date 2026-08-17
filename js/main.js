@@ -1214,11 +1214,19 @@ function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   if (location.protocol === 'file:') return;
 
-  window.addEventListener('load', () => {
+  const registrar = () => {
     navigator.serviceWorker.register('sw.js').catch(() => {
       /* sem service worker o app continua funcionando, só sem offline */
     });
-  });
+  };
+
+  /* Esta função é chamada lá do fim da abertura, que é assíncrona: a
+     essa altura o evento `load` já disparou faz tempo. Ficar esperando
+     por ele significava nunca registrar — e era o que acontecia. O app
+     nunca teve service worker, e portanto nunca funcionou offline, apesar
+     de se apresentar como instalável. */
+  if (document.readyState === 'complete') registrar();
+  else window.addEventListener('load', registrar, { once: true });
 }
 
 let installPrompt = null;
