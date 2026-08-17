@@ -16,7 +16,7 @@ import {
 import { clearOrbs } from './gfx/orb.js';
 import { clearEnvHeroes } from './gfx/envhero.js';
 import { device, quality } from './core/device.js';
-import { renderToday, renderEnvironment } from './app/views/today.js';
+import { renderToday, renderEnvironment, clearTodayBrand } from './app/views/today.js';
 import { renderEnvironments, openEnvironmentForm } from './app/views/environments.js';
 import { renderSettings, renderInbox } from './app/views/settings.js';
 import { openItemDetail } from './app/views/items.js';
@@ -348,6 +348,10 @@ function route() {
 
   const paint = () => {
     document.querySelectorAll('.screen').forEach((s) => (s.dataset.active = 'false'));
+
+    // A cena de fundo sabe em que tela estamos: as placas ficam grandes
+    // na apresentação e recuam dentro do app, sem apagar a aurora.
+    app.scene?.setMood(nextScreen);
 
     if (def.name === 'landing') {
       document.body.dataset.view = 'landing';
@@ -925,6 +929,10 @@ function renderCurrentView({ animate = false } = {}) {
   if (r.name !== 'environment') {
     clearEnvHeroes();
     root.__envHero = null;
+  }
+  if (r.name !== 'today') {
+    clearTodayBrand();
+    root.__todayHero = null;
   }
 
   if (animate) {

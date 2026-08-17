@@ -13,9 +13,13 @@
 }
 #scene[data-ready='true'] { opacity: 1; }
 
-/* Dentro da aplicação a cena recua: ela é ambiente, não conteúdo. */
-body[data-view='app'] #scene[data-ready='true'] { opacity: .22; }
-body[data-view='auth'] #scene[data-ready='true'] { opacity: .55; }
+/* A cena fica visível em todas as telas. O que muda entre elas não é a
+   opacidade do canvas inteiro — isso apagaria a aurora junto — e sim o
+   peso das placas, ajustado dentro do próprio shader (`setMood`). Assim
+   o fundo continua vivo na tela onde se passa o dia inteiro, sem que as
+   placas passem por trás do texto. */
+body[data-view='app'] #scene[data-ready='true'] { opacity: .9; }
+body[data-view='auth'] #scene[data-ready='true'] { opacity: .95; }
 
 #app {
   position: relative;

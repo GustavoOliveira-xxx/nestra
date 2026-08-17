@@ -15,7 +15,8 @@ import { createCapture } from './capture.js';
 import { humanDate, todayIn, toISODate } from '../nlp.js';
 import { celebrate } from '../../gfx/interactions.js';
 import { mountEnvHero, clearEnvHeroes } from '../../gfx/envhero.js';
-import { device } from '../../core/device.js';
+import { Logo3D } from '../../gfx/logo3d.js';
+import { device, glBudget } from '../../core/device.js';
 
 /** Anel de progresso do dia — quanto do que vencia hoje já saiu da frente. */
 function dayRing(done, total) {
@@ -57,55 +58,185 @@ function greeting(name) {
   return `${part}, ${String(name || '').split(' ')[0] || 'tudo bem'}`;
 }
 
-export function renderToday(root, { onNavigate }) {
-  const rerender = () => renderToday(root, { onNavigate });
-  const b = store.todayBuckets();
-  const tz = store.state.prefs.timezone;
+/* ---------------------------------------------------------------------
+   ABERTURA DA TELA HOJE — a marca do Nestra em três dimensões
+
+   A logo aqui não é um PNG com sombra: é o arquivo original convertido em
+   campo de distância e extrudado por ray marching, então a silhueta em 3D
+   é exatamente a silhueta do desenho, com relevo, chanfro e brilho de
+   borda. Ela acompanha o ponteiro e gira devagar sozinha.
+
+   Ao lado, o retrato do dia em uma frase: quem é você, que dia é hoje e
+   quanto ainda pede atenção.
+   --------------------------------------------------------------------- */
+
+let brand = null;                       // instância viva do Logo3D
+const brandToken = { id: 'today-brand' };
+
+/** Desmonta a marca da tela Hoje e devolve a vaga de contexto WebGL. */
+export function clearTodayBrand() {
+  if (!brand) return;
+  brand.destroy();
+  glBudget.release(brandToken);
+  brand = null;
+}
+
+/** Uma frase que resume o dia, em vez de só repetir os números. */
+function dayLine({ overdue, dueToday, done }) {
+  if (overdue) {
+    return overdue === 1
+      ? 'Um item passou da data. Escolher uma nova já resolve.'
+      : `${overdue} itens passaram da data. É só dar uma nova data a eles.`;
+  }
+  if (!dueToday) return 'Nada marcado para hoje. O que aparecer, você captura aí embaixo.';
+  if (done >= dueToday) return 'Tudo o que era de hoje já saiu da frente.';
+  const left = dueToday - done;
+  return left === 1 ? 'Falta uma coisa para hoje.' : `Faltam ${left} coisas para hoje.`;
+}
+
+function todayHero({ b, dayTotal, dayDone, onNavigate }) {
+  const canvas = el('canvas', {
+    class: 'today-hero__logo',
+    'aria-label': 'Marca do Nestra em três dimensões',
+  });
 
   const dateLabel = new Date().toLocaleDateString('pt-BR', {
     weekday: 'long', day: 'numeric', month: 'long',
   });
 
+  const summary = el('p', { class: 'today-hero__line' });
+  const counters = el('div', { class: 'today-hero__stats' });
+
+  const paint = (data) => {
+    summary.textContent = dayLine({
+      overdue: data.b.overdue.length,
+      dueToday: data.b.dueToday.length,
+      done: data.dayDone,
+    });
+
+    const stat = (value, label, modifier) =>
+      el('div', { class: 'today-hero__stat' + (modifier ? ' today-hero__stat--' + modifier : '') }, [
+        el('span', { class: 'today-hero__stat-n', text: String(value) }),
+        el('span', { class: 'today-hero__stat-l', text: label }),
+      ]);
+
+    counters.replaceChildren(...[
+      data.dayTotal ? dayRing(data.dayDone, data.dayTotal) : null,
+      stat(data.b.dueToday.length, 'para hoje'),
+      data.b.overdue.length
+        ? stat(data.b.overdue.length, 'passaram da data', 'overdue')
+        : stat(data.dayDone, 'concluídos hoje'),
+      stat(store.activeEnvironments.length, 'ambientes'),
+    ].filter(Boolean));
+  };
+
+  paint({ b, dayTotal, dayDone });
+
+  const hero = el('section', { class: 'today-hero' }, [
+    el('div', { class: 'today-hero__stage' }, [
+      el('span', { class: 'today-hero__aura', 'aria-hidden': 'true' }),
+      el('div', { class: 'today-hero__orbit', 'aria-hidden': 'true' }, [
+        el('span'), el('span'), el('span'),
+      ]),
+      canvas,
+      el('span', { class: 'today-hero__floor', 'aria-hidden': 'true' }),
+    ]),
+
+    el('div', { class: 'today-hero__body' }, [
+      el('span', { class: 'today-hero__kicker' }, [
+        el('b', { text: 'NESTRA' }),
+        el('i', { 'aria-hidden': 'true' }),
+        el('span', { text: dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1) }),
+      ]),
+      el('h1', { class: 'today-hero__title grad-text', text: greeting(store.state.user?.displayName) }),
+      summary,
+      counters,
+      el('div', { class: 'today-hero__actions' }, [
+        el('button', {
+          class: 'btn btn--ghost btn--sm',
+          html: icon('search', 15) + 'Buscar',
+          onClick: () => window.dispatchEvent(new CustomEvent('nestra:palette')),
+        }),
+        el('button', {
+          class: 'btn btn--ghost btn--sm',
+          html: icon('layers', 15) + 'Ambientes',
+          onClick: () => onNavigate('environments'),
+        }),
+      ]),
+    ]),
+  ]);
+
+  hero.updateDay = paint;
+  hero.dataset.alive = 'pending';
+
+  // O canvas precisa estar no documento para ter tamanho medido
+  requestAnimationFrame(() => {
+    if (!canvas.isConnected) return;
+
+    // Sem vaga de contexto (ou com menos movimento pedido), o plano B em
+    // CSS empilha a própria imagem em profundidade — continua com volume.
+    const roomy = !device.reducedMotion && glBudget.claim(brandToken);
+
+    brand = new Logo3D(canvas, {
+      src: window.nestraLogoSrc || 'assets/logo/nestra-mark.png',
+      depth: 0.30,
+      bevel: 0.03,
+      glow: 0.95,
+      // A câmera fica mais perto: a marca é o assunto desta abertura,
+      // não um selo no canto.
+      zoom: 1.32,
+      autoSpin: 0.3,
+      colorSide: 1400,
+      sdfSide: 520,
+      interactive: true,
+      forceFallback: !roomy,
+    });
+
+    brand.init().then((ok) => {
+      hero.dataset.alive = ok ? 'gl' : 'css';
+      if (!ok && roomy) glBudget.release(brandToken);
+    });
+  });
+
+  return hero;
+}
+
+/**
+ * Reaproveita a marca já montada.
+ *
+ * A tela Hoje se redesenha a cada item concluído, adiado ou capturado.
+ * Reconstruir a marca junto significaria refazer o campo de distância e
+ * abrir um contexto WebGL novo a cada clique — caro e, pior, visível: a
+ * marca piscaria o tempo todo. Aqui o mesmo nó volta para a tela, só com
+ * os números do dia atualizados.
+ */
+function keepTodayHero(root, data) {
+  const cached = root.__todayHero;
+
+  if (cached && cached.dataset.alive && brand) {
+    cached.updateDay(data);
+    return cached;
+  }
+
+  if (cached) clearTodayBrand();
+
+  const fresh = todayHero(data);
+  root.__todayHero = fresh;
+  return fresh;
+}
+
+export function renderToday(root, { onNavigate }) {
+  const rerender = () => renderToday(root, { onNavigate });
+  const b = store.todayBuckets();
+  const tz = store.state.prefs.timezone;
+
   root.replaceChildren();
 
-  /* Cabeçalho */
   const dayTotal = b.dueToday.length + b.overdue.length;
   const dayDone = b.dueToday.filter((i) => i.status === 'done').length;
 
-  const head = el('div', { class: 'view-head' }, [
-    el('div', { class: 'row gap-4' }, [
-      dayTotal ? dayRing(dayDone, dayTotal) : null,
-      el('div', {}, [
-        el('h1', { class: 'view-title' }, [
-          el('span', { text: 'Hoje' }),
-          el('span', { class: 'badge badge--accent', text: String(dayTotal) }),
-        ]),
-        el('p', { class: 'view-sub', text: dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1) }),
-      ]),
-    ]),
-    el('div', { class: 'row gap-2' }, [
-      el('button', {
-        class: 'btn btn--ghost btn--sm',
-        html: icon('search', 15) + 'Buscar',
-        onClick: () => window.dispatchEvent(new CustomEvent('nestra:palette')),
-      }),
-      el('button', {
-        class: 'btn btn--outline btn--sm',
-        html: icon('layers', 15) + 'Ambientes',
-        onClick: () => onNavigate('environments'),
-      }),
-    ]),
-  ]);
-  root.appendChild(head);
-
-  /* Saudação — só quando não há nada urgente, para não competir com o conteúdo */
-  if (!b.overdue.length && !b.dueToday.length) {
-    root.appendChild(el('p', {
-      class: 'text-body',
-      style: { marginTop: 'calc(var(--s-4) * -1)', marginBottom: 'var(--s-5)' },
-      text: greeting(store.state.user?.displayName),
-    }));
-  }
+  /* Abertura: a marca em 3D e o retrato do dia */
+  root.appendChild(keepTodayHero(root, { b, dayTotal, dayDone, onNavigate }));
 
   /* Captura rápida */
   const capture = createCapture({ onCreated: rerender });

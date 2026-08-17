@@ -437,6 +437,15 @@ export class Logo3D {
   }
 
   async init() {
+    /* Quem chama pode saber, antes de tentar, que não há vaga de contexto
+       WebGL sobrando — ou que a pessoa pediu menos movimento. Nesses
+       casos o plano B em CSS entra direto, empilhando a própria imagem
+       em profundidade: continua sendo a marca, e continua tendo volume. */
+    if (this.opts.forceFallback) {
+      this._fallback();
+      return false;
+    }
+
     const gl = this.canvas.getContext('webgl2', {
       alpha: true,
       premultipliedAlpha: true,

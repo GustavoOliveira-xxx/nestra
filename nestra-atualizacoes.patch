@@ -1,0 +1,4117 @@
+From 262f4108543d2bf96cc4e091a3d7d6516d03f8f9 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 17 Aug 2026 01:47:54 +0000
+Subject: [PATCH 1/2] =?UTF-8?q?Sincroniza=20a=20conta=20entre=20aparelhos?=
+ =?UTF-8?q?=20e=20refaz=20a=20decora=C3=A7=C3=A3o=203D?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Cinco frentes, pedidas em conjunto.
+
+1. A mesma conta no computador e no celular
+
+O app procurava a API só na <meta> do index.html, que estava vazia:
+todo mundo caía no modo local e cada navegador guardava um espaço
+separado. Agora, sem endereço configurado, ele procura /api na própria
+origem — que é onde as funções ficam quando o site é publicado junto
+delas. O teste de vida passou a exigir que a resposta se identifique,
+porque hospedagem estática devolve o index.html para qualquer caminho
+e o app acharia que tem banco quando só tem HTML.
+
+Com a API no ar, o estado deixa de ser só de ida: existe uma busca que
+sobe a fila pendente e depois baixa o que o servidor tem, disparada ao
+voltar para a aba, ao recuperar a conexão e a cada 45 segundos. O que
+foi escrito num aparelho aparece no outro sem recarregar. O redesenho
+espera a pessoa parar de digitar — perder uma frase pela metade seria
+justamente o oposto do que o produto promete.
+
+2. Peça 3D na abertura de cada ambiente
+
+Um sólido traçado por ray marching flutuando sobre piso com grade,
+reflexo e sombra de contato, com satélites em órbita. A forma vem do
+ícone do ambiente e a cor, da cor dele. O ponteiro gira a peça e desloca
+a câmera; no toque, o arrasto gira. A peça sobrevive aos redesenhos da
+tela: reconstruí-la a cada clique jogaria fora um contexto WebGL por vez.
+
+3. Fundo com mais movimento
+
+A aurora ganhou deformação de domínio — o campo se dobra sobre si mesmo
+antes de ser lido —, feixes verticais, deriva de cor ao longo do minuto e
+um horizonte respirando. A câmera passeia sozinha, a rolagem entra como
+paralaxe e, onde não há cursor, a cena se move por conta própria.
+
+4. Abertura animada com a marca
+
+Anéis em órbita, arco de progresso contornando a logo, partículas
+atraídas para o centro e a palavra chegando letra a letra. A mesma
+linguagem, em tamanho de bolso, aparece nas trocas de tela.
+
+5. Porte para celular
+
+Um perfil de aparelho e um vigia de quadros por segundo: quando a taxa
+cai, a qualidade desce um degrau (menos pixels, menos peças, menos
+passos) e sobe de volta quando sobra fôlego — a decoração nunca some,
+só muda de resolução. Contextos WebGL passaram a sair de um orçamento
+compartilhado, o que não cabe usa o plano B em CSS. As peças param de
+desenhar fora da tela e o canvas só é medido quando muda de tamanho:
+medir dentro do laço obrigava o navegador a refazer o layout a cada
+quadro, para cada peça. O grão de fundo para de animar em tela pequena,
+a cena se ancora na altura grande da janela (a barra do iOS deixava uma
+faixa vazia ao rolar) e os controles ganham área segura e toque sem
+atraso.
+
+De quebra: as preferências salvas voltaram a ser aplicadas depois de
+restaurar a sessão — antes a cor de destaque só aparecia se a pessoa
+abrisse as configurações.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01JsKkE7gaFSW9JmXiX6Bgi8
+---
+ css/base.css             |  16 +
+ css/fx.css               | 269 ++++++++++++++++
+ css/layout.css           |  24 ++
+ css/loader.css           | 202 +++++++++++-
+ index.html               |  26 +-
+ js/app/api.js            |  50 ++-
+ js/app/store.js          | 200 ++++++++++--
+ js/app/ui.js             |   2 +
+ js/app/views/settings.js |  63 +++-
+ js/app/views/today.js    | 140 +++++++--
+ js/core/device.js        | 277 +++++++++++++++++
+ js/gfx/envhero.js        | 647 +++++++++++++++++++++++++++++++++++++++
+ js/gfx/interactions.js   |  46 +++
+ js/gfx/logo3d.js         |  17 +-
+ js/gfx/orb.js            |  62 ++--
+ js/gfx/scene.js          | 154 +++++++---
+ js/main.js               |  98 +++++-
+ sw.js                    |   4 +-
+ 18 files changed, 2163 insertions(+), 134 deletions(-)
+ create mode 100644 js/core/device.js
+ create mode 100644 js/gfx/envhero.js
+
+diff --git a/css/base.css b/css/base.css
+index ba507ea..b9fe9ec 100644
+--- a/css/base.css
++++ b/css/base.css
+@@ -46,6 +46,12 @@ body {
+   overscroll-behavior-y: none;
+ }
+ 
++/* Toque: sem atraso de 300ms e sem zoom por toque duplo em controle */
++button, a, .btn, .chip, .item, .side-link, .env-card, [role='button'] {
++  touch-action: manipulation;
++  -webkit-tap-highlight-color: transparent;
++}
++
+ /* O fundo vivo: gradientes de profundidade + a cena WebGL por trás de tudo */
+ body::before {
+   content: '';
+@@ -72,6 +78,16 @@ body::after {
+   animation: grain 6s steps(6) infinite;
+ }
+ 
++/* O grão é uma camada duas vezes maior que a tela repintada seis vezes
++   por segundo. No computador não se sente; no celular é uma das contas
++   mais caras da página, para um efeito que ninguém percebe num painel
++   pequeno. Ali ele fica parado — e some de vez quando o aparelho já
++   estiver sofrendo. */
++@media (max-width: 820px), (pointer: coarse) {
++  body::after { inset: 0; animation: none; opacity: .022; }
++}
++[data-gfx='low'] body::after { display: none; }
++
+ h1, h2, h3, h4, h5 {
+   font-family: var(--font-display);
+   font-weight: 600;
+diff --git a/css/fx.css b/css/fx.css
+index c80d231..d409253 100644
+--- a/css/fx.css
++++ b/css/fx.css
+@@ -79,6 +79,8 @@
+   position: fixed;
+   inset: 0;
+   z-index: 88;
++  display: grid;
++  place-items: center;
+   pointer-events: none;
+   background:
+     linear-gradient(180deg,
+@@ -86,6 +88,9 @@
+       var(--void) 42%,
+       var(--void) 100%);
+ }
++/* A marca fica acima da grade da cortina */
++.fx-veil__loader { position: relative; z-index: 2; }
++
+ .fx-veil::after {
+   content: '';
+   position: absolute;
+@@ -250,6 +255,270 @@
+   to   { transform: rotateX(-18deg) rotateY(360deg); }
+ }
+ 
++/* ---------------------------------------------------------------------
++   ABERTURA 3D DA TELA DE AMBIENTE
++
++   A peça ocupa a metade direita no computador e o topo no celular. O
++   canvas é desenhado pelo ray marching; tudo aqui é moldura.
++   --------------------------------------------------------------------- */
++.env-hero {
++  position: relative;
++  display: grid;
++  grid-template-columns: 1fr minmax(240px, 42%);
++  align-items: center;
++  gap: var(--s-5);
++  margin-bottom: var(--s-6);
++  padding: var(--s-6) var(--s-6) var(--s-5);
++  border: 1px solid var(--line);
++  border-radius: var(--r-4);
++  background:
++    radial-gradient(120% 140% at 92% 18%,
++      color-mix(in srgb, var(--env-color, var(--accent)) 14%, transparent),
++      transparent 62%),
++    linear-gradient(150deg, var(--surface-2), var(--surface) 62%, var(--bg-2));
++  overflow: hidden;
++  isolation: isolate;
++}
++
++/* Fio de luz na cor do ambiente, no topo do painel */
++.env-hero::before {
++  content: '';
++  position: absolute;
++  top: 0; left: 0; right: 0;
++  height: 2px;
++  background: linear-gradient(90deg,
++    transparent,
++    var(--env-color, var(--accent)) 25%,
++    var(--env-color, var(--accent)) 75%,
++    transparent);
++  box-shadow: 0 0 18px color-mix(in srgb, var(--env-color, var(--accent)) 70%, transparent);
++}
++
++/* Grade discreta ao fundo, para a peça ter contra o que flutuar */
++.env-hero::after {
++  content: '';
++  position: absolute;
++  inset: 0;
++  z-index: -1;
++  background-image:
++    linear-gradient(color-mix(in srgb, var(--env-color, var(--accent)) 14%, transparent) 1px, transparent 1px),
++    linear-gradient(90deg, color-mix(in srgb, var(--env-color, var(--accent)) 14%, transparent) 1px, transparent 1px);
++  background-size: 44px 44px;
++  mask-image: radial-gradient(circle at 78% 50%, #000 5%, transparent 68%);
++  opacity: .5;
++  animation: envHeroGrid 26s linear infinite;
++}
++@keyframes envHeroGrid {
++  to { background-position: 44px 44px, 44px 44px; }
++}
++
++/* Palco da peça: ordem invertida no grid para o texto vir primeiro no DOM */
++.env-hero__stage {
++  position: relative;
++  order: 2;
++  width: 100%;
++  height: clamp(190px, 22vw, 268px);
++  touch-action: pan-y;   /* arrastar gira a peça sem travar a rolagem */
++}
++.env-hero__canvas {
++  position: relative;
++  z-index: 1;
++  width: 100%;
++  height: 100%;
++  display: block;
++  cursor: grab;
++}
++.env-hero__canvas:active { cursor: grabbing; }
++
++/* Halo por trás da peça, na cor do ambiente */
++.env-hero__aura {
++  position: absolute;
++  left: 50%;
++  top: 46%;
++  width: 68%;
++  aspect-ratio: 1;
++  translate: -50% -50%;
++  border-radius: 50%;
++  background: radial-gradient(circle,
++    color-mix(in srgb, var(--env-color, var(--accent)) 32%, transparent),
++    transparent 66%);
++  filter: blur(26px);
++  opacity: .7;
++  pointer-events: none;
++  animation: glowPulse 5.2s var(--ease-in-out) infinite;
++}
++
++.env-hero__body {
++  position: relative;
++  z-index: 2;
++  order: 1;
++  display: flex;
++  flex-direction: column;
++  gap: var(--s-3);
++  min-width: 0;
++}
++
++.env-hero__kicker {
++  display: inline-flex;
++  align-items: center;
++  gap: 8px;
++  align-self: flex-start;
++  padding: 5px 12px 5px 6px;
++  border: 1px solid color-mix(in srgb, var(--env-color, var(--accent)) 34%, transparent);
++  border-radius: var(--r-pill);
++  background: color-mix(in srgb, var(--env-color, var(--accent)) 12%, transparent);
++  font-family: var(--font-mono);
++  font-size: var(--fs-micro);
++  letter-spacing: .16em;
++  text-transform: uppercase;
++  color: color-mix(in srgb, var(--env-color, var(--accent)) 72%, var(--text));
++}
++.env-hero__kicker-icon {
++  display: grid;
++  place-items: center;
++  width: 22px;
++  height: 22px;
++  border-radius: var(--r-1);
++  background: color-mix(in srgb, var(--env-color, var(--accent)) 22%, transparent);
++  color: var(--env-color, var(--accent));
++}
++
++.env-hero__title {
++  font-family: var(--font-display);
++  font-size: clamp(26px, 3.4vw, 40px);
++  font-weight: 600;
++  line-height: 1.1;
++  letter-spacing: var(--tracking-tight);
++  overflow-wrap: anywhere;
++}
++
++.env-hero__desc {
++  font-size: var(--fs-sm);
++  color: var(--text-3);
++  line-height: 1.6;
++  max-width: 46ch;
++}
++
++.env-hero__stats {
++  display: flex;
++  flex-wrap: wrap;
++  gap: var(--s-5);
++  margin-top: var(--s-1);
++}
++.env-hero__stat { display: flex; flex-direction: column; gap: 1px; }
++.env-hero__stat-n {
++  font-family: var(--font-display);
++  font-size: var(--fs-2xl);
++  font-weight: 600;
++  line-height: 1;
++  color: var(--text);
++  font-variant-numeric: tabular-nums;
++}
++.env-hero__stat-l {
++  font-family: var(--font-mono);
++  font-size: var(--fs-micro);
++  letter-spacing: .1em;
++  text-transform: uppercase;
++  color: var(--text-4);
++}
++.env-hero__stat--overdue .env-hero__stat-n { color: var(--overdue); }
++
++.env-hero__actions { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
++
++.env-hero__hint {
++  position: absolute;
++  right: var(--s-4);
++  bottom: var(--s-3);
++  z-index: 2;
++  font-family: var(--font-mono);
++  font-size: var(--fs-micro);
++  letter-spacing: .1em;
++  color: var(--text-4);
++  opacity: 0;
++  transition: opacity var(--t-slow) var(--ease-out);
++  pointer-events: none;
++}
++.env-hero:hover .env-hero__hint { opacity: .8; }
++
++/* Plano B em CSS quando não há WebGL disponível para a peça */
++.hero3d-css {
++  position: absolute;
++  inset: 0;
++  display: grid;
++  place-items: center;
++  perspective: 720px;
++  --rx: 0deg;
++  --ry: 0deg;
++}
++.hero3d-css__solid {
++  position: relative;
++  width: 108px;
++  height: 108px;
++  transform-style: preserve-3d;
++  transform: rotateX(var(--rx)) rotateY(var(--ry));
++  animation: heroSolidSpin 14s linear infinite;
++  transition: transform var(--t-slow) var(--ease-out);
++}
++.hero3d-css__solid i {
++  position: absolute;
++  inset: 0;
++  border: 1px solid var(--piece-color, var(--accent));
++  border-radius: var(--r-2);
++  background: color-mix(in srgb, var(--piece-color, var(--accent)) 15%, transparent);
++  box-shadow: inset 0 0 26px color-mix(in srgb, var(--piece-color, var(--accent)) 32%, transparent);
++}
++.hero3d-css__solid i:nth-child(1) { transform: translateZ(54px); }
++.hero3d-css__solid i:nth-child(2) { transform: rotateY(180deg) translateZ(54px); }
++.hero3d-css__solid i:nth-child(3) { transform: rotateY(90deg)  translateZ(54px); }
++.hero3d-css__solid i:nth-child(4) { transform: rotateY(-90deg) translateZ(54px); }
++.hero3d-css__solid i:nth-child(5) { transform: rotateX(90deg)  translateZ(54px); }
++.hero3d-css__solid i:nth-child(6) { transform: rotateX(-90deg) translateZ(54px); }
++
++.hero3d-css__rings { position: absolute; inset: 0; display: grid; place-items: center; }
++.hero3d-css__rings i {
++  position: absolute;
++  width: 190px;
++  height: 190px;
++  border: 1px solid color-mix(in srgb, var(--piece-color, var(--accent)) 40%, transparent);
++  border-radius: 50%;
++  animation: heroRingSpin 9s linear infinite;
++}
++.hero3d-css__rings i:nth-child(2) { width: 148px; height: 148px; animation-duration: 6.5s; animation-direction: reverse; }
++.hero3d-css__rings i:nth-child(3) { width: 232px; height: 232px; animation-duration: 13s; opacity: .5; }
++
++@keyframes heroSolidSpin {
++  from { transform: rotateX(var(--rx)) rotateY(var(--ry)); }
++  to   { transform: rotateX(var(--rx)) rotateY(calc(var(--ry) + 360deg)); }
++}
++@keyframes heroRingSpin {
++  from { transform: rotateX(72deg) rotateZ(0deg); }
++  to   { transform: rotateX(72deg) rotateZ(360deg); }
++}
++
++@media (max-width: 860px) {
++  .env-hero {
++    grid-template-columns: 1fr;
++    padding: var(--s-5) var(--s-4) var(--s-5);
++    text-align: left;
++  }
++  .env-hero__stage { order: 0; height: clamp(172px, 46vw, 232px); }
++  .env-hero__body  { order: 2; }
++  .env-hero::after { mask-image: radial-gradient(circle at 50% 26%, #000 5%, transparent 62%); }
++  .env-hero__hint  {
++    order: 1;
++    position: static;
++    margin-top: calc(var(--s-2) * -1);
++    text-align: center;
++    opacity: .6;
++  }
++}
++
++/* Movimento reduzido: a peça continua, o cenário para */
++[data-motion='reduced'] .env-hero::after,
++[data-motion='reduced'] .env-hero__aura,
++[data-motion='reduced'] .hero3d-css__solid,
++[data-motion='reduced'] .hero3d-css__rings i { animation: none; }
++
+ /* ---------------------------------------------------------------------
+    TRILHO ANIMADO DA NAVEGAÇÃO
+    --------------------------------------------------------------------- */
+diff --git a/css/layout.css b/css/layout.css
+index 5192069..d1ecde1 100644
+--- a/css/layout.css
++++ b/css/layout.css
+@@ -338,8 +338,32 @@ body[data-view='auth'] #scene[data-ready='true'] { opacity: .55; }
+   .brand__name   { display: none; }
+   .view-title    { font-size: var(--fs-xl); }
+   .main          { padding: var(--s-4) var(--s-3) var(--s-12); }
++
++  /* O desfoque da barra é caro e some atrás do conteúdo em tela pequena */
++  .topbar { backdrop-filter: blur(12px); }
++
++  /* Respeita o recorte da tela e a área do gesto de voltar */
++  .topbar { padding-left: max(var(--s-3), env(safe-area-inset-left));
++            padding-right: max(var(--s-3), env(safe-area-inset-right)); }
++  .main   { padding-left: max(var(--s-3), env(safe-area-inset-left));
++            padding-right: max(var(--s-3), env(safe-area-inset-right)); }
+ }
+ 
++/* A cena de fundo é fixa: em iOS a barra do navegador que aparece e
++   some ao rolar redimensiona a viewport e o canvas fica com uma faixa
++   vazia embaixo. Ancorar pela altura grande da janela evita a faixa. */
++@supports (height: 100lvh) {
++  #scene { height: 100lvh; }
++}
++
++/* No degrau mais baixo a decoração continua, mas sem os desfoques de
++   camada, que são o que realmente derruba a taxa de quadros. */
++[data-gfx='low'] .topbar,
++[data-gfx='low'] .sidebar__scrim,
++[data-gfx='low'] .mobile-bar { backdrop-filter: none; }
++[data-gfx='low'] .topbar     { background: color-mix(in srgb, var(--bg) 94%, transparent); }
++[data-gfx='low'] .mobile-bar { background: color-mix(in srgb, var(--bg) 96%, transparent); }
++
+ /* Barra inferior de ações no celular — o polegar alcança */
+ .mobile-bar {
+   display: none;
+diff --git a/css/loader.css b/css/loader.css
+index f64985b..b2ab931 100644
+--- a/css/loader.css
++++ b/css/loader.css
+@@ -49,6 +49,23 @@
+   animation: glowPulse 3.6s var(--ease-in-out) infinite;
+ }
+ 
++/* Leque de raios girando devagar atrás de tudo */
++.boot__rays {
++  position: absolute;
++  width: min(150vmin, 1400px);
++  aspect-ratio: 1;
++  background: repeating-conic-gradient(
++    from 0deg,
++    color-mix(in srgb, var(--accent) 9%, transparent) 0deg 4deg,
++    transparent 4deg 22deg);
++  mask-image: radial-gradient(circle, transparent 12%, #000 30%, transparent 62%);
++  opacity: .5;
++  animation: bootRays 48s linear infinite;
++}
++@keyframes bootRays {
++  to { transform: rotate(360deg); }
++}
++
+ .boot__stage {
+   position: relative;
+   z-index: 2;
+@@ -65,7 +82,99 @@
+   width: 190px;
+   height: 190px;
+ }
+-.boot__logo canvas { width: 100%; height: 100%; }
++.boot__logo canvas {
++  position: relative;
++  z-index: 2;
++  width: 100%;
++  height: 100%;
++}
++
++/* --- Anéis em órbita: três elipses inclinadas girando em ritmos
++       diferentes, para a marca parecer suspensa no espaço --- */
++.boot__orbit {
++  position: absolute;
++  inset: -14%;
++  z-index: 1;
++  transform-style: preserve-3d;
++  pointer-events: none;
++}
++.boot__orbit span {
++  position: absolute;
++  inset: 0;
++  border: 1px solid color-mix(in srgb, var(--accent) 46%, transparent);
++  border-radius: 50%;
++  animation: bootOrbit 7s linear infinite;
++}
++.boot__orbit span:nth-child(1) { --tiltX: 74deg; --tiltY: 8deg;   animation-duration: 6.4s; }
++.boot__orbit span:nth-child(2) {
++  --tiltX: 66deg; --tiltY: -34deg;
++  inset: 6%;
++  border-color: color-mix(in srgb, var(--cyan) 40%, transparent);
++  animation-duration: 9.2s;
++  animation-direction: reverse;
++}
++.boot__orbit span:nth-child(3) {
++  --tiltX: 82deg; --tiltY: 40deg;
++  inset: -10%;
++  border-style: dashed;
++  border-color: color-mix(in srgb, var(--accent) 26%, transparent);
++  animation-duration: 13s;
++}
++@keyframes bootOrbit {
++  from { transform: rotateX(var(--tiltX)) rotateY(var(--tiltY)) rotateZ(0deg); }
++  to   { transform: rotateX(var(--tiltX)) rotateY(var(--tiltY)) rotateZ(360deg); }
++}
++
++/* --- Arco de progresso contornando a marca --- */
++.boot__arc {
++  position: absolute;
++  inset: -16%;
++  z-index: 1;
++  overflow: visible;
++  transform: rotate(-90deg);
++  pointer-events: none;
++  /* O reset global limita SVG a 100% da caixa-mãe; aqui o arco precisa
++     transbordar a marca, senão ele encolhe e sai do centro. */
++  max-width: none;
++}
++.boot__arc circle {
++  fill: none;
++  stroke-width: 2;
++  stroke-linecap: round;
++}
++.boot__arc-track { stroke: var(--line-2); opacity: .6; }
++.boot__arc-fill {
++  stroke: var(--cyan);
++  stroke-dasharray: 351.86;               /* 2πr, r = 56 */
++  stroke-dashoffset: 351.86;
++  filter: drop-shadow(0 0 6px var(--cyan));
++  transition: stroke-dashoffset .5s var(--ease-out);
++}
++
++/* --- Partículas puxadas para dentro da marca --- */
++.boot__sparks {
++  position: absolute;
++  inset: -60%;
++  z-index: 0;
++  pointer-events: none;
++}
++.boot__sparks i {
++  position: absolute;
++  left: 50%;
++  top: 50%;
++  width: 3px;
++  height: 3px;
++  border-radius: 50%;
++  background: var(--cyan);
++  box-shadow: 0 0 8px var(--cyan);
++  opacity: 0;
++  animation: bootSpark var(--dur, 2.4s) var(--ease-in-out) var(--delay, 0s) infinite;
++}
++@keyframes bootSpark {
++  0%   { opacity: 0; transform: translate(-50%, -50%) translate(var(--fx), var(--fy)) scale(1); }
++  22%  { opacity: .9; }
++  100% { opacity: 0; transform: translate(-50%, -50%) translate(0, 0) scale(.2); }
++}
+ 
+ /* Cantoneiras que se afastam enquanto carrega */
+ .boot__frame {
+@@ -89,15 +198,40 @@
+   50%      { opacity: 1;  transform: scale(1.18); }
+ }
+ 
++/* A palavra chega letra a letra, cada uma vindo de trás para a frente */
+ .boot__wordmark {
++  display: flex;
+   font-family: var(--font-display);
+   font-size: var(--fs-xl);
+   font-weight: 500;
+   letter-spacing: var(--tracking-mega);
+   text-indent: var(--tracking-mega);
+   color: var(--text);
++  perspective: 420px;
++}
++.boot__wordmark span {
++  display: inline-block;
+   opacity: 0;
+-  animation: fadeIn .9s var(--ease-out) .35s forwards;
++  animation: bootLetter .8s var(--ease-out) forwards;
++}
++.boot__wordmark span:nth-child(1) { animation-delay: .30s; }
++.boot__wordmark span:nth-child(2) { animation-delay: .38s; }
++.boot__wordmark span:nth-child(3) { animation-delay: .46s; }
++.boot__wordmark span:nth-child(4) { animation-delay: .54s; }
++.boot__wordmark span:nth-child(5) { animation-delay: .62s; }
++.boot__wordmark span:nth-child(6) { animation-delay: .70s; }
++
++@keyframes bootLetter {
++  from {
++    opacity: 0;
++    transform: translate3d(0, 14px, -70px) rotateX(-40deg);
++    filter: blur(5px);
++  }
++  to {
++    opacity: 1;
++    transform: none;
++    filter: blur(0);
++  }
+ }
+ 
+ .boot__tagline {
+@@ -216,4 +350,68 @@
+   .boot__logo  { width: 148px; height: 148px; }
+   .boot__log   { display: none; }
+   .boot__stage { gap: var(--s-5); }
++  .boot__rays  { display: none; }        /* gradiente cônico enorme custa caro */
++  .boot__sparks i:nth-child(n + 9) { display: none; }
++  .boot__wordmark { font-size: var(--fs-lg); }
++}
++
++/* Movimento reduzido: a abertura informa sem coreografia (§22) */
++[data-motion='reduced'] .boot__orbit,
++[data-motion='reduced'] .boot__sparks,
++[data-motion='reduced'] .boot__rays,
++[data-motion='reduced'] .boot__grid { display: none; }
++
++[data-motion='reduced'] .boot__wordmark span { opacity: 1; animation: none; }
++
++/* =====================================================================
++   MARCA CARREGANDO — reaproveitada nas trocas de tela
++   A mesma linguagem da abertura, em tamanho de bolso.
++   ===================================================================== */
++.brand-loader {
++  display: grid;
++  place-items: center;
++  width: 92px;
++  height: 92px;
++  position: relative;
++}
++.brand-loader__mark {
++  width: 46px;
++  height: 46px;
++  object-fit: contain;
++  filter: drop-shadow(0 0 14px var(--accent-glow));
++  animation: brandBreathe 1.6s var(--ease-in-out) infinite;
++}
++.brand-loader__ring {
++  position: absolute;
++  inset: 0;
++  border: 1.5px solid transparent;
++  border-top-color: var(--accent);
++  border-right-color: color-mix(in srgb, var(--cyan) 60%, transparent);
++  border-radius: 50%;
++  animation: spinnerTurn 1.1s linear infinite;
++}
++.brand-loader__ring:nth-of-type(2) {
++  inset: 12px;
++  border-top-color: transparent;
++  border-bottom-color: color-mix(in srgb, var(--cyan) 70%, transparent);
++  animation-duration: 1.7s;
++  animation-direction: reverse;
++}
++.brand-loader__label {
++  position: absolute;
++  bottom: -26px;
++  font-family: var(--font-mono);
++  font-size: var(--fs-micro);
++  letter-spacing: .18em;
++  text-transform: uppercase;
++  color: var(--text-3);
++  white-space: nowrap;
++}
++
++@keyframes brandBreathe {
++  0%, 100% { transform: scale(1)    rotateY(0deg); opacity: .92; }
++  50%      { transform: scale(1.09) rotateY(22deg); opacity: 1; }
+ }
++
++[data-motion='reduced'] .brand-loader__mark,
++[data-motion='reduced'] .brand-loader__ring { animation: none; }
+diff --git a/index.html b/index.html
+index 9a74f2a..bbb6d45 100644
+--- a/index.html
++++ b/index.html
+@@ -9,7 +9,10 @@
+ <meta name="theme-color" content="#070911">
+ <meta name="color-scheme" content="dark">
+ 
+-<!-- Endereço da API que fala com o Neon. Vazio = modo local. -->
++<!-- Endereço da API que fala com o Neon.
++     Vazio = procura /api na mesma origem (é o caso quando o site é
++     publicado junto das funções). Não encontrando, o app entra em modo
++     local e guarda tudo só neste navegador. -->
+ <meta name="nestra-api" content="">
+ 
+ <link rel="manifest" href="manifest.json">
+@@ -48,16 +51,35 @@
+ <div class="boot" role="status" aria-live="polite" aria-label="Carregando o Nestra">
+   <div class="boot__grid" aria-hidden="true"></div>
+   <div class="boot__halo" aria-hidden="true"></div>
++  <div class="boot__rays" aria-hidden="true"></div>
+ 
+   <div class="boot__stage">
+     <div class="boot__logo">
++      <!-- A marca extrudada em 3D, montada camada por camada pela engine -->
+       <canvas id="bootLogo" aria-hidden="true"></canvas>
++
++      <!-- Anéis em órbita ao redor da marca -->
++      <div class="boot__orbit" aria-hidden="true">
++        <span></span><span></span><span></span>
++      </div>
++
++      <!-- Arco que acompanha o progresso, contornando a marca -->
++      <svg class="boot__arc" viewBox="0 0 120 120" aria-hidden="true">
++        <circle class="boot__arc-track" cx="60" cy="60" r="56" />
++        <circle class="boot__arc-fill" cx="60" cy="60" r="56" />
++      </svg>
++
++      <!-- Partículas atraídas para a marca enquanto ela se forma -->
++      <div class="boot__sparks" aria-hidden="true"></div>
++
+       <div class="boot__frame" aria-hidden="true">
+         <span></span><span></span><span></span><span></span>
+       </div>
+     </div>
+ 
+-    <div class="boot__wordmark">NESTRA</div>
++    <div class="boot__wordmark" aria-label="Nestra">
++      <span>N</span><span>E</span><span>S</span><span>T</span><span>R</span><span>A</span>
++    </div>
+     <div class="boot__tagline">seu espaço para o que importa</div>
+ 
+     <div class="boot__meter" aria-hidden="true"></div>
+diff --git a/js/app/api.js b/js/app/api.js
+index 25d1acb..173859f 100644
+--- a/js/app/api.js
++++ b/js/app/api.js
+@@ -17,13 +17,41 @@ export const api = {
+   base: null,
+   online: false,
+ 
+-  /** Descobre o endereço da API: <meta>, localStorage ou mesma origem. */
++  /**
++   * Descobre o endereço da API, nesta ordem:
++   *   1. o que a pessoa digitou nas configurações;
++   *   2. a `<meta name="nestra-api">` do index.html;
++   *   3. `/api` na mesma origem.
++   *
++   * O terceiro caso é o que faz a conta funcionar em dois aparelhos sem
++   * ninguém configurar nada: publicado na Vercel, o front e as funções
++   * moram na mesma origem, então `/api` simplesmente existe. Onde não
++   * existir — GitHub Pages puro, arquivo local — o `probe()` recebe um
++   * 404 e o app volta ao modo local, exatamente como antes.
++   */
+   resolveBase() {
+     const meta = document.querySelector('meta[name="nestra-api"]');
+     const stored = localStorage.getItem(CONFIG_KEY);
+     const fromMeta = meta && meta.content && meta.content !== '__API_BASE__' ? meta.content : null;
+-    this.base = (stored || fromMeta || '').replace(/\/$/, '') || null;
+-    return this.base;
++
++    const explicit = (stored || fromMeta || '').replace(/\/$/, '');
++    if (explicit) {
++      this.base = explicit;
++      this.autoDetected = false;
++      return this.base;
++    }
++
++    // `file://` não tem origem para conversar; aí é modo local mesmo.
++    if (location.protocol === 'http:' || location.protocol === 'https:') {
++      const path = location.pathname.replace(/\/[^/]*$/, '');
++      this.base = (location.origin + path).replace(/\/$/, '') + '/api';
++      this.autoDetected = true;
++      return this.base;
++    }
++
++    this.base = null;
++    this.autoDetected = false;
++    return null;
+   },
+ 
+   setBase(url) {
+@@ -32,7 +60,13 @@ export const api = {
+     this.resolveBase();
+   },
+ 
+-  /** Testa se existe uma API viva antes de tentar sincronizar. */
++  /**
++   * Testa se existe uma API viva antes de tentar sincronizar.
++   *
++   * Não basta o 200: hospedagem estática costuma devolver o index.html
++   * para qualquer caminho desconhecido, e aí o app acharia que tem banco
++   * quando só tem HTML. Por isso a resposta precisa se identificar.
++   */
+   async probe() {
+     if (!this.resolveBase()) {
+       this.online = false;
+@@ -42,9 +76,15 @@ export const api = {
+       const res = await fetch(this.base + '/health', {
+         method: 'GET',
+         credentials: 'include',
++        headers: { Accept: 'application/json' },
+         signal: AbortSignal.timeout(4500),
+       });
+-      this.online = res.ok;
++      if (!res.ok) {
++        this.online = false;
++        return false;
++      }
++      const payload = await res.json().catch(() => null);
++      this.online = payload?.service === 'nestra-api';
+     } catch {
+       this.online = false;
+     }
+diff --git a/js/app/store.js b/js/app/store.js
+index c5d0042..e38422f 100644
+--- a/js/app/store.js
++++ b/js/app/store.js
+@@ -15,8 +15,14 @@ const K = {
+   session: 'nestra:session',
+   data: (userId) => `nestra:data:${userId}`,
+   lastEnv: 'nestra:last-env',
++  // Quem entrou por último pelo servidor. Serve para abrir o app já com
++  // conteúdo quando o celular está sem rede no momento da abertura.
++  remoteUser: 'nestra:remote-user',
+ };
+ 
++/* Intervalo entre buscas automáticas enquanto a aba está à vista. */
++const PULL_EVERY = 45000;
++
+ const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Math.random().toString(36).slice(2));
+ 
+ const read = (key, fallback) => {
+@@ -155,16 +161,16 @@ class Store extends EventTarget {
+       try {
+         const me = await api.get('/auth/me');
+         if (me && me.user) {
+-          this.state.user = me.user;
+-          this.state.prefs = { ...DEFAULT_PREFS, ...(me.preferences || {}) };
+-          this.state.environments = me.environments || [];
+-          this.state.items = me.items || [];
+-          this.setSync('synced');
+-          this.emit('auth', this.state.user);
++          this.adoptRemote(me);
++          // O aparelho pode ter ficado offline com alterações na fila.
++          this.flush();
+           return true;
+         }
+-      } catch {
+-        /* sem sessão remota — segue para a sessão local */
++      } catch (err) {
++        // 401 é resposta legítima: não há sessão neste aparelho.
++        // Falha de rede é outra história — vale abrir com o que ficou
++        // guardado da última vez, em vez de fingir que a conta sumiu.
++        if (!err.status && this.restoreCachedRemote()) return true;
+       }
+     }
+ 
+@@ -178,25 +184,171 @@ class Store extends EventTarget {
+     const account = accounts.find((a) => a.id === session.userId);
+     if (!account) return false;
+ 
++    /* Sessão local, mesmo com servidor disponível.
++       Acontece com quem criou a conta antes de a API existir: a conta
++       vive só neste navegador e o servidor não a conhece. Enfileirar as
++       alterações dela seria mandar dados que voltariam recusados, então
++       o modo volta a ser local — e a barra lateral diz exatamente isso.
++       Para sincronizar entre aparelhos, basta criar a conta de novo
++       agora que existe servidor. */
++    this.state.mode = 'local';
+     this.state.user = { id: account.id, email: account.email, displayName: account.displayName };
+     this.load(account.id);
+-    this.setSync(api.online ? 'syncing' : 'local');
++    this.setSync('local');
++    this.emit('auth', this.state.user);
++    return true;
++  }
++
++  /**
++   * Assume o que o servidor mandou como verdade e guarda uma cópia local.
++   *
++   * A cópia não é um segundo banco: é só a memória do último estado
++   * conhecido, para o app abrir com conteúdo mesmo sem rede. Na primeira
++   * resposta do servidor ela é substituída inteira.
++   */
++  adoptRemote(payload) {
++    this.state.mode = 'remote';
++    this.state.user = payload.user;
++    this.state.prefs = { ...DEFAULT_PREFS, ...(payload.preferences || {}) };
++    this.state.environments = payload.environments || [];
++    this.state.items = payload.items || [];
++
++    write(K.remoteUser, payload.user);
++    this.persist();
++
++    this.setSync('synced');
++    this.emit('auth', this.state.user);
++    return this.state.user;
++  }
++
++  /** Abre com o último estado conhecido quando o servidor não responde. */
++  restoreCachedRemote() {
++    const cached = read(K.remoteUser, null);
++    if (!cached || !cached.id) return false;
++
++    this.state.mode = 'remote';
++    this.state.user = cached;
++    this.load(cached.id);
++    this.setSync(navigator.onLine ? 'error' : 'offline');
+     this.emit('auth', this.state.user);
+     return true;
+   }
+ 
++  /**
++   * Traz do servidor o estado atual da conta.
++   *
++   * É isto que faz o mesmo login mostrar o mesmo progresso no computador
++   * e no celular: o que foi criado num aparelho aparece no outro assim
++   * que ele volta a ficar em primeiro plano.
++   *
++   * A ordem importa. Primeiro sobe o que está pendente, depois desce o
++   * que o servidor tem. Se algo da fila não subiu, a busca é adiada —
++   * baixar antes de subir apagaria da tela uma alteração ainda não
++   * enviada.
++   */
++  async pull({ reason = 'auto' } = {}) {
++    if (this.state.mode !== 'remote' || !this.state.user) return false;
++    if (this._pulling) return this._pulling;
++    if (!navigator.onLine) { this.setSync('offline'); return false; }
++
++    this._pulling = (async () => {
++      try {
++        if (syncQueue.size()) {
++          await this.flush();
++          if (syncQueue.size()) return false;
++        }
++
++        const me = await api.get('/auth/me');
++        if (!me || !me.user) return false;
++
++        const before = this.signature();
++
++        this.state.user = me.user;
++        this.state.prefs = { ...DEFAULT_PREFS, ...(me.preferences || {}) };
++        this.state.environments = me.environments || [];
++        this.state.items = me.items || [];
++
++        write(K.remoteUser, me.user);
++        this.persist();
++        this.setSync('synced');
++
++        const changed = before !== this.signature();
++        if (changed) this.emit('pulled', { reason });
++        return changed;
++      } catch (err) {
++        if (err.status === 401) {
++          // A sessão caiu neste aparelho: melhor pedir para entrar de novo
++          // do que continuar mostrando dados que não sincronizam mais.
++          this.state.user = null;
++          this.state.items = [];
++          this.state.environments = [];
++          localStorage.removeItem(K.remoteUser);
++          this.emit('auth', null);
++        } else {
++          this.setSync(navigator.onLine ? 'error' : 'offline');
++        }
++        return false;
++      } finally {
++        this._pulling = null;
++      }
++    })();
++
++    return this._pulling;
++  }
++
++  /** Impressão barata do estado, só para saber se algo mudou de verdade. */
++  signature() {
++    const items = this.state.items
++      .map((i) => i.id + ':' + (i.updatedAt || '') + ':' + i.status)
++      .join('|');
++    const envs = this.state.environments
++      .map((e) => e.id + ':' + (e.updatedAt || e.createdAt || '') + ':' + (e.archivedAt || ''))
++      .join('|');
++    return items + '#' + envs;
++  }
++
++  /**
++   * Mantém os aparelhos alinhados sem ficar batendo no servidor à toa:
++   * busca quando a aba volta ao primeiro plano, quando a conexão volta e,
++   * enquanto a aba está visível, a cada 45 segundos.
++   */
++  startAutoSync() {
++    if (this._autoSync) return;
++    this._autoSync = true;
++
++    const refresh = (reason) => {
++      if (this.state.mode !== 'remote' || !this.state.user) return;
++      if (document.hidden) return;
++      this.pull({ reason });
++    };
++
++    document.addEventListener('visibilitychange', () => {
++      if (document.hidden) return;
++      refresh('foreground');
++    });
++
++    window.addEventListener('focus', () => refresh('focus'));
++    window.addEventListener('online', () => refresh('online'));
++    window.addEventListener('pageshow', (ev) => { if (ev.persisted) refresh('restore'); });
++
++    setInterval(() => refresh('interval'), PULL_EVERY);
++
++    // O service worker avisa quando a conexão volta em segundo plano
++    navigator.serviceWorker?.addEventListener?.('message', (ev) => {
++      if (ev.data?.type === 'flush-queue') this.flush();
++    });
++  }
++
+   async register({ displayName, email, password }) {
+     email = String(email).trim().toLowerCase();
+ 
+     if (api.online) {
+-      const res = await api.post('/auth/register', { displayName, email, password });
+-      this.state.user = res.user;
+-      this.state.prefs = { ...DEFAULT_PREFS, ...(res.preferences || {}) };
+-      this.state.environments = res.environments || [];
+-      this.state.items = [];
+-      this.setSync('synced');
+-      this.emit('auth', this.state.user);
+-      return this.state.user;
++      const res = await api.post('/auth/register', {
++        displayName, email, password,
++        timezone: DEFAULT_PREFS.timezone,
++        locale: DEFAULT_PREFS.locale,
++      });
++      return this.adoptRemote({ ...res, items: res.items || [] });
+     }
+ 
+     const accounts = read(K.accounts, []);
+@@ -232,13 +384,10 @@ class Store extends EventTarget {
+ 
+     if (api.online) {
+       const res = await api.post('/auth/login', { email, password });
+-      this.state.user = res.user;
+-      this.state.prefs = { ...DEFAULT_PREFS, ...(res.preferences || {}) };
+-      this.state.environments = res.environments || [];
+-      this.state.items = res.items || [];
+-      this.setSync('synced');
+-      this.emit('auth', this.state.user);
+-      return this.state.user;
++      // A fila pode ter sobras de uma sessão anterior neste aparelho;
++      // enviá-las agora gravaria itens de uma conta na outra.
++      syncQueue.clear();
++      return this.adoptRemote(res);
+     }
+ 
+     const accounts = read(K.accounts, []);
+@@ -263,9 +412,12 @@ class Store extends EventTarget {
+ 
+   async logout() {
+     if (api.online) {
++      // O que ainda não subiu sobe agora: sair não pode perder trabalho.
++      try { await this.flush(); } catch { /* a fila fica para a próxima */ }
+       try { await api.post('/auth/logout', {}); } catch { /* segue mesmo assim */ }
+     }
+     localStorage.removeItem(K.session);
++    localStorage.removeItem(K.remoteUser);
+     this.state.user = null;
+     this.state.items = [];
+     this.state.environments = [];
+diff --git a/js/app/ui.js b/js/app/ui.js
+index 8068f75..77393a4 100644
+--- a/js/app/ui.js
++++ b/js/app/ui.js
+@@ -44,6 +44,8 @@ const PATHS = {
+   clockBack: '<path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 4 3 9 8 9"/><polyline points="12 8 12 12 15 14"/>',
+   target:    '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/>',
+   lock:      '<rect x="4" y="10" width="16" height="11"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
++  refresh:   '<path d="M20 12a8 8 0 1 1-2.3-5.6"/><polyline points="20 3 20 8 15 8"/>',
++  devices:   '<rect x="2" y="5" width="13" height="10"/><path d="M6 19h7"/><rect x="17" y="9" width="5" height="11"/>',
+ };
+ 
+ export function icon(name, size = 18, extra = '') {
+diff --git a/js/app/views/settings.js b/js/app/views/settings.js
+index ef9c419..286c8ff 100644
+--- a/js/app/views/settings.js
++++ b/js/app/views/settings.js
+@@ -442,30 +442,73 @@ export function renderSettings(root, { onNavigate, applyPrefs }) {
+         })),
+     );
+ 
+-    const modeChip = el('div', {
++    /* --- Sincronização entre aparelhos --- */
++    const remote = store.state.mode === 'remote';
++
++    panel.appendChild(el('div', { class: 'divider-label', style: { marginTop: 'var(--s-6)' }, text: 'Seus aparelhos' }));
++
++    panel.appendChild(el('div', {
+       class: 'chip',
+-      style: { marginTop: 'var(--s-5)' },
+-      html: icon(store.state.mode === 'remote' ? 'shield' : 'lock', 13) +
+-        `<span>Modo atual: <b>${store.state.mode === 'remote' ? 'sincronizado com o Neon' : 'somente neste dispositivo'}</b></span>`,
+-    });
+-    panel.appendChild(modeChip);
++      style: { marginTop: 'var(--s-4)' },
++      html: icon(remote ? 'devices' : 'lock', 13) +
++        `<span>Modo atual: <b>${remote ? 'sincronizado com o Neon' : 'somente neste dispositivo'}</b></span>`,
++    }));
++
++    /* Três situações diferentes, e cada uma pede uma explicação diferente:
++       sincronizando; servidor no ar mas com uma conta que só existe neste
++       navegador; e sem servidor nenhum. */
++    const syncNote = remote
++      ? 'Entrar com o mesmo e-mail e a mesma senha no celular mostra os mesmos ambientes e os mesmos itens. O que você escreve num aparelho aparece no outro assim que ele volta para a frente — não é preciso exportar nem importar nada.'
++      : api.online
++        ? 'O servidor está no ar, mas esta conta foi criada quando ele ainda não existia: ela vive apenas neste navegador. Exporte seus dados, crie a conta de novo com o mesmo e-mail e ela passará a acompanhar você em qualquer aparelho.'
++        : 'Este navegador não encontrou uma API publicada, então os dados ficam guardados só aqui — entrar com a mesma conta em outro aparelho abriria um espaço vazio. Publique a API junto do site (ou informe o endereço abaixo) e a mesma conta passa a valer nos dois.';
++
++    panel.appendChild(el('p', {
++      class: 'setting-row__desc',
++      style: { marginTop: 'var(--s-3)' },
++      text: syncNote,
++    }));
++
++    if (remote) {
++      panel.appendChild(el('div', { class: 'row gap-3', style: { marginTop: 'var(--s-4)' } }, [
++        el('button', {
++          class: 'btn btn--outline btn--sm',
++          html: icon('refresh', 15) + 'Sincronizar agora',
++          onClick: async () => {
++            await store.flush();
++            const changed = await store.pull({ reason: 'manual' });
++            toast(changed ? 'Trouxe as novidades dos seus outros aparelhos.' : 'Já estava tudo em dia.', {
++              kind: 'success',
++            });
++            if (!changed) rerender();
++          },
++        }),
++        el('span', {
++          class: 'field__hint',
++          style: { margin: '0' },
++          text: 'A busca também acontece sozinha ao voltar para a aba.',
++        }),
++      ]));
++    }
+ 
+     const apiField = el('input', {
+       class: 'input',
+-      placeholder: 'https://sua-api.vercel.app/api',
+-      value: api.base || '',
++      placeholder: api.autoDetected ? api.base : 'https://sua-api.vercel.app/api',
++      value: localStorage.getItem('nestra:api-base') || '',
+     });
+     apiField.addEventListener('change', () => {
+       api.setBase(apiField.value.trim());
+       toast('Endereço salvo. Recarregue a página para conectar.', { kind: 'success' });
+     });
+ 
+-    panel.appendChild(el('div', { class: 'field', style: { marginTop: 'var(--s-4)' } }, [
++    panel.appendChild(el('div', { class: 'field', style: { marginTop: 'var(--s-5)' } }, [
+       el('span', { class: 'field__label', text: 'Endereço da API' }),
+       apiField,
+       el('span', {
+         class: 'field__hint',
+-        text: 'Sem uma API publicada, o Nestra funciona só neste navegador. O banco Neon nunca é acessado direto pelo navegador — as credenciais ficam no servidor.',
++        text: api.autoDetected
++          ? `Em branco, o Nestra procura sozinho em ${api.base}. Preencha só para apontar para outro servidor. O banco Neon nunca é acessado direto pelo navegador — as credenciais ficam no servidor.`
++          : 'O banco Neon nunca é acessado direto pelo navegador — as credenciais ficam no servidor.',
+       }),
+     ]));
+ 
+diff --git a/js/app/views/today.js b/js/app/views/today.js
+index 897a008..efefc47 100644
+--- a/js/app/views/today.js
++++ b/js/app/views/today.js
+@@ -14,6 +14,8 @@ import { renderItem } from './items.js';
+ import { createCapture } from './capture.js';
+ import { humanDate, todayIn, toISODate } from '../nlp.js';
+ import { celebrate } from '../../gfx/interactions.js';
++import { mountEnvHero, clearEnvHeroes } from '../../gfx/envhero.js';
++import { device } from '../../core/device.js';
+ 
+ /** Anel de progresso do dia — quanto do que vencia hoje já saiu da frente. */
+ function dayRing(done, total) {
+@@ -218,6 +220,123 @@ export function renderToday(root, { onNavigate }) {
+   }
+ }
+ 
++/* ---------------------------------------------------------------------
++   Abertura da tela de ambiente
++
++   A peça em 3D não é enfeite solto: a forma vem do ícone, a cor vem do
++   ambiente e o brilho interno vem de quanta coisa está pendente ali. Em
++   volta dela ficam o nome, a descrição e os números do ambiente.
++   --------------------------------------------------------------------- */
++function environmentHero(env, stats, { onNavigate }) {
++  const canvas = el('canvas', { class: 'env-hero__canvas', 'aria-hidden': 'true' });
++
++  const number = (value, label, modifier) =>
++    el('div', { class: 'env-hero__stat' + (modifier ? ' env-hero__stat--' + modifier : '') }, [
++      el('span', { class: 'env-hero__stat-n', text: String(value) }),
++      el('span', { class: 'env-hero__stat-l', text: label }),
++    ]);
++
++  const statsRow = el('div', { class: 'env-hero__stats' });
++
++  const paintStats = (s) => {
++    statsRow.replaceChildren(
++      number(s.pending, 'pendentes'),
++      s.overdue ? number(s.overdue, 'atrasados', 'overdue') : number(s.today, 'para hoje'),
++      number(s.done, 'concluídos'),
++    );
++  };
++  paintStats(stats);
++
++  const hero = el('section', {
++    class: 'env-hero',
++    style: { '--env-color': env.color },
++  }, [
++    el('div', { class: 'env-hero__stage' }, [
++      canvas,
++      el('span', { class: 'env-hero__aura', 'aria-hidden': 'true' }),
++    ]),
++
++    el('div', { class: 'env-hero__body' }, [
++      el('span', { class: 'env-hero__kicker' }, [
++        el('span', { class: 'env-hero__kicker-icon', html: icon(env.icon, 13) }),
++        el('span', { text: 'Ambiente' }),
++      ]),
++      el('h1', { class: 'env-hero__title', text: env.name }),
++      el('p', {
++        class: 'env-hero__desc',
++        text: env.description || 'Tudo o que pertence a este contexto fica reunido aqui.',
++      }),
++      statsRow,
++      el('div', { class: 'env-hero__actions' }, [
++        el('button', {
++          class: 'btn btn--ghost btn--sm',
++          html: icon('edit', 15) + 'Editar ambiente',
++          onClick: () => window.dispatchEvent(new CustomEvent('nestra:edit-env', { detail: env.id })),
++        }),
++        el('button', {
++          class: 'btn btn--ghost btn--sm',
++          html: icon('layers', 15) + 'Todos os ambientes',
++          onClick: () => onNavigate('environments'),
++        }),
++      ]),
++    ]),
++
++    el('span', {
++      class: 'env-hero__hint',
++      'aria-hidden': 'true',
++      text: device.touch ? 'arraste a peça' : 'mova o ponteiro · arraste para girar',
++    }),
++  ]);
++
++  hero.dataset.env = env.id;
++  hero.dataset.look = env.color + '·' + env.icon;
++  hero.dataset.alive = 'pending';
++  hero.updateStats = paintStats;
++
++  // O canvas precisa estar no documento para ter tamanho medido
++  requestAnimationFrame(() => {
++    if (!canvas.isConnected) return;
++    mountEnvHero(canvas, {
++      color: env.color,
++      icon: env.icon,
++      energy: Math.min(1, (stats.pending + stats.overdue * 2) / 14),
++    });
++  });
++
++  return hero;
++}
++
++/**
++ * Reaproveita a peça já montada.
++ *
++ * Marcar um item como concluído redesenha a tela inteira. Se a abertura
++ * fosse reconstruída junto, cada clique jogaria fora um contexto WebGL e
++ * abriria outro — o caminho mais curto para o navegador começar a
++ * descartar contextos e a peça sumir. Aqui o mesmo nó volta para a tela,
++ * com os números atualizados; só a troca de ambiente (ou de cor e ícone)
++ * constrói uma peça nova.
++ */
++function keepEnvironmentHero(root, env, stats, options) {
++  const cached = root.__envHero;
++  const look = env.color + '·' + env.icon;
++
++  if (cached &&
++      cached.dataset.env === env.id &&
++      cached.dataset.look === look &&
++      cached.dataset.alive) {
++    cached.updateStats(stats);
++    return cached;
++  }
++
++  // Trocou de ambiente: a peça anterior sai antes, senão as duas
++  // disputam a mesma vaga de contexto WebGL e a nova cai no plano B.
++  if (cached) clearEnvHeroes();
++
++  const fresh = environmentHero(env, stats, options);
++  root.__envHero = fresh;
++  return fresh;
++}
++
+ /* ---------------------------------------------------------------------
+    Tela de um ambiente (§7.3)
+    --------------------------------------------------------------------- */
+@@ -242,26 +361,7 @@ export function renderEnvironment(root, envId, { onNavigate }) {
+ 
+   const stats = store.environmentStats(envId);
+ 
+-  root.appendChild(el('div', { class: 'view-head' }, [
+-    el('div', {}, [
+-      el('h1', { class: 'view-title' }, [
+-        el('span', {
+-          class: 'env-card__icon',
+-          style: { '--env-color': env.color, width: '30px', height: '30px' },
+-          html: icon(env.icon, 16),
+-        }),
+-        el('span', { text: env.name }),
+-      ]),
+-      el('p', { class: 'view-sub', text: env.description || `${stats.pending} pendentes · ${stats.done} concluídos` }),
+-    ]),
+-    el('div', { class: 'row gap-2' }, [
+-      el('button', {
+-        class: 'btn btn--ghost btn--sm',
+-        html: icon('edit', 15) + 'Editar',
+-        onClick: () => window.dispatchEvent(new CustomEvent('nestra:edit-env', { detail: envId })),
+-      }),
+-    ]),
+-  ]));
++  root.appendChild(keepEnvironmentHero(root, env, stats, { onNavigate }));
+ 
+   root.appendChild(createCapture({ environmentId: envId, onCreated: rerender }));
+ 
+diff --git a/js/core/device.js b/js/core/device.js
+new file mode 100644
+index 0000000..81f53e0
+--- /dev/null
++++ b/js/core/device.js
+@@ -0,0 +1,277 @@
++/* =====================================================================
++   NESTRA — Perfil do aparelho e governo de qualidade
++
++   O site tem bastante decoração em 3D. Num computador isso é barato; num
++   celular de entrada, não. Em vez de desligar tudo no celular — o pedido
++   foi justamente que a decoração continue rodando — aqui existe um
++   perfil por aparelho e um vigia de quadros por segundo.
++
++   O vigia observa o tempo real de cada quadro. Se a taxa cai, a
++   qualidade desce um degrau (menos pixels, menos peças, menos passos de
++   ray marching) e a animação continua fluida. Se a taxa se mantém alta
++   por bastante tempo, ele devolve um degrau. Nada some da tela: só muda
++   a resolução do que é desenhado.
++   ===================================================================== */
++
++const mq = (q) => (typeof window !== 'undefined' && window.matchMedia
++  ? window.matchMedia(q)
++  : { matches: false, addEventListener() {} });
++
++const coarse = mq('(hover: none), (pointer: coarse)');
++const small = mq('(max-width: 820px)');
++
++/* ---------------------------------------------------------------------
++   Perfil estático — o que dá para saber sem medir nada
++   --------------------------------------------------------------------- */
++function detectTier() {
++  const cores = navigator.hardwareConcurrency || 4;
++  const memory = navigator.deviceMemory || (coarse.matches ? 4 : 8);
++  const pixels = (window.screen?.width || 1280) * (window.screen?.height || 800)
++    * Math.min(window.devicePixelRatio || 1, 3);
++
++  // Muitos pixels com pouco núcleo é a combinação que trava celular.
++  let score = 0;
++  score += cores >= 8 ? 2 : cores >= 6 ? 1.5 : cores >= 4 ? 1 : 0;
++  score += memory >= 8 ? 2 : memory >= 4 ? 1 : 0;
++  score += pixels > 4.5e6 ? -1 : 0;
++  score += coarse.matches ? -0.5 : 0.5;
++
++  if (score >= 3) return 'high';
++  if (score >= 1.5) return 'medium';
++  return 'low';
++}
++
++export const device = {
++  /** Aparelho sem cursor: celular, tablet, quiosque. */
++  get touch() { return coarse.matches; },
++
++  /** Tela pequena o bastante para a interface trocar de forma. */
++  get compact() { return small.matches; },
++
++  /** Celular de verdade: sem cursor E tela pequena. */
++  get mobile() { return coarse.matches && small.matches; },
++
++  /** 'high' | 'medium' | 'low' — perfil inicial, antes de medir. */
++  tier: 'high',
++
++  /** Reduz o custo do 3D em telas com muitos pixels e pouco fôlego. */
++  get baseDprCap() {
++    if (this.tier === 'low') return 1;
++    if (this.tier === 'medium') return 1.35;
++    return this.mobile ? 1.6 : 2;
++  },
++
++  /** A pessoa (ou o sistema) pediu menos movimento. */
++  get reducedMotion() {
++    const declared = document.documentElement.dataset.motion;
++    if (declared === 'reduced') return true;
++    if (declared === 'full') return false;
++    return mq('(prefers-reduced-motion: reduce)').matches;
++  },
++
++  /** Economia de bateria/dados ligada no navegador. */
++  get saveData() {
++    return Boolean(navigator.connection?.saveData);
++  },
++};
++
++device.tier = detectTier();
++
++/* ---------------------------------------------------------------------
++   Governo de qualidade — mede e ajusta enquanto o site roda
++   --------------------------------------------------------------------- */
++
++const LEVELS = ['low', 'medium', 'high'];
++
++class Quality extends EventTarget {
++  constructor() {
++    super();
++    const start = device.saveData ? 'low' : device.tier;
++    this.level = start;
++    this.ceiling = start;            // teto: nunca sobe acima do perfil do aparelho
++    this._frames = 0;
++    this._acc = 0;
++    this._slow = 0;
++    this._fast = 0;
++    this._last = 0;
++    this._watching = false;
++    this._apply();
++  }
++
++  get index() { return LEVELS.indexOf(this.level); }
++
++  /** Multiplicador de resolução: quantos pixels reais por pixel de CSS. */
++  get dprCap() {
++    const base = device.baseDprCap;
++    if (this.level === 'low') return Math.min(base, 1);
++    if (this.level === 'medium') return Math.min(base, 1.35);
++    return base;
++  }
++
++  /** Escala genérica de quantidade (peças, partículas, passos). */
++  get scale() {
++    return this.level === 'low' ? 0.45 : this.level === 'medium' ? 0.72 : 1;
++  }
++
++  /** Efeitos caros que só ficam de pé quando sobra fôlego. */
++  get heavy() { return this.level === 'high'; }
++
++  _apply() {
++    document.documentElement.dataset.gfx = this.level;
++  }
++
++  _set(level) {
++    if (level === this.level) return;
++    this.level = level;
++    this._apply();
++    this.dispatchEvent(new CustomEvent('change', { detail: level }));
++  }
++
++  /**
++   * O vigia roda um único requestAnimationFrame para o site inteiro —
++   * as cenas não precisam medir nada por conta própria.
++   */
++  watch() {
++    if (this._watching || device.reducedMotion) return;
++    this._watching = true;
++
++    const tick = (now) => {
++      if (!this._watching) return;
++      requestAnimationFrame(tick);
++
++      if (document.hidden) { this._last = 0; return; }
++      if (!this._last) { this._last = now; return; }
++
++      const dt = now - this._last;
++      this._last = now;
++
++      // Quadros absurdos (aba voltando, janela arrastada) não contam
++      if (dt > 500) return;
++
++      this._acc += dt;
++      this._frames++;
++      if (this._acc < 1000) return;
++
++      const fps = (this._frames * 1000) / this._acc;
++      this._acc = 0;
++      this._frames = 0;
++
++      if (fps < 42) {
++        this._slow++;
++        this._fast = 0;
++      } else if (fps > 56) {
++        this._fast++;
++        this._slow = 0;
++      } else {
++        this._slow = Math.max(0, this._slow - 1);
++      }
++
++      // Dois segundos ruins seguidos: desce um degrau na hora.
++      if (this._slow >= 2 && this.index > 0) {
++        this._slow = 0;
++        this._set(LEVELS[this.index - 1]);
++        return;
++      }
++
++      // Doze segundos folgados: devolve um degrau, sem passar do teto.
++      if (this._fast >= 12 && this.index < LEVELS.indexOf(this.ceiling)) {
++        this._fast = 0;
++        this._set(LEVELS[this.index + 1]);
++      }
++    };
++
++    requestAnimationFrame(tick);
++  }
++}
++
++export const quality = new Quality();
++
++/* ---------------------------------------------------------------------
++   Ajudantes usados pelas cenas
++   --------------------------------------------------------------------- */
++
++/** Tamanho do canvas em pixels reais, já com o teto de resolução. */
++export function sizeCanvas(canvas, { width, height, cap } = {}) {
++  const dpr = Math.min(window.devicePixelRatio || 1, cap ?? quality.dprCap);
++  const rect = canvas.getBoundingClientRect();
++  const w = Math.max(1, Math.round((width ?? rect.width ?? 1) * dpr));
++  const h = Math.max(1, Math.round((height ?? rect.height ?? 1) * dpr));
++
++  if (canvas.width !== w || canvas.height !== h) {
++    canvas.width = w;
++    canvas.height = h;
++    return { w, h, dpr, changed: true };
++  }
++  return { w, h, dpr, changed: false };
++}
++
++/**
++ * Avisa quando o elemento muda de tamanho.
++ *
++ * Medir o canvas dentro do laço de desenho parece inofensivo, mas
++ * `getBoundingClientRect()` obriga o navegador a recalcular o layout —
++ * a cada quadro, para cada peça. Com meia dúzia de peças na tela é o
++ * bastante para a rolagem começar a engasgar no celular. Aqui a medida
++ * só acontece quando o tamanho realmente muda.
++ */
++export function onResize(element, callback) {
++  if (typeof ResizeObserver === 'undefined') {
++    window.addEventListener('resize', callback, { passive: true });
++    return () => window.removeEventListener('resize', callback);
++  }
++  const ro = new ResizeObserver(callback);
++  ro.observe(element);
++  return () => ro.disconnect();
++}
++
++/**
++ * Só desenha o que está à vista.
++ *
++ * Num celular, três peças 3D fora da tela custam o mesmo que três na
++ * tela — e é isso que faz a rolagem engasgar. Devolve uma função que
++ * desfaz a observação.
++ */
++export function renderWhenVisible(element, { onEnter, onLeave }) {
++  if (!('IntersectionObserver' in window)) {
++    onEnter?.();
++    return () => {};
++  }
++
++  const io = new IntersectionObserver((entries) => {
++    entries.forEach((entry) => (entry.isIntersecting ? onEnter?.() : onLeave?.()));
++  }, { rootMargin: '120px' });
++
++  io.observe(element);
++  return () => io.disconnect();
++}
++
++/**
++ * Contextos WebGL são um recurso escasso: o navegador começa a descartar
++ * os mais antigos depois de um punhado deles, e no celular esse punhado é
++ * bem menor. Quem quiser um contexto pede aqui.
++ */
++class ContextBudget {
++  constructor() {
++    this.taken = new Set();
++  }
++
++  get limit() {
++    if (device.mobile) return quality.level === 'low' ? 2 : 3;
++    return quality.level === 'low' ? 3 : 8;
++  }
++
++  /** @returns {boolean} verdadeiro se couber mais um. */
++  claim(owner) {
++    if (this.taken.size >= this.limit) return false;
++    this.taken.add(owner);
++    return true;
++  }
++
++  release(owner) {
++    this.taken.delete(owner);
++  }
++
++  get used() { return this.taken.size; }
++}
++
++export const glBudget = new ContextBudget();
+diff --git a/js/gfx/envhero.js b/js/gfx/envhero.js
+new file mode 100644
+index 0000000..b2239c3
+--- /dev/null
++++ b/js/gfx/envhero.js
+@@ -0,0 +1,647 @@
++/* =====================================================================
++   NESTRA — Peça 3D do topo do ambiente
++
++   Cada ambiente abre com um sólido próprio flutuando sobre um piso
++   refletivo, com satélites em órbita e a luz vindo de onde está o
++   ponteiro. A forma nasce do ícone escolhido e a cor é a do ambiente:
++   entrar em "Trabalho" e entrar em "Estudos" são experiências visuais
++   diferentes sem ninguém precisar configurar nada.
++
++   Traçado por ray marching em um único passe de fragment shader — sem
++   biblioteca externa, porque o app precisa abrir offline.
++
++   O custo se ajusta sozinho: o número de passos, o reflexo do piso e a
++   sombra suave entram ou saem conforme o fôlego do aparelho, medido pelo
++   governo de qualidade. No celular a peça continua girando, só que com
++   menos pixels por quadro.
++   ===================================================================== */
++
++import { program, fullscreenQuad } from '../core/gl.js';
++import { device, quality, sizeCanvas, renderWhenVisible, onResize, glBudget } from '../core/device.js';
++
++const VS = `#version 300 es
++in vec2 aPos;
++out vec2 vUv;
++void main() {
++  vUv = aPos;
++  gl_Position = vec4(aPos, 0.0, 1.0);
++}`;
++
++const FS = `#version 300 es
++precision highp float;
++
++in vec2 vUv;
++out vec4 outColor;
++
++uniform vec2  uRes;
++uniform float uTime;
++uniform vec3  uColor;
++uniform int   uShape;
++uniform vec2  uSpin;      // giro acumulado: ponteiro + rotação própria
++uniform vec2  uPointer;   // -1..1 dentro do painel
++uniform float uHover;
++uniform float uPress;
++uniform float uEnergy;    // 0..1 — quanto o ambiente está carregado
++uniform int   uQuality;   // 0 baixo · 1 médio · 2 alto
++uniform float uAppear;    // 0..1 — a peça se montando ao abrir a tela
++uniform float uZoom;      // compensa painéis largos e baixos
++
++const float FLOOR_Y = -0.86;
++
++mat3 rotY(float a) { float c = cos(a), s = sin(a); return mat3(c,0.0,-s, 0.0,1.0,0.0, s,0.0,c); }
++mat3 rotX(float a) { float c = cos(a), s = sin(a); return mat3(1.0,0.0,0.0, 0.0,c,s, 0.0,-s,c); }
++
++mat3 gRot;      // orientação do corpo, montada no main
++vec3 gBase;     // cor do ambiente já em espaço linear
++
++/* --- sólidos --- */
++float sdRoundBox(vec3 p, vec3 b, float r) {
++  vec3 q = abs(p) - b;
++  return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r;
++}
++float sdTorus(vec3 p, vec2 t) {
++  vec2 q = vec2(length(p.xz) - t.x, p.y);
++  return length(q) - t.y;
++}
++float sdOctahedron(vec3 p, float s, float r) {
++  p = abs(p);
++  return (p.x + p.y + p.z - s) * 0.57735027 - r;
++}
++float sdCapsule(vec3 p, float h, float r) {
++  p.y -= clamp(p.y, -h, h);
++  return length(p) - r;
++}
++float sdHexPrism(vec3 p, vec2 h, float r) {
++  const vec3 k = vec3(-0.8660254, 0.5, 0.57735);
++  p = abs(p);
++  p.xy -= 2.0 * min(dot(k.xy, p.xy), 0.0) * k.xy;
++  vec2 d = vec2(
++    length(p.xy - vec2(clamp(p.x, -k.z * h.x, k.z * h.x), h.x)) * sign(p.y - h.x),
++    p.z - h.y);
++  return min(max(d.x, d.y), 0.0) + length(max(d, 0.0)) - r;
++}
++float sdPyramid(vec3 p, float h, float r) {
++  p.y += 0.28;
++  float m2 = h * h + 0.25;
++  p.xz = abs(p.xz);
++  p.xz = (p.z > p.x) ? p.zx : p.xz;
++  p.xz -= 0.5;
++  vec3 q = vec3(p.z, h * p.y - 0.5 * p.x, h * p.x + 0.5 * p.y);
++  float s = max(-q.x, 0.0);
++  float t = clamp((q.y - 0.5 * p.z) / (m2 + 0.25), 0.0, 1.0);
++  float a = m2 * (q.x + s) * (q.x + s) + q.y * q.y;
++  float b = m2 * (q.x + 0.5 * t) * (q.x + 0.5 * t) + (q.y - m2 * t) * (q.y - m2 * t);
++  float d2 = min(q.y, -q.x * m2 - q.y * 0.5) > 0.0 ? 0.0 : min(a, b);
++  return (sqrt((d2 + q.z * q.z) / m2) * sign(max(q.z, -p.y)) - r) * 0.62;
++}
++
++float smin(float a, float b, float k) {
++  float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
++  return mix(b, a, h) - k * h * (1.0 - h);
++}
++
++/* O corpo principal, já com a respiração lenta e o recuo do clique. */
++float bodySDF(vec3 p) {
++  float breathe = 1.0 + sin(uTime * 0.85) * 0.026 + uHover * 0.05 - uPress * 0.055;
++  vec3 q = p / breathe;
++
++  float d;
++  if (uShape == 0) {
++    d = sdRoundBox(q, vec3(0.42, 0.33, 0.29), 0.12);
++  } else if (uShape == 1) {
++    d = sdTorus(q, vec2(0.43, 0.155));
++    // um eixo atravessando o anel: lê melhor como objeto, não como aro
++    d = smin(d, sdCapsule(q.yzx, 0.30, 0.075), 0.10);
++  } else if (uShape == 2) {
++    d = sdOctahedron(q, 0.60, 0.085);
++  } else if (uShape == 3) {
++    d = sdCapsule(q, 0.24, 0.33);
++  } else if (uShape == 4) {
++    float wob = sin(q.x * 5.0 + uTime * 0.7)
++              * sin(q.y * 5.0 - uTime * 0.55)
++              * sin(q.z * 5.0 + uTime * 0.3) * 0.055;
++    d = length(q) - 0.55 + wob;
++  } else if (uShape == 6) {
++    d = sdPyramid(q * 1.15, 1.05, 0.05) / 1.15;
++  } else {
++    d = sdHexPrism(q, vec2(0.41, 0.20), 0.085);
++  }
++
++  // Enquanto a tela entra, a peça vem de dentro para fora.
++  return d - (1.0 - uAppear) * 0.22;
++}
++
++/* x = distância · y = material (0 corpo · 1 satélite) */
++vec2 mapScene(vec3 p) {
++  vec2 res = vec2(bodySDF(gRot * p), 0.0);
++
++  // Satélites: órbita própria, independente do giro do corpo — é o que
++  // dá a leitura de espaço em volta do objeto, e não só de um objeto.
++  for (int i = 0; i < 3; i++) {
++    float fi = float(i);
++    float a = uTime * (0.42 + fi * 0.15) + fi * 2.0944;
++    float radius = (0.86 + fi * 0.13) * mix(0.6, 1.0, uAppear);
++    vec3 c = vec3(cos(a) * radius,
++                  sin(a * 0.8 + fi * 1.7) * 0.26,
++                  sin(a) * radius);
++    float s = length(p - c) - (0.078 - fi * 0.012);
++    if (s < res.x) res = vec2(s, 1.0);
++  }
++  return res;
++}
++
++vec3 normalAt(vec3 p) {
++  const vec2 e = vec2(1.0, -1.0) * 0.0022;
++  return normalize(
++    e.xyy * mapScene(p + e.xyy).x + e.yyx * mapScene(p + e.yyx).x +
++    e.yxy * mapScene(p + e.yxy).x + e.xxx * mapScene(p + e.xxx).x);
++}
++
++float softShadow(vec3 ro, vec3 rd, float mint, float maxt, float k) {
++  float res = 1.0;
++  float t = mint;
++  for (int i = 0; i < 26; i++) {
++    float h = mapScene(ro + rd * t).x;
++    res = min(res, k * h / t);
++    t += clamp(h, 0.025, 0.28);
++    if (res < 0.005 || t > maxt) break;
++  }
++  return clamp(res, 0.0, 1.0);
++}
++
++float occlusion(vec3 p, vec3 n) {
++  float occ = 0.0;
++  float sca = 1.0;
++  for (int i = 0; i < 5; i++) {
++    float h = 0.012 + 0.09 * float(i);
++    occ += (h - mapScene(p + n * h).x) * sca;
++    sca *= 0.72;
++  }
++  return clamp(1.0 - 2.2 * occ, 0.0, 1.0);
++}
++
++void main() {
++  vec2 uv = vUv;
++  uv.x *= uRes.x / uRes.y;
++
++  gRot = rotY(uSpin.x) * rotX(uSpin.y);
++  gBase = pow(max(uColor, 0.0), vec3(2.2));
++
++  // A câmera desliza um pouco com o ponteiro: o objeto ganha paralaxe
++  // de verdade, não só uma rotação.
++  vec3 ro = vec3(uPointer.x * 0.20, 0.10 - uPointer.y * 0.14, 2.55);
++  // Mira um pouco abaixo do centro: a peça sobe no quadro e sobra
++  // espaço para o reflexo no piso, que senão morre cortado na borda.
++  vec3 ta = vec3(0.0, -0.17, 0.0);
++  vec3 fw = normalize(ta - ro);
++  vec3 rt = normalize(cross(fw, vec3(0.0, 1.0, 0.0)));
++  vec3 up = cross(rt, fw);
++  vec3 rd = normalize(uv.x * rt + uv.y * up + 2.05 * uZoom * fw);
++
++  vec3 light = normalize(vec3(-0.5 + uPointer.x * 0.55, 0.82, 0.62));
++
++  vec3 col = vec3(0.0);
++  float alpha = 0.0;
++  float glow = 0.0;
++
++  int steps = uQuality == 0 ? 44 : (uQuality == 1 ? 68 : 96);
++
++  float t = 0.0;
++  float mat = -1.0;
++  vec3 p = ro;
++  bool hit = false;
++
++  for (int i = 0; i < 96; i++) {
++    if (i >= steps) break;
++    p = ro + rd * t;
++    vec2 h = mapScene(p);
++    glow += exp(-max(h.x, 0.0) * 15.0) * 0.013;
++    if (h.x < 0.0013 * t) { hit = true; mat = h.y; break; }
++    t += h.x * 0.88;
++    if (t > 7.0) break;
++  }
++
++  if (hit) {
++    vec3 n = normalAt(p);
++    float diff = max(dot(n, light), 0.0);
++    float fres = pow(clamp(1.0 - dot(n, -rd), 0.0, 1.0), 3.0);
++    vec3 hv = normalize(light - rd);
++    float spec = pow(max(dot(n, hv), 0.0), 96.0);
++    float ao = occlusion(p, n);
++    float sh = uQuality > 0 ? softShadow(p + n * 0.02, light, 0.03, 3.2, 9.0) : 1.0;
++
++    vec3 base = mat > 0.5 ? mix(gBase, vec3(0.62, 0.85, 1.0), 0.62) : gBase;
++
++    col  = base * (0.13 + diff * 1.02 * sh) * ao;
++    col += base * fres * (1.35 + uHover * 0.8);
++    col += vec3(1.0) * spec * (0.70 + uPress * 0.5) * sh;
++
++    if (mat < 0.5) {
++      // faixas percorrendo o corpo, como um núcleo em funcionamento
++      vec3 q = gRot * p;
++      float rings = sin(q.y * 13.0 - uTime * 1.9) * 0.5 + 0.5;
++      col += base * smoothstep(0.72, 1.0, rings) * (0.32 + uEnergy * 0.6);
++
++      // céu falso refletido: dá peso de material sem custar um segundo passe
++      vec3 refl = reflect(rd, n);
++      col += mix(vec3(0.015, 0.025, 0.06), base * 0.55, refl.y * 0.5 + 0.5) * 0.34;
++    } else {
++      col += base * 0.55;   // satélites acesos por dentro
++    }
++
++    alpha = 1.0;
++  } else if (rd.y < -0.001) {
++    /* --- piso: grade, varredura de luz, sombra de contato e reflexo --- */
++    float ft = (FLOOR_Y - ro.y) / rd.y;
++    if (ft > 0.0 && ft < 11.0) {
++      vec3 fp = ro + rd * ft;
++      float fade = 1.0 - smoothstep(1.1, 4.2, length(fp.xz));
++
++      if (fade > 0.001) {
++        vec2 g = abs(fract(fp.xz * 1.15) - 0.5);
++        float line = 1.0 - smoothstep(0.0, 0.04, min(g.x, g.y));
++        float band = smoothstep(0.86, 1.0, sin(fp.z * 0.9 - uTime * 0.55) * 0.5 + 0.5);
++
++        float sh = uQuality > 0
++          ? softShadow(fp + vec3(0.0, 0.012, 0.0), light, 0.03, 3.0, 7.0)
++          : 1.0;
++
++        vec3 fcol = gBase * (line * 0.42 + band * 0.20) * fade;
++        float refl = 0.0;
++
++        if (uQuality == 2) {
++          vec3 rr = reflect(rd, vec3(0.0, 1.0, 0.0));
++          float rt2 = 0.06;
++          for (int i = 0; i < 46; i++) {
++            vec2 h = mapScene(fp + rr * rt2);
++            if (h.x < 0.004) { refl = 1.0; break; }
++            rt2 += h.x * 0.92;
++            if (rt2 > 4.2) break;
++          }
++          // o reflexo desaparece com a distância, como em piso polido
++          refl *= fade * (1.0 - smoothstep(0.4, 2.6, rt2));
++          fcol += gBase * refl * 0.5;
++        }
++
++        fcol *= 0.30 + 0.70 * sh;
++        col = fcol;
++        alpha = clamp(fade * (line * 0.34 + refl * 0.55 + band * 0.12 + 0.05), 0.0, 0.72);
++      }
++    }
++  }
++
++  // halo geral em volta da peça
++  col += gBase * glow * (0.65 + uHover * 0.85);
++  alpha = clamp(alpha + glow * 0.55, 0.0, 1.0);
++  alpha *= uAppear;
++
++  col = pow(max(col, 0.0), vec3(0.4545));
++  outColor = vec4(col * alpha, alpha);
++}`;
++
++/* Forma por ícone — os doze ícones oferecidos no formulário de ambiente. */
++const SHAPE_BY_ICON = {
++  layers: 5,      // prisma hexagonal
++  briefcase: 0,   // caixa
++  book: 0,
++  heart: 4,       // esfera ondulada
++  home: 6,        // pirâmide
++  wallet: 0,
++  star: 2,        // octaedro
++  bulb: 4,
++  target: 1,      // anel com eixo
++  bolt: 2,
++  shield: 3,      // cápsula
++  grid: 5,
++};
++
++function hexToRgb(hex) {
++  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || '#2F6BFF');
++  if (!m) return [0.184, 0.42, 1];
++  return [parseInt(m[1], 16) / 255, parseInt(m[2], 16) / 255, parseInt(m[3], 16) / 255];
++}
++
++const QUALITY_CODE = { low: 0, medium: 1, high: 2 };
++
++export class EnvHero {
++  constructor(canvas, { color = '#2F6BFF', icon = 'layers', energy = 0 } = {}) {
++    this.canvas = canvas;
++    this.host = canvas.closest('.env-hero') || canvas.parentElement;
++    this.color = hexToRgb(color);
++    this.shape = SHAPE_BY_ICON[icon] ?? 0;
++    this.energy = Math.max(0, Math.min(1, energy));
++
++    this.spin = { x: 0.6, y: -0.12 };
++    this.target = { x: 0.6, y: -0.12 };
++    this.pointer = { x: 0, y: 0, tx: 0, ty: 0 };
++    this.hover = 0;
++    this.targetHover = 0;
++    this.press = 0;
++    this.targetPress = 0;
++    this.appear = 0;
++    this.zoom = 1;
++
++    this.running = false;
++    this.visible = true;
++    this._t0 = performance.now();
++  }
++
++  init() {
++    if (device.reducedMotion) return false;
++    if (!glBudget.claim(this)) return false;
++
++    const gl = this.canvas.getContext('webgl2', {
++      alpha: true,
++      antialias: false,
++      premultipliedAlpha: true,
++      depth: false,
++      powerPreference: device.mobile ? 'low-power' : 'high-performance',
++    });
++    if (!gl) { glBudget.release(this); return false; }
++
++    try {
++      this.prog = program(gl, VS, FS);
++    } catch (err) {
++      console.warn('[nestra] peça 3D do ambiente indisponível:', err);
++      glBudget.release(this);
++      return false;
++    }
++
++    this.gl = gl;
++    this.quad = fullscreenQuad(gl);
++    gl.bindBuffer(gl.ARRAY_BUFFER, this.quad);
++    gl.enableVertexAttribArray(this.prog.a.aPos);
++    gl.vertexAttribPointer(this.prog.a.aPos, 2, gl.FLOAT, false, 0, 0);
++    gl.enable(gl.BLEND);
++    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
++
++    this._bind();
++    this.resize();
++    this.start();
++    return true;
++  }
++
++  /* ------------------------------------------------------------------
++     Ponteiro, toque e visibilidade
++     ------------------------------------------------------------------ */
++  _bind() {
++    const host = this.host;
++
++    /* O ponteiro comanda a peça. Dentro do painel ele manda de verdade;
++       fora dele resta uma influência fraca, só para o objeto não parecer
++       preso enquanto o resto da página se mexe. */
++    this._onMove = (ev) => {
++      // Em tela de toque não existe "passar por cima": só o arrasto conta.
++      // Sem isso, rolar a página faria a peça girar junto.
++      if (device.touch && !this.dragging) return;
++
++      const r = host.getBoundingClientRect();
++      const inside =
++        ev.clientX >= r.left && ev.clientX <= r.right &&
++        ev.clientY >= r.top && ev.clientY <= r.bottom;
++
++      const nx = (ev.clientX - r.left) / Math.max(1, r.width) - 0.5;
++      const ny = (ev.clientY - r.top) / Math.max(1, r.height) - 0.5;
++
++      if (this.dragging) return;
++
++      const weight = inside ? 1 : 0.28;
++      this.target.x = 0.6 + nx * 2.4 * weight;
++      this.target.y = -0.12 + ny * 1.15 * weight;
++      this.pointer.tx = Math.max(-1, Math.min(1, nx * 2)) * weight;
++      this.pointer.ty = Math.max(-1, Math.min(1, ny * 2)) * weight;
++      this.targetHover = inside ? 1 : 0;
++    };
++
++    /* Arrastar gira à mão — o caminho natural em tela de toque, onde não
++       existe "passar o ponteiro por cima". */
++    this._onDown = (ev) => {
++      this.dragging = true;
++      this._dragFrom = { x: ev.clientX, y: ev.clientY, sx: this.target.x, sy: this.target.y };
++      this.targetPress = 1;
++      this.targetHover = 1;
++      host.setPointerCapture?.(ev.pointerId);
++    };
++
++    this._onDrag = (ev) => {
++      if (!this.dragging) return;
++      const r = host.getBoundingClientRect();
++      this.target.x = this._dragFrom.sx + (ev.clientX - this._dragFrom.x) / Math.max(1, r.width) * 5.2;
++      this.target.y = this._dragFrom.sy + (ev.clientY - this._dragFrom.y) / Math.max(1, r.height) * 2.4;
++      this.target.y = Math.max(-1.05, Math.min(1.05, this.target.y));
++    };
++
++    this._onUp = () => {
++      this.dragging = false;
++      this.targetPress = 0;
++      if (device.touch) this.targetHover = 0;
++    };
++
++    this._onLeave = () => {
++      if (this.dragging) return;
++      this.targetHover = 0;
++      this.pointer.tx = 0;
++      this.pointer.ty = 0;
++    };
++
++    window.addEventListener('pointermove', this._onMove, { passive: true });
++    host.addEventListener('pointerdown', this._onDown, { passive: true });
++    window.addEventListener('pointermove', this._onDrag, { passive: true });
++    window.addEventListener('pointerup', this._onUp, { passive: true });
++    window.addEventListener('pointercancel', this._onUp, { passive: true });
++    host.addEventListener('pointerleave', this._onLeave, { passive: true });
++
++    this._onVis = () => (document.hidden ? this.stop() : this.visible && this.start());
++    document.addEventListener('visibilitychange', this._onVis);
++
++    // O canvas é medido só quando muda de tamanho, nunca dentro do laço
++    this._unobserve = onResize(this.canvas, () => { this._dirty = true; });
++
++    // Rolou para fora da tela: para de desenhar. É o que segura a rolagem
++    // fluida no celular.
++    this._unwatch = renderWhenVisible(host, {
++      onEnter: () => { this.visible = true; if (!document.hidden) this.start(); },
++      onLeave: () => { this.visible = false; this.stop(); },
++    });
++
++    this._onQuality = () => { this._dirty = true; };
++    quality.addEventListener('change', this._onQuality);
++  }
++
++  resize() {
++    if (!this.gl) return;
++
++    /* A peça é o assunto da página, e o canvas dela é pequeno perto da
++       cena de fundo. Vale mais pixel aqui do que ali: mesmo no degrau
++       mais baixo a silhueta não pode sair serrilhada. */
++    const { w, h, changed } = sizeCanvas(this.canvas, {
++      cap: Math.min(2, quality.dprCap + 0.5),
++    });
++    if (changed) this.gl.viewport(0, 0, w, h);
++
++    /* Painel largo e baixo — que é como ele fica no celular — deixaria a
++       peça pequena no meio de muito vazio. O enquadramento fecha na
++       mesma proporção em que o painel se alarga. */
++    const aspect = w / Math.max(1, h);
++    this.zoom = aspect > 1.5 ? Math.min(1.45, 0.75 + aspect * 0.28) : 1;
++
++    this._dirty = false;
++  }
++
++  start() {
++    if (this.running || !this.gl) return;
++    this.running = true;
++    const loop = () => {
++      if (!this.running) return;
++      this._raf = requestAnimationFrame(loop);
++      this.render();
++    };
++    this._raf = requestAnimationFrame(loop);
++  }
++
++  stop() {
++    this.running = false;
++    cancelAnimationFrame(this._raf);
++  }
++
++  render() {
++    const gl = this.gl;
++    if (!this.canvas.isConnected) { this.destroy(); return; }
++
++    const time = (performance.now() - this._t0) / 1000;
++
++    // Rotação própria contínua somada ao que o ponteiro pede: a peça
++    // nunca fica parada, mesmo sem ninguém mexendo.
++    const drift = time * 0.22;
++    this.spin.x += ((this.target.x + drift) - this.spin.x) * 0.075;
++    this.spin.y += (this.target.y + Math.sin(time * 0.5) * 0.07 - this.spin.y) * 0.075;
++
++    this.pointer.x += (this.pointer.tx - this.pointer.x) * 0.07;
++    this.pointer.y += (this.pointer.ty - this.pointer.y) * 0.07;
++    this.hover += (this.targetHover - this.hover) * 0.08;
++    this.press += (this.targetPress - this.press) * 0.16;
++    this.appear += (1 - this.appear) * 0.045;
++
++    if (this._dirty) this.resize();
++
++    const u = this.prog.u;
++    gl.useProgram(this.prog.p);
++    gl.uniform2f(u.uRes, this.canvas.width, this.canvas.height);
++    gl.uniform1f(u.uTime, time);
++    gl.uniform3fv(u.uColor, this.color);
++    gl.uniform1i(u.uShape, this.shape);
++    gl.uniform2f(u.uSpin, this.spin.x, this.spin.y);
++    gl.uniform2f(u.uPointer, this.pointer.x, this.pointer.y);
++    gl.uniform1f(u.uHover, this.hover);
++    gl.uniform1f(u.uPress, this.press);
++    gl.uniform1f(u.uEnergy, this.energy);
++    gl.uniform1i(u.uQuality, QUALITY_CODE[quality.level] ?? 2);
++    gl.uniform1f(u.uAppear, Math.min(1, this.appear * 1.02));
++    gl.uniform1f(u.uZoom, this.zoom || 1);
++
++    gl.clearColor(0, 0, 0, 0);
++    gl.clear(gl.COLOR_BUFFER_BIT);
++    gl.drawArrays(gl.TRIANGLES, 0, 3);
++  }
++
++  destroy() {
++    if (this._destroyed) return;
++    this._destroyed = true;
++    this.stop();
++
++    window.removeEventListener('pointermove', this._onMove);
++    window.removeEventListener('pointermove', this._onDrag);
++    window.removeEventListener('pointerup', this._onUp);
++    window.removeEventListener('pointercancel', this._onUp);
++    document.removeEventListener('visibilitychange', this._onVis);
++    quality.removeEventListener('change', this._onQuality);
++    this.host?.removeEventListener('pointerdown', this._onDown);
++    this.host?.removeEventListener('pointerleave', this._onLeave);
++    this._unwatch?.();
++    this._unobserve?.();
++
++    if (this.gl) {
++      glBudget.release(this);
++      const lose = this.gl.getExtension('WEBGL_lose_context');
++      if (lose) lose.loseContext();
++      this.gl = null;
++    }
++
++    // Sem a marca, quem reaproveita o nó sabe que precisa montar de novo
++    if (this.host?.dataset?.alive === 'gl') delete this.host.dataset.alive;
++    active.delete(this);
++  }
++}
++
++/* ---------------------------------------------------------------------
++   Plano B em CSS
++
++   Sem WebGL — ou com o orçamento de contextos esgotado — a página não
++   pode ficar com um buraco no topo. Um sólido em CSS 3D mantém a ideia,
++   inclusive reagindo ao ponteiro.
++   --------------------------------------------------------------------- */
++function mountCssFallback(canvas, { color = '#2F6BFF' } = {}) {
++  const host = canvas.closest('.env-hero') || canvas.parentElement;
++  if (!host || host.querySelector('.hero3d-css')) return null;
++
++  canvas.style.display = 'none';
++
++  const stage = document.createElement('div');
++  stage.className = 'hero3d-css';
++  stage.style.setProperty('--piece-color', color);
++  stage.setAttribute('aria-hidden', 'true');
++
++  const solid = document.createElement('div');
++  solid.className = 'hero3d-css__solid';
++  for (let i = 0; i < 6; i++) solid.appendChild(document.createElement('i'));
++
++  const rings = document.createElement('div');
++  rings.className = 'hero3d-css__rings';
++  for (let i = 0; i < 3; i++) rings.appendChild(document.createElement('i'));
++
++  stage.append(rings, solid);
++  host.appendChild(stage);
++
++  if (!device.reducedMotion) {
++    const move = (ev) => {
++      const r = host.getBoundingClientRect();
++      const nx = (ev.clientX - r.left) / Math.max(1, r.width) - 0.5;
++      const ny = (ev.clientY - r.top) / Math.max(1, r.height) - 0.5;
++      stage.style.setProperty('--rx', (-ny * 26) + 'deg');
++      stage.style.setProperty('--ry', (nx * 40) + 'deg');
++    };
++    host.addEventListener('pointermove', move, { passive: true });
++    host.addEventListener('pointerleave', () => {
++      stage.style.setProperty('--rx', '0deg');
++      stage.style.setProperty('--ry', '0deg');
++    }, { passive: true });
++  }
++
++  return stage;
++}
++
++/* ---------------------------------------------------------------------
++   Registro das peças vivas — trocar de tela não pode vazar contexto
++   --------------------------------------------------------------------- */
++const active = new Set();
++
++export function mountEnvHero(canvas, options) {
++  const host = canvas.closest('.env-hero');
++  const hero = new EnvHero(canvas, options);
++
++  if (hero.init()) {
++    active.add(hero);
++    // Marca de "esta peça está viva", lida por quem reaproveita o nó
++    if (host) host.dataset.alive = 'gl';
++    return hero;
++  }
++
++  mountCssFallback(canvas, options);
++  if (host) host.dataset.alive = 'css';
++  return null;
++}
++
++export function clearEnvHeroes() {
++  active.forEach((hero) => hero.destroy());
++  active.clear();
++}
+diff --git a/js/gfx/interactions.js b/js/gfx/interactions.js
+index c09fa32..6982f01 100644
+--- a/js/gfx/interactions.js
++++ b/js/gfx/interactions.js
+@@ -240,12 +240,53 @@ export function sweep(container) {
+    4. TROCA DE TELA INTEIRA (landing → acesso → aplicação)
+    ===================================================================== */
+ 
++/**
++ * A marca girando, do tamanho de um botão.
++ *
++ * É a mesma linguagem da abertura: anéis em órbita e a marca respirando
++ * no meio. Serve para qualquer espera que valha ser mostrada.
++ */
++export function brandLoader(label) {
++  const box = document.createElement('div');
++  box.className = 'brand-loader';
++  box.setAttribute('role', 'status');
++  box.setAttribute('aria-label', label || 'Carregando');
++
++  const ringA = document.createElement('span');
++  ringA.className = 'brand-loader__ring';
++  const ringB = document.createElement('span');
++  ringB.className = 'brand-loader__ring';
++
++  const mark = document.createElement('img');
++  mark.className = 'brand-loader__mark';
++  mark.src = window.nestraLogoSrc || 'assets/logo/nestra-mark.png';
++  mark.alt = '';
++
++  box.append(ringA, ringB, mark);
++
++  if (label) {
++    const caption = document.createElement('span');
++    caption.className = 'brand-loader__label';
++    caption.textContent = label;
++    box.appendChild(caption);
++  }
++
++  return box;
++}
++
+ export function screenTransition() {
+   if (reduced()) return () => {};
+ 
+   const veil = document.createElement('div');
+   veil.className = 'fx-veil';
+   veil.setAttribute('aria-hidden', 'true');
++
++  // A cortina não fica muda: a marca aparece girando enquanto a próxima
++  // tela é montada por baixo.
++  const loader = brandLoader();
++  loader.classList.add('fx-veil__loader');
++  veil.appendChild(loader);
++
+   document.body.appendChild(veil);
+ 
+   veil.animate([
+@@ -253,6 +294,11 @@ export function screenTransition() {
+     { clipPath: 'inset(0 0 0 0)', opacity: 1 },
+   ], { duration: 260, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'forwards' });
+ 
++  loader.animate([
++    { opacity: 0, transform: 'scale(.82)' },
++    { opacity: 1, transform: 'scale(1)' },
++  ], { duration: 220, delay: 120, easing: 'cubic-bezier(.16,1,.3,1)', fill: 'backwards' });
++
+   return () => {
+     const out = veil.animate([
+       { clipPath: 'inset(0 0 0 0)', opacity: 1 },
+diff --git a/js/gfx/logo3d.js b/js/gfx/logo3d.js
+index e5e63c6..a4f743f 100644
+--- a/js/gfx/logo3d.js
++++ b/js/gfx/logo3d.js
+@@ -15,6 +15,7 @@ import {
+   program, fullscreenQuad, buildSDF, rasterize, trimAlpha, toHalf,
+   dematte, downscaleRGBA,
+ } from '../core/gl.js';
++import { quality, sizeCanvas } from '../core/device.js';
+ 
+ const VS = `#version 300 es
+ in vec2 aPos;
+@@ -572,15 +573,13 @@ export class Logo3D {
+ 
+   resize() {
+     if (!this.gl) return;
+-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+-    const r = this.canvas.getBoundingClientRect();
+-    const w = Math.max(1, Math.round(r.width * dpr));
+-    const h = Math.max(1, Math.round(r.height * dpr));
+-    if (this.canvas.width !== w || this.canvas.height !== h) {
+-      this.canvas.width = w;
+-      this.canvas.height = h;
+-      this.gl.viewport(0, 0, w, h);
+-    }
++    // Segue o mesmo teto de resolução das outras peças: numa tela de
++    // celular com dpr 3, desenhar a marca em tamanho real custa nove
++    // vezes mais pixels do que em dpr 1, sem diferença perceptível.
++    const { w, h, dpr, changed } = sizeCanvas(this.canvas, {
++      cap: Math.min(2, quality.dprCap + 0.5),
++    });
++    if (changed) this.gl.viewport(0, 0, w, h);
+     this._dpr = dpr;
+   }
+ 
+diff --git a/js/gfx/orb.js b/js/gfx/orb.js
+index 4cb9bce..df955b1 100644
+--- a/js/gfx/orb.js
++++ b/js/gfx/orb.js
+@@ -10,6 +10,7 @@
+    ===================================================================== */
+ 
+ import { program, fullscreenQuad } from '../core/gl.js';
++import { device, quality, sizeCanvas, renderWhenVisible, onResize, glBudget } from '../core/device.js';
+ 
+ const VS = `#version 300 es
+ in vec2 aPos;
+@@ -155,10 +156,10 @@ void main() {
+   outColor = vec4(color * alpha, alpha);
+ }`;
+ 
+-/* Quantas peças com WebGL podem existir ao mesmo tempo. Acima disso o
+-   navegador começa a descartar contextos, então o resto usa o plano B. */
+-const MAX_LIVE = 6;
+-let live = 0;
++/* Quantas peças com WebGL podem existir ao mesmo tempo é decidido pelo
++   orçamento compartilhado em core/device.js — ele conhece o aparelho e
++   já conta a cena de fundo e a peça do topo do ambiente. O que não
++   couber usa o plano B em CSS, que continua girando. */
+ 
+ const SHAPE_BY_ICON = {
+   briefcase: 0, grid: 0, layers: 5,
+@@ -187,7 +188,8 @@ export class EnvOrb {
+   }
+ 
+   init() {
+-    if (live >= MAX_LIVE) return false;
++    if (device.reducedMotion) return false;
++    if (!glBudget.claim(this)) return false;
+ 
+     const gl = this.canvas.getContext('webgl2', {
+       alpha: true,
+@@ -196,11 +198,12 @@ export class EnvOrb {
+       depth: false,
+       powerPreference: 'low-power',
+     });
+-    if (!gl) return false;
++    if (!gl) { glBudget.release(this); return false; }
+ 
+     try {
+       this.prog = program(gl, VS, FS);
+     } catch {
++      glBudget.release(this);
+       return false;
+     }
+ 
+@@ -212,7 +215,6 @@ export class EnvOrb {
+     gl.enable(gl.BLEND);
+     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+ 
+-    live++;
+     this._bindHost();
+     this.resize();
+     this.start();
+@@ -238,19 +240,35 @@ export class EnvOrb {
+     host.addEventListener('pointermove', this._onMove, { passive: true });
+     host.addEventListener('pointerleave', this._onLeave, { passive: true });
+     this._host = host;
++
++    /* Cartão fora da tela não desenha. Numa lista com muitos ambientes é
++       a diferença entre rolar liso e rolar aos trancos no celular. */
++    this._unwatch = renderWhenVisible(host, {
++      onEnter: () => { this.offscreen = false; if (!document.hidden) this.start(); },
++      onLeave: () => { this.offscreen = true; this.stop(); },
++    });
++
++    this._onVis = () => {
++      if (document.hidden) this.stop();
++      else if (!this.offscreen) this.start();
++    };
++    document.addEventListener('visibilitychange', this._onVis);
++
++    // Só remede quando o tamanho realmente muda
++    this._unobserve = onResize(this.canvas, () => { this._dirty = true; });
++    this._onQuality = () => { this._dirty = true; };
++    quality.addEventListener('change', this._onQuality);
+   }
+ 
+   resize() {
+     if (!this.gl) return;
+-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+-    const r = this.canvas.getBoundingClientRect();
+-    const w = Math.max(1, Math.round((r.width || 64) * dpr));
+-    const h = Math.max(1, Math.round((r.height || 64) * dpr));
+-    if (this.canvas.width !== w || this.canvas.height !== h) {
+-      this.canvas.width = w;
+-      this.canvas.height = h;
+-      this.gl.viewport(0, 0, w, h);
+-    }
++    // A peça é pequena: um teto um pouco mais generoso do que o da cena
++    // de fundo mantém a silhueta limpa sem pesar.
++    const { w, h, changed } = sizeCanvas(this.canvas, {
++      cap: Math.min(2, quality.dprCap + 0.4),
++    });
++    if (changed) this.gl.viewport(0, 0, w, h);
++    this._dirty = false;
+   }
+ 
+   start() {
+@@ -279,7 +297,7 @@ export class EnvOrb {
+     this.tilt.y += (this.tilt.ty - this.tilt.y) * 0.09;
+     this.hover += (this.targetHover - this.hover) * 0.08;
+ 
+-    this.resize();
++    if (this._dirty) this.resize();
+ 
+     const u = this.prog.u;
+     gl.useProgram(this.prog.p);
+@@ -304,12 +322,18 @@ export class EnvOrb {
+       this._host.removeEventListener('pointermove', this._onMove);
+       this._host.removeEventListener('pointerleave', this._onLeave);
+     }
++    document.removeEventListener('visibilitychange', this._onVis);
++    quality.removeEventListener('change', this._onQuality);
++    this._unwatch?.();
++    this._unobserve?.();
++
+     if (this.gl) {
+-      live = Math.max(0, live - 1);
++      glBudget.release(this);
+       const lose = this.gl.getExtension('WEBGL_lose_context');
+       if (lose) lose.loseContext();
+       this.gl = null;
+     }
++    active.delete(this);
+   }
+ }
+ 
+@@ -326,7 +350,7 @@ export function mountOrb(canvas, options) {
+   }
+   // Sem WebGL disponível: um sólido em CSS mantém a ideia de peça 3D
+   const host = canvas.parentElement;
+-  if (host) {
++  if (host && !host.querySelector('.orb-css')) {
+     canvas.style.display = 'none';
+     const cube = document.createElement('div');
+     cube.className = 'orb-css';
+diff --git a/js/gfx/scene.js b/js/gfx/scene.js
+index 0cc2a1b..7c04465 100644
+--- a/js/gfx/scene.js
++++ b/js/gfx/scene.js
+@@ -16,6 +16,7 @@
+    ===================================================================== */
+ 
+ import { M4, program } from '../core/gl.js';
++import { device, quality, sizeCanvas, glBudget } from '../core/device.js';
+ 
+ /* ------------------------------------------------------------------ */
+ /* 1. AURORA                                                           */
+@@ -40,6 +41,9 @@ uniform float uTime;
+ uniform vec3  uAccent;
+ uniform vec2  uPointer;
+ uniform float uPulse;
++uniform float uScroll;   // rolagem da página, em telas
++uniform int   uOct;      // oitavas do ruído — cai em aparelho mais fraco
++uniform float uWarp;     // 0..1 — quanto o campo se dobra sobre si mesmo
+ 
+ // ruído de valor com interpolação suave
+ float hash(vec2 p) {
+@@ -53,7 +57,8 @@ float noise(vec2 p) {
+ }
+ float fbm(vec2 p) {
+   float v = 0.0, a = 0.5;
+-  for (int i = 0; i < 5; i++) {
++  for (int i = 0; i < 6; i++) {
++    if (i >= uOct) break;
+     v += a * noise(p);
+     p = p * 2.03 + vec2(1.7, 9.2);
+     a *= 0.5;
+@@ -65,32 +70,49 @@ void main() {
+   vec2 uv = vUv;
+   vec2 p = (uv - 0.5) * vec2(uRes.x / uRes.y, 1.0);
+ 
+-  // o ponteiro entorta levemente o campo
+-  p += uPointer * 0.06;
++  // o ponteiro entorta o campo; a rolagem desliza a cortina para cima
++  p += uPointer * 0.07;
++  p.y += uScroll * 0.14;
+ 
+-  float t = uTime * 0.045;
++  float t = uTime * 0.055;
+ 
+-  // duas cortinas de luz em alturas diferentes
+-  float band1 = fbm(vec2(p.x * 1.6 + t, p.y * 2.4 - t * 0.6));
+-  float band2 = fbm(vec2(p.x * 2.3 - t * 0.8, p.y * 1.7 + t * 0.4));
++  /* Deformação do domínio: em vez de duas faixas correndo em linha reta,
++     o campo é dobrado por outro ruído antes de ser lido. É o que faz a
++     luz enrolar e desenrolar em vez de só deslizar. */
++  vec2 w = vec2(
++    fbm(p * 1.35 + vec2(t * 1.2, -t * 0.8)),
++    fbm(p * 1.35 + vec2(5.2 - t * 0.6, 1.3 + t * 0.9)));
++  vec2 q = mix(p, p + (w - 0.5) * 1.5, uWarp);
+ 
+-  float curtain = smoothstep(0.42, 0.92, band1) * 0.7
+-                + smoothstep(0.50, 0.95, band2) * 0.5;
++  float band1 = fbm(vec2(q.x * 1.5 + t * 1.5, q.y * 2.2 - t * 0.9));
++  float band2 = fbm(vec2(q.x * 2.4 - t * 1.2, q.y * 1.6 + t * 0.8));
+ 
+-  // concentra a luz na parte de cima e nas laterais, deixando o meio limpo
+-  float shape = smoothstep(0.95, 0.05, abs(p.y * 1.25 + 0.28));
+-  shape *= 0.35 + 0.65 * smoothstep(0.0, 0.65, abs(p.x));
++  float curtain = smoothstep(0.38, 0.90, band1) * 0.80
++                + smoothstep(0.46, 0.96, band2) * 0.55;
+ 
+-  vec3 cool = mix(uAccent, vec3(0.31, 0.85, 1.0), 0.45);
+-  vec3 warm = mix(uAccent, vec3(0.61, 0.48, 1.0), 0.55);
+-  vec3 tint = mix(cool, warm, smoothstep(-0.6, 0.6, p.x + sin(t * 3.0) * 0.2));
++  // feixes verticais atravessando devagar, atrás das cortinas
++  float beams = pow(0.5 + 0.5 * sin(q.x * 3.1 - uTime * 0.20 + band1 * 4.5), 8.0) * 0.55;
+ 
+-  float glow = curtain * shape * (0.16 + uPulse * 0.22);
++  // concentra a luz em cima e nas laterais, deixando o meio legível
++  float shape = smoothstep(1.02, 0.04, abs(p.y * 1.2 + 0.26));
++  shape *= 0.32 + 0.68 * smoothstep(0.0, 0.62, abs(p.x));
++
++  vec3 cool = mix(uAccent, vec3(0.31, 0.85, 1.0), 0.50);
++  vec3 warm = mix(uAccent, vec3(0.63, 0.45, 1.0), 0.60);
++
++  // a cor migra de um lado para o outro ao longo de um minuto
++  float drift = sin(uTime * 0.075) * 0.5 + 0.5;
++  vec3 tint = mix(cool, warm, smoothstep(-0.75, 0.75, q.x + drift * 1.1 - 0.55));
++
++  float glow = (curtain + beams) * shape * (0.19 + uPulse * 0.26);
+ 
+   // brilho difuso ao redor do ponteiro
+-  float halo = exp(-length(p - uPointer * 0.5) * 2.6) * 0.05;
++  float halo = exp(-length(p - uPointer * 0.5) * 2.4) * 0.055;
+ 
+-  outColor = vec4((tint * glow + uAccent * halo), 1.0);
++  // horizonte respirando na base da tela
++  float horizon = exp(-abs(p.y + 0.66) * 6.5) * (0.045 + 0.025 * sin(uTime * 0.45));
++
++  outColor = vec4(tint * glow + uAccent * halo + tint * horizon, 1.0);
+ }`;
+ 
+ /* ------------------------------------------------------------------ */
+@@ -372,9 +394,22 @@ export class Scene {
+     this.pulse = 0;
+     this.ripples = [];
+     this.pointer = { x: 0, y: 0, tx: 0, ty: 0 };
++    this.scroll = { v: 0, t: 0 };
++    // Sem cursor não há de onde tirar movimento: a cena passa a se mover
++    // sozinha, num vaivém lento que nunca repete o mesmo caminho.
++    this.selfDrive = device.touch;
+     this._t0 = performance.now();
+   }
+ 
++  /* Quantas peças e partículas cabem no fôlego atual do aparelho. */
++  get activeCards() {
++    return Math.max(8, Math.round(this.count * quality.scale));
++  }
++
++  get activeDust() {
++    return Math.max(40, Math.round(this.dustCount * quality.scale));
++  }
++
+   init() {
+     const gl = this.canvas.getContext('webgl2', {
+       alpha: true,
+@@ -536,6 +571,11 @@ export class Scene {
+     gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+     gl.disable(gl.DEPTH_TEST);
+ 
++    /* A cena ocupa uma vaga no orçamento de contextos. Ela é a primeira
++       a nascer, então nunca é recusada — mas precisa ser contada, senão
++       as peças dos ambientes acham que têm mais espaço do que têm. */
++    glBudget.claim(this);
++
+     this.ready = true;
+     this._bind();
+     this.resize();
+@@ -546,28 +586,43 @@ export class Scene {
+   _bind() {
+     this._onResize = () => this.resize();
+     window.addEventListener('resize', this._onResize, { passive: true });
++    window.addEventListener('orientationchange', this._onResize, { passive: true });
+ 
+     this._onPointer = (ev) => {
++      this.selfDrive = false;
+       this.pointer.tx = (ev.clientX / window.innerWidth - 0.5) * 2;
+       this.pointer.ty = (ev.clientY / window.innerHeight - 0.5) * 2;
+     };
+     window.addEventListener('pointermove', this._onPointer, { passive: true });
+ 
++    /* A rolagem entra na cena: a cortina de luz sobe e a câmera desce um
++       pouco, então descer a página parece atravessar o espaço. */
++    this._onScroll = () => {
++      const h = Math.max(1, window.innerHeight);
++      this.scroll.t = Math.min(3, (window.scrollY || 0) / h);
++    };
++    window.addEventListener('scroll', this._onScroll, { passive: true });
++
+     this._onVis = () => (document.hidden ? this.stop() : this.start());
+     document.addEventListener('visibilitychange', this._onVis);
++
++    // Mudou o degrau de qualidade: refaz o tamanho do canvas na hora
++    this._onQuality = () => this.resize();
++    quality.addEventListener('change', this._onQuality);
+   }
+ 
+   resize() {
+     if (!this.gl) return;
+-    const dpr = Math.min(window.devicePixelRatio || 1, 1.75);
+-    const w = Math.round(window.innerWidth * dpr);
+-    const h = Math.round(window.innerHeight * dpr);
+-    if (this.canvas.width !== w || this.canvas.height !== h) {
+-      this.canvas.width = w;
+-      this.canvas.height = h;
+-      this.gl.viewport(0, 0, w, h);
+-    }
+-    this.dpr = dpr;
++    // A cena de fundo é a superfície mais cara do site: um pixel a menos
++    // aqui vale mais do que qualquer outro corte.
++    const cap = Math.min(quality.dprCap, device.mobile ? 1.25 : 1.75);
++    // Medido pela caixa real do elemento, e não por `innerHeight`: em
++    // iOS a barra do navegador entra e sai ao rolar, e usar a altura da
++    // janela deixaria o desenho esticado enquanto ela se mexe.
++    const { w, h } = sizeCanvas(this.canvas, { cap });
++
++    this.gl.viewport(0, 0, w, h);
++    this.dpr = Math.min(window.devicePixelRatio || 1, cap);
+     this.proj = M4.perspective(Math.PI / 4, w / h, 0.1, 120);
+   }
+ 
+@@ -616,6 +671,7 @@ export class Scene {
+      constelação enxergar as mesmas coordenadas. */
+   _step(time, dt) {
+     const spread = this.opts.spread;
++    const count = this.activeCards;
+ 
+     // avança as ondas de clique
+     for (let i = this.ripples.length - 1; i >= 0; i--) {
+@@ -623,7 +679,7 @@ export class Scene {
+       if (this.ripples[i].t > 2.6) this.ripples.splice(i, 1);
+     }
+ 
+-    for (let i = 0; i < this.count; i++) {
++    for (let i = 0; i < count; i++) {
+       const c = this.cards[i];
+ 
+       const z = ((c.home[2] + time * c.speed) % spread) - spread + 2;
+@@ -662,15 +718,18 @@ export class Scene {
+     }
+ 
+     /* --- constelação: liga placas próximas e à frente da câmera --- */
++    // Custa O(n²) na CPU: no degrau mais baixo os fios simplesmente saem.
++    if (quality.level === 'low') { this.lineCount = 0; return; }
++
+     const maxD = this.opts.linkDistance;
+     const maxD2 = maxD * maxD;
+     let n = 0;
+ 
+-    for (let i = 0; i < this.count && n < this.opts.maxLinks; i++) {
++    for (let i = 0; i < count && n < this.opts.maxLinks; i++) {
+       const a = this.cards[i];
+       if (a.pos[2] < -34 || a.pos[2] > 0) continue;
+ 
+-      for (let j = i + 1; j < this.count && n < this.opts.maxLinks; j++) {
++      for (let j = i + 1; j < count && n < this.opts.maxLinks; j++) {
+         const b = this.cards[j];
+         if (b.pos[2] < -34 || b.pos[2] > 0) continue;
+ 
+@@ -704,15 +763,30 @@ export class Scene {
+     this._elapsed = now - this._t0;
+     const time = this._elapsed / 1000;
+ 
++    /* Sem cursor, a própria cena passeia. Dois senos de períodos que não
++       se dividem: o caminho leva minutos para se repetir. */
++    if (this.selfDrive) {
++      this.pointer.tx = Math.sin(time * 0.083) * 0.62 + Math.sin(time * 0.031) * 0.28;
++      this.pointer.ty = Math.cos(time * 0.061) * 0.45 + Math.sin(time * 0.017) * 0.2;
++    }
++
+     this.pointer.x += (this.pointer.tx - this.pointer.x) * 0.045;
+     this.pointer.y += (this.pointer.ty - this.pointer.y) * 0.045;
++    this.scroll.v += (this.scroll.t - this.scroll.v) * 0.06;
+     this.pulse *= 0.945;
+ 
+     this._step(time, dt);
+ 
++    // Deriva contínua da câmera: mesmo com o ponteiro parado, o ponto de
++    // vista nunca é exatamente o mesmo de dez segundos atrás.
++    const driftX = Math.sin(time * 0.069) * 0.55 + Math.sin(time * 0.023) * 0.25;
++    const driftY = Math.cos(time * 0.047) * 0.40;
++    const eyeX = this.pointer.x * 2.4 + driftX;
++    const eyeY = -this.pointer.y * 1.7 + driftY - this.scroll.v * 1.6;
++
+     const view = M4.lookAt(
+-      [this.pointer.x * 2.4, -this.pointer.y * 1.7, 6],
+-      [this.pointer.x * 0.6, -this.pointer.y * 0.4, -12],
++      [eyeX, eyeY, 6],
++      [this.pointer.x * 0.6 + driftX * 0.4, -this.pointer.y * 0.4 - this.scroll.v * 0.5, -12],
+       [0, 1, 0],
+     );
+ 
+@@ -728,6 +802,9 @@ export class Scene {
+     gl.uniform3fv(au.uAccent, this.opts.accent);
+     gl.uniform2f(au.uPointer, this.pointer.x, -this.pointer.y);
+     gl.uniform1f(au.uPulse, this.pulse);
++    gl.uniform1f(au.uScroll, this.scroll.v);
++    gl.uniform1i(au.uOct, quality.level === 'low' ? 3 : quality.level === 'medium' ? 4 : 5);
++    gl.uniform1f(au.uWarp, quality.level === 'low' ? 0 : 1);
+     gl.drawArrays(gl.TRIANGLES, 0, 3);
+ 
+     /* 2. constelação */
+@@ -747,12 +824,13 @@ export class Scene {
+     }
+ 
+     /* 3. placas */
++    const drawn = this.activeCards;
+     gl.useProgram(this.cardProg.p);
+     gl.bindVertexArray(this.cardVao);
+     gl.bindBuffer(gl.ARRAY_BUFFER, this.offsetBuf);
+-    gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.offsetData);
++    gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.offsetData, 0, drawn * 3);
+     gl.bindBuffer(gl.ARRAY_BUFFER, this.rotBuf);
+-    gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.rotData);
++    gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.rotData, 0, drawn * 3);
+ 
+     const u = this.cardProg.u;
+     gl.uniformMatrix4fv(u.uProj, false, this.proj);
+@@ -762,7 +840,7 @@ export class Scene {
+     gl.uniform1f(u.uFogNear, 6);
+     gl.uniform1f(u.uFogFar, 42);
+     gl.uniform1f(u.uPulse, this.pulse);
+-    gl.drawElementsInstanced(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0, this.count);
++    gl.drawElementsInstanced(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0, drawn);
+ 
+     /* 4. poeira */
+     gl.useProgram(this.dustProg.p);
+@@ -774,15 +852,19 @@ export class Scene {
+     gl.uniform1f(du.uSpread, this.opts.spread);
+     gl.uniform1f(du.uDpr, this.dpr);
+     gl.uniform3fv(du.uAccent, this.opts.accent);
+-    gl.drawArrays(gl.POINTS, 0, this.dustCount);
++    gl.drawArrays(gl.POINTS, 0, this.activeDust);
+ 
+     gl.bindVertexArray(null);
+   }
+ 
+   destroy() {
+     this.stop();
++    glBudget.release(this);
+     window.removeEventListener('resize', this._onResize);
++    window.removeEventListener('orientationchange', this._onResize);
+     window.removeEventListener('pointermove', this._onPointer);
++    window.removeEventListener('scroll', this._onScroll);
+     document.removeEventListener('visibilitychange', this._onVis);
++    quality.removeEventListener('change', this._onQuality);
+   }
+ }
+diff --git a/js/main.js b/js/main.js
+index cbb6bc3..8ec2b9e 100644
+--- a/js/main.js
++++ b/js/main.js
+@@ -14,6 +14,8 @@ import {
+   swapView, screenTransition, withLoading, celebrate,
+ } from './gfx/interactions.js';
+ import { clearOrbs } from './gfx/orb.js';
++import { clearEnvHeroes } from './gfx/envhero.js';
++import { device, quality } from './core/device.js';
+ import { renderToday, renderEnvironment } from './app/views/today.js';
+ import { renderEnvironments, openEnvironmentForm } from './app/views/environments.js';
+ import { renderSettings, renderInbox } from './app/views/settings.js';
+@@ -40,12 +42,32 @@ const BOOT_STEPS = [
+   'montando a tela Hoje',
+ ];
+ 
++/** Partículas que caem em direção à marca enquanto ela se forma. */
++function seedBootSparks(host) {
++  if (!host || device.reducedMotion) return;
++
++  const total = device.mobile ? 10 : 16;
++  for (let i = 0; i < total; i++) {
++    const angle = (Math.PI * 2 * i) / total + Math.random() * 0.5;
++    const distance = 90 + Math.random() * 120;
++    host.appendChild(el('i', {
++      style: {
++        '--fx': Math.round(Math.cos(angle) * distance) + 'px',
++        '--fy': Math.round(Math.sin(angle) * distance) + 'px',
++        '--dur': (1.9 + Math.random() * 1.6).toFixed(2) + 's',
++        '--delay': (Math.random() * 2.2).toFixed(2) + 's',
++      },
++    }));
++  }
++}
++
+ async function boot() {
+   const bootEl = $('.boot');
+   const meter = $('.boot__meter');
+   const pct = $('.boot__pct');
+   const task = $('.boot__taskName');
+   const log = $('.boot__log');
++  const arc = $('.boot__arc-fill');
+ 
+   const SEGMENTS = 32;
+   for (let i = 0; i < SEGMENTS; i++) {
+@@ -53,6 +75,11 @@ async function boot() {
+   }
+   const segs = Array.from(meter.children);
+ 
++  seedBootSparks($('.boot__sparks'));
++
++  // Comprimento do arco: 2πr com r = 56, como no viewBox do SVG
++  const ARC = 2 * Math.PI * 56;
++
+   let progress = 0;
+   const setProgress = (value, label) => {
+     progress = Math.max(progress, Math.min(1, value));
+@@ -62,6 +89,7 @@ async function boot() {
+       s.dataset.head = String(i === lit - 1 && progress < 1);
+     });
+     pct.textContent = Math.round(progress * 100) + '%';
++    if (arc) arc.style.strokeDashoffset = String(ARC * (1 - progress));
+     if (label) {
+       task.textContent = label;
+       const line = el('li', { text: label });
+@@ -74,11 +102,17 @@ async function boot() {
+   setProgress(0.04, BOOT_STEPS[0]);
+   applyPrefs();
+ 
++  // O vigia de quadros começa junto com a abertura: se o aparelho já
++  // sofrer aqui, a decoração entra num degrau mais leve desde o início.
++  quality.watch();
++  window.nestraQuality = quality;   // visível no console, como a cena
++
+   /* A marca sendo construída dentro do próprio carregamento */
+   setProgress(0.14, BOOT_STEPS[1]);
+ 
+   // Descobre qual arquivo de logo existe na pasta e usa ele em tudo
+   app.logoSrc = await resolveLogoSource();
++  window.nestraLogoSrc = app.logoSrc;   // usado pelo carregador de rota
+   document.querySelectorAll('img[data-logo]').forEach((img) => {
+     img.src = app.logoSrc;
+   });
+@@ -101,11 +135,10 @@ async function boot() {
+   /* Cena de fundo */
+   setProgress(0.5, BOOT_STEPS[2]);
+   const sceneCanvas = $('#scene');
+-  const reduced = document.documentElement.dataset.motion === 'reduced';
+-  if (!reduced) {
+-    app.scene = new Scene(sceneCanvas, {
+-      density: window.innerWidth < 760 ? 0.5 : 1,
+-    });
++  if (!device.reducedMotion) {
++    // A quantidade de peças não é mais decidida pela largura da tela: o
++    // governo de qualidade mede o aparelho e ajusta quadro a quadro.
++    app.scene = new Scene(sceneCanvas, { accent: hexToRgb(store.state.prefs.accent) });
+     if (app.scene.init()) {
+       window.nestraScene = app.scene;
+       sceneCanvas.dataset.ready = 'true';
+@@ -121,6 +154,12 @@ async function boot() {
+   } catch {
+     logged = false;
+   }
++
++  // As preferências só existem depois da sessão: cor de destaque,
++  // densidade e movimento precisam ser aplicados de novo agora, senão a
++  // pessoa vê o padrão até abrir as configurações.
++  if (logged) applyPrefs();
++
+   setProgress(0.86, BOOT_STEPS[4]);
+ 
+   await sleep(220);
+@@ -186,12 +225,26 @@ function startApp(logged) {
+   window.addEventListener('hashchange', route);
+ 
+   store.addEventListener('auth', () => {
++    applyPrefs();
+     renderShell();
+     route();
+   });
+   store.addEventListener('sync', (ev) => paintSync(ev.detail));
+   store.addEventListener('items', scheduleNotifications);
+ 
++  /* Chegou coisa nova do servidor — provavelmente feita no outro
++     aparelho. A tela atual se redesenha sozinha, sem recarregar nada. */
++  store.addEventListener('pulled', () => {
++    if (!store.state.user) return;
++    // As preferências também viajam entre aparelhos
++    applyPrefs();
++    repaintWhenIdle();
++    scheduleNotifications();
++  });
++
++  // Mantém computador e celular olhando para os mesmos dados
++  store.startAutoSync();
++
+   if (!location.hash) {
+     location.hash = logged ? '#/hoje' : '#/';
+   }
+@@ -822,6 +875,33 @@ function paintSync(state) {
+   $('#syncLabel').textContent = syncLabel(state);
+ }
+ 
++/**
++ * Redesenha quando a tela estiver livre.
++ *
++ * A busca automática roda a cada 45 segundos. Se ela redesenhasse a tela
++ * no meio de uma frase, a frase iria embora — e perder o que a pessoa
++ * estava escrevendo é justamente o que este produto existe para evitar.
++ * O mesmo vale para um formulário aberto: espera fechar.
++ */
++let repaintTimer = 0;
++
++function repaintWhenIdle() {
++  const focused = document.activeElement;
++  const typing = focused && (
++    /^(INPUT|TEXTAREA|SELECT)$/.test(focused.tagName) || focused.isContentEditable);
++  const dialogOpen = document.querySelector('.overlay[data-open="true"], .palette[data-open="true"]');
++
++  if (typing || dialogOpen) {
++    clearTimeout(repaintTimer);
++    repaintTimer = setTimeout(repaintWhenIdle, 4000);
++    return;
++  }
++
++  clearTimeout(repaintTimer);
++  paintSidebar();
++  renderCurrentView();
++}
++
+ function renderCurrentView({ animate = false } = {}) {
+   const root = $('#viewRoot');
+   if (!root) return;
+@@ -838,8 +918,14 @@ function renderCurrentView({ animate = false } = {}) {
+     initFx(container);
+   };
+ 
+-  // As peças 3D dos ambientes vivem só enquanto a tela deles existe
++  /* As peças 3D vivem só enquanto a tela delas existe. Sair da tela sem
++     desmontá-las deixaria contextos WebGL pendurados — e o navegador tem
++     um teto baixo deles, ainda mais no celular. */
+   clearOrbs();
++  if (r.name !== 'environment') {
++    clearEnvHeroes();
++    root.__envHero = null;
++  }
+ 
+   if (animate) {
+     swapView(root, draw);
+diff --git a/sw.js b/sw.js
+index ed5a59e..a07f1a1 100644
+--- a/sw.js
++++ b/sw.js
+@@ -11,7 +11,7 @@
+      • chamadas /api/                               → sempre rede, nunca cacheadas
+    ===================================================================== */
+ 
+-const VERSION = 'nestra-v2';
++const VERSION = 'nestra-v3';
+ const SHELL = VERSION + '-shell';
+ const RUNTIME = VERSION + '-runtime';
+ 
+@@ -29,11 +29,13 @@ const SHELL_FILES = [
+   './css/fx.css',
+   './js/main.js',
+   './js/core/gl.js',
++  './js/core/device.js',
+   './js/gfx/logo3d.js',
+   './js/gfx/scene.js',
+   './js/gfx/fx.js',
+   './js/gfx/interactions.js',
+   './js/gfx/orb.js',
++  './js/gfx/envhero.js',
+   './js/app/api.js',
+   './js/app/store.js',
+   './js/app/nlp.js',
+-- 
+2.43.0
+
+
+From d9e3bb89eb754c797aa9c382d41d2b3950c9785d Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 17 Aug 2026 03:05:39 +0000
+Subject: [PATCH 2/2] =?UTF-8?q?Marca=203D=20na=20tela=20Hoje,=20fundo=20vi?=
+ =?UTF-8?q?s=C3=ADvel=20e=20load=20proporcional?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+**Load em todos os cliques, do tamanho do alvo**
+
+O retorno de carregamento pegava cinco seletores e desenhava sempre o
+mesmo anel de 15px — grande demais num ponto de cor, pequeno demais num
+cartão. Agora ele cobre tudo o que responde a clique e nasce medido pelo
+elemento: o anel cresce com o alvo (com piso e teto), a espessura
+acompanha, e faixas largas e baixas recebem o anel encostado à direita em
+vez de em cima do texto. A duração mínima também escala — cerca de 280ms
+num alvo pequeno, 460ms num cartão grande.
+
+O trilho de progresso virou elemento de verdade em vez de `::before`:
+vários componentes já usam os dois pseudo-elementos deles para brilho e
+moldura, e disputar essa vaga quebraria o desenho de cada um.
+
+A caixa de conclusão continua de fora, junto de qualquer `data-noload`.
+Marcar um item precisa ser instantâneo — um indicador ali só atrasaria a
+sensação de ter concluído.
+
+**O fundo, agora visível**
+
+A mudança anterior existia mas ninguém via: dentro do app a cena estava
+com opacidade .22, e é justamente ali que se passa o dia inteiro.
+
+Baixar a opacidade do canvas apagava tudo junto, então o problema foi
+separado. As placas — a camada que compete com o texto — recuam por
+dentro do shader quando a tela é do app, enquanto a aurora, os cometas e
+o horizonte ficam inteiros. O canvas volta a quase 1 de opacidade.
+
+Somaram-se cometas: riscos de luz com cabeça e cauda atravessando o
+quadro em ciclos longos, cada um com trajetória sorteada a cada volta. A
+distância é medida até o segmento atrás da cabeça, e não até um ponto, o
+que dá rastro alongado em vez de borrão redondo. A aurora ganhou quase o
+dobro de brilho.
+
+**A marca do Nestra na tela Hoje**
+
+A tela abre com a logo extrudada em três dimensões — o arquivo original
+convertido em campo de distância e traçado por ray marching, então a
+silhueta em 3D é exatamente a silhueta do desenho, com relevo, chanfro e
+brilho de borda. Ela acompanha o ponteiro e gira devagar sozinha, entre
+três anéis em órbita, um halo respirando e um chão de luz.
+
+Ao lado, o retrato do dia: a saudação, o dia por extenso, uma frase que
+diz o que falta em vez de repetir números, e os contadores com o anel de
+progresso.
+
+A marca sobrevive aos redesenhos da tela. Concluir um item redesenha a
+tela Hoje inteira; reconstruir a marca junto significaria refazer o campo
+de distância e abrir um contexto WebGL novo a cada clique — caro e, pior,
+visível, porque a marca piscaria o tempo todo. Sem vaga de contexto ou
+com menos movimento pedido, entra o plano B em CSS, que empilha a própria
+imagem em profundidade.
+
+No celular os números ficam numa linha só: quebrados em duas, empurravam
+a caixa de captura para fora da primeira tela — e capturar é o que
+precisa estar mais à mão.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01JsKkE7gaFSW9JmXiX6Bgi8
+---
+ css/fx.css             | 313 ++++++++++++++++++++++++++++++++++++++---
+ css/layout.css         |  10 +-
+ js/app/views/today.js  | 207 ++++++++++++++++++++++-----
+ js/gfx/interactions.js |  78 +++++++++-
+ js/gfx/logo3d.js       |   9 ++
+ js/gfx/scene.js        |  77 +++++++++-
+ js/main.js             |  10 +-
+ 7 files changed, 631 insertions(+), 73 deletions(-)
+
+diff --git a/css/fx.css b/css/fx.css
+index d409253..cfc7c80 100644
+--- a/css/fx.css
++++ b/css/fx.css
+@@ -144,52 +144,69 @@
+   pointer-events: none;
+ }
+ 
+-/* O conteúdo recua sem sumir: o botão não muda de tamanho */
++/* O conteúdo recua sem sumir: o alvo não muda de tamanho */
+ .btn[data-loading] { color: color-mix(in srgb, currentColor 46%, transparent); }
+ .side-link[data-loading] > *:not(.btn__spin) { opacity: .55; }
+ .settings-nav__tab[data-loading],
+ .segmented__opt[data-loading] { color: color-mix(in srgb, currentColor 50%, transparent); }
+ 
++/* Qualquer coisa que possa mostrar carregamento precisa ser âncora de
++   posicionamento — senão o anel iria parar no canto da página. */
++.item[data-loading],
++.env-card[data-loading],
++.menu__item[data-loading],
++.palette__row[data-loading],
++.color-dot[data-loading],
++.icon-opt[data-loading],
++.type-card[data-loading],
++.topbar__link[data-loading],
++.avatar[data-loading],
++.logo-drop[data-loading],
++.switch[data-loading],
++a[data-loading] { position: relative; }
++
++/* O anel: o tamanho e a espessura chegam medidos do elemento clicado */
+ .btn__spin {
++  --spin-size: 15px;
++  --spin-thickness: 2px;
+   position: absolute;
+   left: 50%;
+   top: 50%;
+-  width: 15px;
+-  height: 15px;
+-  margin: -7.5px 0 0 -7.5px;
++  width: var(--spin-size);
++  height: var(--spin-size);
++  margin: calc(var(--spin-size) / -2) 0 0 calc(var(--spin-size) / -2);
+   border-radius: 50%;
+-  border: 2px solid color-mix(in srgb, currentColor 28%, transparent);
++  border: var(--spin-thickness) solid color-mix(in srgb, currentColor 26%, transparent);
+   border-top-color: currentColor;
+   animation: spinnerTurn .62s linear infinite;
+   pointer-events: none;
+   z-index: 3;
+ }
+-.side-link .btn__spin,
+-.settings-nav__tab .btn__spin,
+-.segmented__opt .btn__spin,
+-.chip .btn__spin {
++
++/* Faixa larga e baixa — uma linha de item, um item de menu: o anel
++   encosta na direita para não cobrir o texto. */
++.btn__spin[data-place='end'] {
+   left: auto;
+   right: 10px;
+   margin-left: 0;
+-  width: 12px;
+-  height: 12px;
+-  margin-top: -6px;
+ }
+ 
+ @keyframes spinnerTurn { to { transform: rotate(360deg); } }
+ 
+-/* Trilho de progresso indeterminado no pé do botão */
+-.btn[data-loading]::before {
+-  content: '';
++/* Trilho de progresso indeterminado no pé do alvo.
++   É um elemento de verdade, e não um `::before`: vários componentes já
++   usam os dois pseudo-elementos deles para brilho e moldura, e disputar
++   essa vaga quebraria o desenho de cada um. A largura é uma fração do
++   próprio elemento, então o trilho já nasce proporcional. */
++.btn__rail {
+   position: absolute;
+   left: 0;
+   bottom: 0;
+-  top: auto;
+   height: 2px;
+-  width: 40%;
+-  transform: none;
++  width: 38%;
+   background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+   animation: railSlide 1.05s var(--ease-in-out) infinite;
++  pointer-events: none;
+   z-index: 2;
+ }
+ @keyframes railSlide {
+@@ -197,6 +214,19 @@
+   100% { transform: translateX(320%); }
+ }
+ 
++/* Alvos pequenos e redondos — o ponto de cor, o quadradinho de ícone —
++   não têm espaço para anel dentro: eles pulsam por fora. */
++.color-dot[data-loading],
++.icon-opt[data-loading],
++.avatar[data-loading] {
++  box-shadow: 0 0 0 2px var(--accent), 0 0 16px -2px var(--accent-glow);
++}
++.color-dot[data-loading] .btn__spin,
++.icon-opt[data-loading] .btn__spin { display: none; }
++
++[data-motion='reduced'] .btn__spin,
++[data-motion='reduced'] .btn__rail { animation: none; }
++
+ /* ---------------------------------------------------------------------
+    PEÇA 3D DO AMBIENTE
+    --------------------------------------------------------------------- */
+@@ -255,6 +285,253 @@
+   to   { transform: rotateX(-18deg) rotateY(360deg); }
+ }
+ 
++/* ---------------------------------------------------------------------
++   ABERTURA DA TELA HOJE — a marca em três dimensões
++
++   A logo é desenhada pela engine dentro do canvas; tudo aqui em volta é
++   cenário: halo, anéis em órbita e um chão de luz para ela flutuar.
++   --------------------------------------------------------------------- */
++.today-hero {
++  position: relative;
++  display: grid;
++  grid-template-columns: minmax(200px, 32%) 1fr;
++  align-items: center;
++  gap: var(--s-6);
++  margin-bottom: var(--s-6);
++  padding: var(--s-6);
++  border: 1px solid var(--line);
++  border-radius: var(--r-4);
++  background:
++    radial-gradient(90% 120% at 16% 30%, color-mix(in srgb, var(--accent) 15%, transparent), transparent 60%),
++    linear-gradient(135deg, var(--surface-2), var(--surface) 58%, var(--bg-2));
++  overflow: hidden;
++  isolation: isolate;
++}
++
++/* Fio de luz percorrendo o topo, sem parar */
++.today-hero::before {
++  content: '';
++  position: absolute;
++  top: 0; left: 0; right: 0;
++  height: 2px;
++  background: linear-gradient(90deg,
++    transparent, var(--accent) 30%, var(--cyan) 50%, var(--accent) 70%, transparent);
++  background-size: 220% 100%;
++  animation: heroThread 6s linear infinite;
++}
++@keyframes heroThread {
++  from { background-position: 200% 0; }
++  to   { background-position: -20% 0; }
++}
++
++/* Constelação discreta ao fundo do painel */
++.today-hero::after {
++  content: '';
++  position: absolute;
++  inset: 0;
++  z-index: -1;
++  background-image:
++    radial-gradient(1.5px 1.5px at 18% 28%, color-mix(in srgb, var(--cyan) 70%, transparent), transparent),
++    radial-gradient(1.5px 1.5px at 74% 18%, color-mix(in srgb, var(--accent) 70%, transparent), transparent),
++    radial-gradient(1.5px 1.5px at 58% 76%, color-mix(in srgb, var(--cyan) 55%, transparent), transparent),
++    radial-gradient(1.5px 1.5px at 88% 62%, color-mix(in srgb, var(--accent) 55%, transparent), transparent),
++    radial-gradient(1.5px 1.5px at 34% 88%, color-mix(in srgb, var(--cyan) 45%, transparent), transparent);
++  opacity: .8;
++  animation: glowPulse 5s var(--ease-in-out) infinite;
++}
++
++.today-hero__stage {
++  position: relative;
++  height: clamp(180px, 20vw, 240px);
++  display: grid;
++  place-items: center;
++}
++
++/* A marca: grande, centrada, ocupando o palco inteiro */
++.today-hero__logo {
++  position: relative;
++  z-index: 3;
++  width: 100%;
++  height: 100%;
++  display: block;
++}
++
++/* Halo respirando por trás da marca */
++.today-hero__aura {
++  position: absolute;
++  z-index: 1;
++  width: 78%;
++  aspect-ratio: 1;
++  border-radius: 50%;
++  background: radial-gradient(circle,
++    color-mix(in srgb, var(--accent) 40%, transparent),
++    color-mix(in srgb, var(--cyan) 12%, transparent) 45%,
++    transparent 68%);
++  filter: blur(22px);
++  animation: glowPulse 4.4s var(--ease-in-out) infinite;
++  pointer-events: none;
++}
++
++/* Anéis inclinados girando em ritmos diferentes */
++.today-hero__orbit {
++  position: absolute;
++  z-index: 2;
++  inset: 8%;
++  pointer-events: none;
++}
++.today-hero__orbit span {
++  position: absolute;
++  inset: 0;
++  border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent);
++  border-radius: 50%;
++  animation: todayOrbit 9s linear infinite;
++}
++.today-hero__orbit span:nth-child(1) { --tiltX: 76deg; --tiltY: 6deg;   animation-duration: 8s; }
++.today-hero__orbit span:nth-child(2) {
++  --tiltX: 68deg; --tiltY: -38deg;
++  inset: 12%;
++  border-color: color-mix(in srgb, var(--cyan) 38%, transparent);
++  animation-duration: 11.5s;
++  animation-direction: reverse;
++}
++.today-hero__orbit span:nth-child(3) {
++  --tiltX: 84deg; --tiltY: 36deg;
++  inset: -8%;
++  border-style: dashed;
++  border-color: color-mix(in srgb, var(--accent) 24%, transparent);
++  animation-duration: 17s;
++}
++@keyframes todayOrbit {
++  from { transform: rotateX(var(--tiltX)) rotateY(var(--tiltY)) rotateZ(0deg); }
++  to   { transform: rotateX(var(--tiltX)) rotateY(var(--tiltY)) rotateZ(360deg); }
++}
++
++/* Chão de luz: dá a leitura de que a marca está suspensa */
++.today-hero__floor {
++  position: absolute;
++  z-index: 0;
++  bottom: 6%;
++  width: 62%;
++  height: 14px;
++  border-radius: 50%;
++  background: radial-gradient(ellipse,
++    color-mix(in srgb, var(--accent) 42%, transparent), transparent 70%);
++  filter: blur(7px);
++  animation: heroFloor 4.4s var(--ease-in-out) infinite;
++  pointer-events: none;
++}
++@keyframes heroFloor {
++  0%, 100% { transform: scaleX(1);    opacity: .75; }
++  50%      { transform: scaleX(1.14); opacity: 1; }
++}
++
++.today-hero__body {
++  position: relative;
++  z-index: 2;
++  display: flex;
++  flex-direction: column;
++  gap: var(--s-3);
++  min-width: 0;
++}
++
++.today-hero__kicker {
++  display: flex;
++  align-items: center;
++  gap: 10px;
++  font-family: var(--font-mono);
++  font-size: var(--fs-micro);
++  letter-spacing: .18em;
++  text-transform: uppercase;
++  color: var(--text-4);
++}
++.today-hero__kicker b {
++  color: var(--blue-300);
++  font-weight: 500;
++  letter-spacing: .3em;
++}
++.today-hero__kicker i {
++  width: 4px;
++  height: 4px;
++  border-radius: 50%;
++  background: var(--cyan);
++  box-shadow: 0 0 8px var(--cyan);
++  animation: blink 2.2s steps(1) infinite;
++}
++
++.today-hero__title {
++  font-family: var(--font-display);
++  font-size: clamp(26px, 3.2vw, 40px);
++  font-weight: 600;
++  line-height: 1.08;
++  letter-spacing: var(--tracking-tight);
++}
++
++.today-hero__line {
++  font-size: var(--fs-md);
++  color: var(--text-2);
++  line-height: 1.5;
++  max-width: 48ch;
++}
++
++.today-hero__stats {
++  display: flex;
++  align-items: center;
++  flex-wrap: wrap;
++  gap: var(--s-5);
++  margin-top: var(--s-1);
++}
++.today-hero__stat { display: flex; flex-direction: column; gap: 1px; }
++.today-hero__stat-n {
++  font-family: var(--font-display);
++  font-size: var(--fs-2xl);
++  font-weight: 600;
++  line-height: 1;
++  color: var(--text);
++  font-variant-numeric: tabular-nums;
++}
++.today-hero__stat-l {
++  font-family: var(--font-mono);
++  font-size: var(--fs-micro);
++  letter-spacing: .1em;
++  text-transform: uppercase;
++  color: var(--text-4);
++}
++.today-hero__stat--overdue .today-hero__stat-n { color: var(--overdue); }
++
++.today-hero__actions { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
++
++/* Plano B em CSS: a própria imagem empilhada em profundidade */
++.today-hero__stage .logo-css3d { z-index: 3; }
++
++@media (max-width: 860px) {
++  .today-hero {
++    grid-template-columns: 1fr;
++    gap: var(--s-3);
++    padding: var(--s-4);
++    text-align: center;
++  }
++  .today-hero__stage  { height: clamp(140px, 34vw, 186px); }
++  .today-hero__body   { align-items: center; gap: var(--s-2); }
++  .today-hero__title  { font-size: clamp(22px, 5.6vw, 30px); }
++  .today-hero__line   { font-size: var(--fs-sm); }
++  .today-hero__stats,
++  .today-hero__actions { justify-content: center; }
++
++  /* Os números cabem numa linha só: quebrar em duas empurrava a caixa
++     de captura para fora da primeira tela, que é justo o que ela não
++     pode fazer — capturar precisa estar à mão. */
++  .today-hero__stats   { gap: var(--s-4); flex-wrap: nowrap; }
++  .today-hero__stat    { align-items: center; }
++  .today-hero__stat-n  { font-size: var(--fs-xl); }
++  .today-hero__actions { margin-top: 0; }
++}
++
++[data-motion='reduced'] .today-hero::before,
++[data-motion='reduced'] .today-hero::after,
++[data-motion='reduced'] .today-hero__aura,
++[data-motion='reduced'] .today-hero__floor,
++[data-motion='reduced'] .today-hero__orbit span { animation: none; }
++
+ /* ---------------------------------------------------------------------
+    ABERTURA 3D DA TELA DE AMBIENTE
+ 
+diff --git a/css/layout.css b/css/layout.css
+index d1ecde1..801178a 100644
+--- a/css/layout.css
++++ b/css/layout.css
+@@ -13,9 +13,13 @@
+ }
+ #scene[data-ready='true'] { opacity: 1; }
+ 
+-/* Dentro da aplicação a cena recua: ela é ambiente, não conteúdo. */
+-body[data-view='app'] #scene[data-ready='true'] { opacity: .22; }
+-body[data-view='auth'] #scene[data-ready='true'] { opacity: .55; }
++/* A cena fica visível em todas as telas. O que muda entre elas não é a
++   opacidade do canvas inteiro — isso apagaria a aurora junto — e sim o
++   peso das placas, ajustado dentro do próprio shader (`setMood`). Assim
++   o fundo continua vivo na tela onde se passa o dia inteiro, sem que as
++   placas passem por trás do texto. */
++body[data-view='app'] #scene[data-ready='true'] { opacity: .9; }
++body[data-view='auth'] #scene[data-ready='true'] { opacity: .95; }
+ 
+ #app {
+   position: relative;
+diff --git a/js/app/views/today.js b/js/app/views/today.js
+index efefc47..2468407 100644
+--- a/js/app/views/today.js
++++ b/js/app/views/today.js
+@@ -15,7 +15,8 @@ import { createCapture } from './capture.js';
+ import { humanDate, todayIn, toISODate } from '../nlp.js';
+ import { celebrate } from '../../gfx/interactions.js';
+ import { mountEnvHero, clearEnvHeroes } from '../../gfx/envhero.js';
+-import { device } from '../../core/device.js';
++import { Logo3D } from '../../gfx/logo3d.js';
++import { device, glBudget } from '../../core/device.js';
+ 
+ /** Anel de progresso do dia — quanto do que vencia hoje já saiu da frente. */
+ function dayRing(done, total) {
+@@ -57,56 +58,186 @@ function greeting(name) {
+   return `${part}, ${String(name || '').split(' ')[0] || 'tudo bem'}`;
+ }
+ 
+-export function renderToday(root, { onNavigate }) {
+-  const rerender = () => renderToday(root, { onNavigate });
+-  const b = store.todayBuckets();
+-  const tz = store.state.prefs.timezone;
++/* ---------------------------------------------------------------------
++   ABERTURA DA TELA HOJE — a marca do Nestra em três dimensões
++
++   A logo aqui não é um PNG com sombra: é o arquivo original convertido em
++   campo de distância e extrudado por ray marching, então a silhueta em 3D
++   é exatamente a silhueta do desenho, com relevo, chanfro e brilho de
++   borda. Ela acompanha o ponteiro e gira devagar sozinha.
++
++   Ao lado, o retrato do dia em uma frase: quem é você, que dia é hoje e
++   quanto ainda pede atenção.
++   --------------------------------------------------------------------- */
++
++let brand = null;                       // instância viva do Logo3D
++const brandToken = { id: 'today-brand' };
++
++/** Desmonta a marca da tela Hoje e devolve a vaga de contexto WebGL. */
++export function clearTodayBrand() {
++  if (!brand) return;
++  brand.destroy();
++  glBudget.release(brandToken);
++  brand = null;
++}
++
++/** Uma frase que resume o dia, em vez de só repetir os números. */
++function dayLine({ overdue, dueToday, done }) {
++  if (overdue) {
++    return overdue === 1
++      ? 'Um item passou da data. Escolher uma nova já resolve.'
++      : `${overdue} itens passaram da data. É só dar uma nova data a eles.`;
++  }
++  if (!dueToday) return 'Nada marcado para hoje. O que aparecer, você captura aí embaixo.';
++  if (done >= dueToday) return 'Tudo o que era de hoje já saiu da frente.';
++  const left = dueToday - done;
++  return left === 1 ? 'Falta uma coisa para hoje.' : `Faltam ${left} coisas para hoje.`;
++}
++
++function todayHero({ b, dayTotal, dayDone, onNavigate }) {
++  const canvas = el('canvas', {
++    class: 'today-hero__logo',
++    'aria-label': 'Marca do Nestra em três dimensões',
++  });
+ 
+   const dateLabel = new Date().toLocaleDateString('pt-BR', {
+     weekday: 'long', day: 'numeric', month: 'long',
+   });
+ 
+-  root.replaceChildren();
++  const summary = el('p', { class: 'today-hero__line' });
++  const counters = el('div', { class: 'today-hero__stats' });
+ 
+-  /* Cabeçalho */
+-  const dayTotal = b.dueToday.length + b.overdue.length;
+-  const dayDone = b.dueToday.filter((i) => i.status === 'done').length;
++  const paint = (data) => {
++    summary.textContent = dayLine({
++      overdue: data.b.overdue.length,
++      dueToday: data.b.dueToday.length,
++      done: data.dayDone,
++    });
++
++    const stat = (value, label, modifier) =>
++      el('div', { class: 'today-hero__stat' + (modifier ? ' today-hero__stat--' + modifier : '') }, [
++        el('span', { class: 'today-hero__stat-n', text: String(value) }),
++        el('span', { class: 'today-hero__stat-l', text: label }),
++      ]);
++
++    counters.replaceChildren(...[
++      data.dayTotal ? dayRing(data.dayDone, data.dayTotal) : null,
++      stat(data.b.dueToday.length, 'para hoje'),
++      data.b.overdue.length
++        ? stat(data.b.overdue.length, 'passaram da data', 'overdue')
++        : stat(data.dayDone, 'concluídos hoje'),
++      stat(store.activeEnvironments.length, 'ambientes'),
++    ].filter(Boolean));
++  };
+ 
+-  const head = el('div', { class: 'view-head' }, [
+-    el('div', { class: 'row gap-4' }, [
+-      dayTotal ? dayRing(dayDone, dayTotal) : null,
+-      el('div', {}, [
+-        el('h1', { class: 'view-title' }, [
+-          el('span', { text: 'Hoje' }),
+-          el('span', { class: 'badge badge--accent', text: String(dayTotal) }),
+-        ]),
+-        el('p', { class: 'view-sub', text: dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1) }),
++  paint({ b, dayTotal, dayDone });
++
++  const hero = el('section', { class: 'today-hero' }, [
++    el('div', { class: 'today-hero__stage' }, [
++      el('span', { class: 'today-hero__aura', 'aria-hidden': 'true' }),
++      el('div', { class: 'today-hero__orbit', 'aria-hidden': 'true' }, [
++        el('span'), el('span'), el('span'),
+       ]),
++      canvas,
++      el('span', { class: 'today-hero__floor', 'aria-hidden': 'true' }),
+     ]),
+-    el('div', { class: 'row gap-2' }, [
+-      el('button', {
+-        class: 'btn btn--ghost btn--sm',
+-        html: icon('search', 15) + 'Buscar',
+-        onClick: () => window.dispatchEvent(new CustomEvent('nestra:palette')),
+-      }),
+-      el('button', {
+-        class: 'btn btn--outline btn--sm',
+-        html: icon('layers', 15) + 'Ambientes',
+-        onClick: () => onNavigate('environments'),
+-      }),
++
++    el('div', { class: 'today-hero__body' }, [
++      el('span', { class: 'today-hero__kicker' }, [
++        el('b', { text: 'NESTRA' }),
++        el('i', { 'aria-hidden': 'true' }),
++        el('span', { text: dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1) }),
++      ]),
++      el('h1', { class: 'today-hero__title grad-text', text: greeting(store.state.user?.displayName) }),
++      summary,
++      counters,
++      el('div', { class: 'today-hero__actions' }, [
++        el('button', {
++          class: 'btn btn--ghost btn--sm',
++          html: icon('search', 15) + 'Buscar',
++          onClick: () => window.dispatchEvent(new CustomEvent('nestra:palette')),
++        }),
++        el('button', {
++          class: 'btn btn--ghost btn--sm',
++          html: icon('layers', 15) + 'Ambientes',
++          onClick: () => onNavigate('environments'),
++        }),
++      ]),
+     ]),
+   ]);
+-  root.appendChild(head);
+-
+-  /* Saudação — só quando não há nada urgente, para não competir com o conteúdo */
+-  if (!b.overdue.length && !b.dueToday.length) {
+-    root.appendChild(el('p', {
+-      class: 'text-body',
+-      style: { marginTop: 'calc(var(--s-4) * -1)', marginBottom: 'var(--s-5)' },
+-      text: greeting(store.state.user?.displayName),
+-    }));
++
++  hero.updateDay = paint;
++  hero.dataset.alive = 'pending';
++
++  // O canvas precisa estar no documento para ter tamanho medido
++  requestAnimationFrame(() => {
++    if (!canvas.isConnected) return;
++
++    // Sem vaga de contexto (ou com menos movimento pedido), o plano B em
++    // CSS empilha a própria imagem em profundidade — continua com volume.
++    const roomy = !device.reducedMotion && glBudget.claim(brandToken);
++
++    brand = new Logo3D(canvas, {
++      src: window.nestraLogoSrc || 'assets/logo/nestra-mark.png',
++      depth: 0.30,
++      bevel: 0.03,
++      glow: 0.95,
++      // A câmera fica mais perto: a marca é o assunto desta abertura,
++      // não um selo no canto.
++      zoom: 1.32,
++      autoSpin: 0.3,
++      colorSide: 1400,
++      sdfSide: 520,
++      interactive: true,
++      forceFallback: !roomy,
++    });
++
++    brand.init().then((ok) => {
++      hero.dataset.alive = ok ? 'gl' : 'css';
++      if (!ok && roomy) glBudget.release(brandToken);
++    });
++  });
++
++  return hero;
++}
++
++/**
++ * Reaproveita a marca já montada.
++ *
++ * A tela Hoje se redesenha a cada item concluído, adiado ou capturado.
++ * Reconstruir a marca junto significaria refazer o campo de distância e
++ * abrir um contexto WebGL novo a cada clique — caro e, pior, visível: a
++ * marca piscaria o tempo todo. Aqui o mesmo nó volta para a tela, só com
++ * os números do dia atualizados.
++ */
++function keepTodayHero(root, data) {
++  const cached = root.__todayHero;
++
++  if (cached && cached.dataset.alive && brand) {
++    cached.updateDay(data);
++    return cached;
+   }
+ 
++  if (cached) clearTodayBrand();
++
++  const fresh = todayHero(data);
++  root.__todayHero = fresh;
++  return fresh;
++}
++
++export function renderToday(root, { onNavigate }) {
++  const rerender = () => renderToday(root, { onNavigate });
++  const b = store.todayBuckets();
++  const tz = store.state.prefs.timezone;
++
++  root.replaceChildren();
++
++  const dayTotal = b.dueToday.length + b.overdue.length;
++  const dayDone = b.dueToday.filter((i) => i.status === 'done').length;
++
++  /* Abertura: a marca em 3D e o retrato do dia */
++  root.appendChild(keepTodayHero(root, { b, dayTotal, dayDone, onNavigate }));
++
+   /* Captura rápida */
+   const capture = createCapture({ onCreated: rerender });
+   root.appendChild(capture);
+diff --git a/js/gfx/interactions.js b/js/gfx/interactions.js
+index 6982f01..5cc6a89 100644
+--- a/js/gfx/interactions.js
++++ b/js/gfx/interactions.js
+@@ -108,6 +108,33 @@ export function bindGlobalClick() {
+  * O tempo mínimo existe para a resposta ser percebida mesmo quando a
+  * ação é instantânea — sem isso o estado pisca e ninguém vê.
+  */
++/**
++ * Mede o alvo e devolve o indicador do tamanho dele.
++ *
++ * Um anel de 15px é grande demais num pontinho de cor e pequeno demais
++ * num cartão de ambiente. Aqui o indicador nasce proporcional ao que foi
++ * clicado: cresce com o elemento, mas com piso e teto, para nunca virar
++ * um alfinete nem um pneu. Elementos largos e baixos — uma linha da
++ * lista, um item do menu — recebem o anel encostado na direita, porque
++ * no centro ele cairia em cima do texto.
++ */
++function shapeLoader(el) {
++  const r = el.getBoundingClientRect();
++  const short = Math.min(r.width, r.height) || 32;
++  const long = Math.max(r.width, r.height) || 32;
++
++  const size = Math.max(11, Math.min(Math.round(short * 0.42), 34));
++  const thickness = Math.max(1.5, Math.min(size / 7, 3.5));
++
++  // Faixa larga e baixa: o anel vai para o canto, não para o meio
++  const banner = long / short > 2.6 && short < 96;
++
++  // O trilho só faz sentido onde há largura para ele correr
++  const rail = r.width >= 72;
++
++  return { size, thickness, banner, rail, area: r.width * r.height };
++}
++
+ export async function withLoading(btn, fn, { minMs = 300, mode = 'true' } = {}) {
+   if (!btn || btn.dataset.loading) return;
+ 
+@@ -117,10 +144,22 @@ export async function withLoading(btn, fn, { minMs = 300, mode = 'true' } = {})
+   btn.dataset.loading = mode;
+   btn.setAttribute('aria-busy', 'true');
+ 
++  const shape = shapeLoader(btn);
++
+   const spin = document.createElement('span');
+   spin.className = 'btn__spin';
++  spin.style.setProperty('--spin-size', shape.size + 'px');
++  spin.style.setProperty('--spin-thickness', shape.thickness + 'px');
++  if (shape.banner) spin.dataset.place = 'end';
+   btn.appendChild(spin);
+ 
++  let rail = null;
++  if (shape.rail) {
++    rail = document.createElement('span');
++    rail.className = 'btn__rail';
++    btn.appendChild(rail);
++  }
++
+   try {
+     return await fn();
+   } finally {
+@@ -129,31 +168,56 @@ export async function withLoading(btn, fn, { minMs = 300, mode = 'true' } = {})
+     delete btn.dataset.loading;
+     btn.removeAttribute('aria-busy');
+     spin.remove();
++    rail?.remove();
+   }
+ }
+ 
++/* Tudo o que responde a um clique e merece dizer que está trabalhando. */
++const LOADABLE = [
++  '.btn', '.side-link', '.settings-nav__tab', '.segmented__opt',
++  '.chip--interactive', '.chip', '.item', '.env-card', '.avatar',
++  '.menu__item', '.palette__row', '.color-dot', '.icon-opt',
++  '.topbar__link', '.logo-drop', 'a[href]', '[role="button"]',
++].join(', ');
++
+ /**
+  * Liga o carregamento automático em toda a interface.
+  *
+- * Qualquer botão clicado mostra o estado por um instante — inclusive as
++ * Qualquer coisa clicada mostra o estado por um instante — inclusive as
+  * ações locais, como criar um lembrete ou trocar de ambiente, que
+- * respondem rápido demais para dar retorno sozinhas. Um `data-noload`
+- * dispensa o efeito onde ele atrapalharia (a caixa de conclusão, por
+- * exemplo, que precisa ser imediata).
++ * respondem rápido demais para dar retorno sozinhas. A duração mínima
++ * também acompanha o tamanho do alvo: um cartão grande sugere mais
++ * trabalho do que um pontinho de cor, e a resposta segue essa leitura.
++ *
++ * Um `data-noload` dispensa o efeito onde ele atrapalharia. A caixa de
++ * conclusão é o caso claro: marcar um item precisa ser instantâneo, e
++ * qualquer indicador ali só atrasaria a sensação de ter concluído.
+  */
+ export function bindAutoLoading(root = document) {
+   // Escuta no `click`, e não no `pointerdown`: se o estado entrasse antes,
+   // o próprio clique seria bloqueado e a ação nunca aconteceria.
+   root.addEventListener('click', (ev) => {
+-    const btn = ev.target.closest('.btn, .side-link, .settings-nav__tab, .segmented__opt, .chip--interactive');
++    // O clique pode ter nascido dentro de algo que pediu para ficar de
++    // fora; nesse caso nem o ancestral responde.
++    if (ev.target.closest('[data-noload], .check')) return;
++
++    const btn = ev.target.closest(LOADABLE);
+     if (!btn) return;
+-    if (btn.hasAttribute('data-noload') || btn.dataset.loading) return;
++    if (btn.dataset.loading) return;
+     if (btn.disabled || btn.getAttribute('aria-disabled') === 'true') return;
+ 
++    // Âncoras que saem do site levam o navegador junto: um indicador que
++    // nunca some ficaria preso na tela ao voltar.
++    if (btn.tagName === 'A' && btn.target === '_blank') return;
++
++    const { area } = shapeLoader(btn);
++    // ~280ms num alvo pequeno, ~460ms num cartão grande
++    const minMs = Math.round(280 + Math.min(180, Math.sqrt(area) * 1.6));
++
+     withLoading(btn, async () => {
+       // Espera a interface se redesenhar antes de tirar o indicador
+       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+-    }, { minMs: 300, mode: 'auto' });
++    }, { minMs, mode: 'auto' });
+   }, { passive: true });
+ }
+ 
+diff --git a/js/gfx/logo3d.js b/js/gfx/logo3d.js
+index a4f743f..f0c5da1 100644
+--- a/js/gfx/logo3d.js
++++ b/js/gfx/logo3d.js
+@@ -437,6 +437,15 @@ export class Logo3D {
+   }
+ 
+   async init() {
++    /* Quem chama pode saber, antes de tentar, que não há vaga de contexto
++       WebGL sobrando — ou que a pessoa pediu menos movimento. Nesses
++       casos o plano B em CSS entra direto, empilhando a própria imagem
++       em profundidade: continua sendo a marca, e continua tendo volume. */
++    if (this.opts.forceFallback) {
++      this._fallback();
++      return false;
++    }
++
+     const gl = this.canvas.getContext('webgl2', {
+       alpha: true,
+       premultipliedAlpha: true,
+diff --git a/js/gfx/scene.js b/js/gfx/scene.js
+index 7c04465..d2cb147 100644
+--- a/js/gfx/scene.js
++++ b/js/gfx/scene.js
+@@ -66,6 +66,44 @@ float fbm(vec2 p) {
+   return v;
+ }
+ 
++/* Um risco de luz com cabeça e cauda, atravessando o quadro.
++   A distância é medida até o segmento que vai da cabeça para trás, e
++   não até um ponto: é isso que dá o rastro alongado em vez de um borrão
++   redondo. */
++float streak(vec2 p, vec2 head, vec2 dir, float len, float width) {
++  vec2 d = p - head;
++  float along = clamp(dot(d, -dir), 0.0, len);
++  float dist = length(p - (head - dir * along));
++  float body = exp(-(dist * dist) / (width * width));
++  float tail = 1.0 - along / len;
++  return body * tail * tail;
++}
++
++/* Três cometas em fases diferentes, cruzando a cena de tempos em tempos.
++   Cada um some antes de chegar à borda, então nunca há corte seco. */
++float comets(vec2 p, float t) {
++  float total = 0.0;
++  for (int i = 0; i < 3; i++) {
++    float fi = float(i);
++    float seed = fract(sin(fi * 12.9898) * 43758.5453);
++
++    // um ciclo longo: o cometa passa e a cena descansa
++    float cycle = t * 0.055 + seed;
++    float phase = fract(cycle);
++    float run = floor(cycle);                    // muda a trajetória a cada volta
++    float jitter = fract(sin(run * 78.233 + fi * 3.7) * 43758.5453);
++
++    vec2 dir = normalize(vec2(0.92, -0.42 - jitter * 0.3));
++    vec2 start = vec2(-1.9, 0.95 - jitter * 1.5);
++    vec2 head = start + dir * phase * 4.2;
++
++    // acende no meio da travessia e apaga antes do fim
++    float life = smoothstep(0.0, 0.18, phase) * smoothstep(1.0, 0.72, phase);
++    total += streak(p, head, dir, 0.62 + jitter * 0.3, 0.016 + seed * 0.012) * life;
++  }
++  return total;
++}
++
+ void main() {
+   vec2 uv = vUv;
+   vec2 p = (uv - 0.5) * vec2(uRes.x / uRes.y, 1.0);
+@@ -104,15 +142,20 @@ void main() {
+   float drift = sin(uTime * 0.075) * 0.5 + 0.5;
+   vec3 tint = mix(cool, warm, smoothstep(-0.75, 0.75, q.x + drift * 1.1 - 0.55));
+ 
+-  float glow = (curtain + beams) * shape * (0.19 + uPulse * 0.26);
++  float glow = (curtain + beams) * shape * (0.34 + uPulse * 0.30);
+ 
+   // brilho difuso ao redor do ponteiro
+-  float halo = exp(-length(p - uPointer * 0.5) * 2.4) * 0.055;
++  float halo = exp(-length(p - uPointer * 0.5) * 2.4) * 0.075;
+ 
+   // horizonte respirando na base da tela
+-  float horizon = exp(-abs(p.y + 0.66) * 6.5) * (0.045 + 0.025 * sin(uTime * 0.45));
++  float horizon = exp(-abs(p.y + 0.66) * 6.5) * (0.07 + 0.035 * sin(uTime * 0.45));
+ 
+-  outColor = vec4(tint * glow + uAccent * halo + tint * horizon, 1.0);
++  // cometas: o movimento que se percebe de relance, sem estar olhando
++  float trail = comets(p, uTime);
++  vec3 trailTint = mix(vec3(0.62, 0.90, 1.0), uAccent, 0.35);
++
++  vec3 color = tint * glow + uAccent * halo + tint * horizon + trailTint * trail * 0.85;
++  outColor = vec4(color, 1.0);
+ }`;
+ 
+ /* ------------------------------------------------------------------ */
+@@ -180,6 +223,7 @@ uniform vec3  uAccent;
+ uniform float uFogNear;
+ uniform float uFogFar;
+ uniform float uPulse;
++uniform float uCardFade;   // quanto as placas recuam atrás do conteúdo
+ 
+ out vec4 outColor;
+ 
+@@ -242,7 +286,7 @@ void main() {
+   fog = pow(fog, 1.45);
+ 
+   float alpha = fog * (0.24 + rim * 0.42 + edge * 0.34 + ui * 0.10 * vFace);
+-  outColor = vec4(base * fog, clamp(alpha, 0.0, 0.9));
++  outColor = vec4(base * fog * uCardFade, clamp(alpha, 0.0, 0.9) * uCardFade);
+ }`;
+ 
+ /* ------------------------------------------------------------------ */
+@@ -271,11 +315,12 @@ precision mediump float;
+ in float vAlpha;
+ in float vDepth;
+ uniform vec3 uAccent;
++uniform float uCardFade;
+ out vec4 outColor;
+ 
+ void main() {
+   float fog = 1.0 - clamp((vDepth - 6.0) / 38.0, 0.0, 1.0);
+-  outColor = vec4(uAccent * vAlpha * fog * 0.9, vAlpha * fog * 0.34);
++  outColor = vec4(uAccent * vAlpha * fog * 0.9 * uCardFade, vAlpha * fog * 0.34 * uCardFade);
+ }`;
+ 
+ /* ------------------------------------------------------------------ */
+@@ -395,6 +440,12 @@ export class Scene {
+     this.ripples = [];
+     this.pointer = { x: 0, y: 0, tx: 0, ty: 0 };
+     this.scroll = { v: 0, t: 0 };
++    /* As placas são a camada que compete com o conteúdo: dentro do app
++       elas recuam, enquanto a aurora e os cometas continuam inteiros.
++       Separar as duas coisas é o que permite ter fundo vivo e texto
++       legível ao mesmo tempo — baixar a opacidade do canvas apagaria os
++       dois juntos. */
++    this.cardFade = { v: 1, t: 1 };
+     // Sem cursor não há de onde tirar movimento: a cena passa a se mover
+     // sozinha, num vaivém lento que nunca repete o mesmo caminho.
+     this.selfDrive = device.touch;
+@@ -626,6 +677,17 @@ export class Scene {
+     this.proj = M4.perspective(Math.PI / 4, w / h, 0.1, 120);
+   }
+ 
++  /**
++   * Ajusta a cena à tela em que a pessoa está.
++   *
++   * Na apresentação as placas são o assunto; dentro do app elas viram
++   * ambiente e saem da frente do texto. A transição é suave, então
++   * trocar de tela não pisca.
++   */
++  setMood(view) {
++    this.cardFade.t = view === 'app' ? 0.26 : view === 'auth' ? 0.6 : 1;
++  }
++
+   /** Um item capturado provoca uma onda geral na cena. */
+   pulseAt(strength = 1) {
+     this.pulse = Math.min(1.4, this.pulse + strength);
+@@ -773,6 +835,7 @@ export class Scene {
+     this.pointer.x += (this.pointer.tx - this.pointer.x) * 0.045;
+     this.pointer.y += (this.pointer.ty - this.pointer.y) * 0.045;
+     this.scroll.v += (this.scroll.t - this.scroll.v) * 0.06;
++    this.cardFade.v += (this.cardFade.t - this.cardFade.v) * 0.06;
+     this.pulse *= 0.945;
+ 
+     this._step(time, dt);
+@@ -820,6 +883,7 @@ export class Scene {
+       gl.uniformMatrix4fv(lu.uProj, false, this.proj);
+       gl.uniformMatrix4fv(lu.uView, false, view);
+       gl.uniform3fv(lu.uAccent, this.opts.accent);
++      gl.uniform1f(lu.uCardFade, this.cardFade.v);
+       gl.drawArrays(gl.LINES, 0, this.lineCount * 2);
+     }
+ 
+@@ -840,6 +904,7 @@ export class Scene {
+     gl.uniform1f(u.uFogNear, 6);
+     gl.uniform1f(u.uFogFar, 42);
+     gl.uniform1f(u.uPulse, this.pulse);
++    gl.uniform1f(u.uCardFade, this.cardFade.v);
+     gl.drawElementsInstanced(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0, drawn);
+ 
+     /* 4. poeira */
+diff --git a/js/main.js b/js/main.js
+index 8ec2b9e..836ad56 100644
+--- a/js/main.js
++++ b/js/main.js
+@@ -16,7 +16,7 @@ import {
+ import { clearOrbs } from './gfx/orb.js';
+ import { clearEnvHeroes } from './gfx/envhero.js';
+ import { device, quality } from './core/device.js';
+-import { renderToday, renderEnvironment } from './app/views/today.js';
++import { renderToday, renderEnvironment, clearTodayBrand } from './app/views/today.js';
+ import { renderEnvironments, openEnvironmentForm } from './app/views/environments.js';
+ import { renderSettings, renderInbox } from './app/views/settings.js';
+ import { openItemDetail } from './app/views/items.js';
+@@ -349,6 +349,10 @@ function route() {
+   const paint = () => {
+     document.querySelectorAll('.screen').forEach((s) => (s.dataset.active = 'false'));
+ 
++    // A cena de fundo sabe em que tela estamos: as placas ficam grandes
++    // na apresentação e recuam dentro do app, sem apagar a aurora.
++    app.scene?.setMood(nextScreen);
++
+     if (def.name === 'landing') {
+       document.body.dataset.view = 'landing';
+       $('#screen-landing').dataset.active = 'true';
+@@ -926,6 +930,10 @@ function renderCurrentView({ animate = false } = {}) {
+     clearEnvHeroes();
+     root.__envHero = null;
+   }
++  if (r.name !== 'today') {
++    clearTodayBrand();
++    root.__todayHero = null;
++  }
+ 
+   if (animate) {
+     swapView(root, draw);
+-- 
+2.43.0
+

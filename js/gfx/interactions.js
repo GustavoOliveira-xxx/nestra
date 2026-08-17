@@ -108,6 +108,33 @@ export function bindGlobalClick() {
  * O tempo mínimo existe para a resposta ser percebida mesmo quando a
  * ação é instantânea — sem isso o estado pisca e ninguém vê.
  */
+/**
+ * Mede o alvo e devolve o indicador do tamanho dele.
+ *
+ * Um anel de 15px é grande demais num pontinho de cor e pequeno demais
+ * num cartão de ambiente. Aqui o indicador nasce proporcional ao que foi
+ * clicado: cresce com o elemento, mas com piso e teto, para nunca virar
+ * um alfinete nem um pneu. Elementos largos e baixos — uma linha da
+ * lista, um item do menu — recebem o anel encostado na direita, porque
+ * no centro ele cairia em cima do texto.
+ */
+function shapeLoader(el) {
+  const r = el.getBoundingClientRect();
+  const short = Math.min(r.width, r.height) || 32;
+  const long = Math.max(r.width, r.height) || 32;
+
+  const size = Math.max(11, Math.min(Math.round(short * 0.42), 34));
+  const thickness = Math.max(1.5, Math.min(size / 7, 3.5));
+
+  // Faixa larga e baixa: o anel vai para o canto, não para o meio
+  const banner = long / short > 2.6 && short < 96;
+
+  // O trilho só faz sentido onde há largura para ele correr
+  const rail = r.width >= 72;
+
+  return { size, thickness, banner, rail, area: r.width * r.height };
+}
+
 export async function withLoading(btn, fn, { minMs = 300, mode = 'true' } = {}) {
   if (!btn || btn.dataset.loading) return;
 
@@ -117,9 +144,21 @@ export async function withLoading(btn, fn, { minMs = 300, mode = 'true' } = {}) 
   btn.dataset.loading = mode;
   btn.setAttribute('aria-busy', 'true');
 
+  const shape = shapeLoader(btn);
+
   const spin = document.createElement('span');
   spin.className = 'btn__spin';
+  spin.style.setProperty('--spin-size', shape.size + 'px');
+  spin.style.setProperty('--spin-thickness', shape.thickness + 'px');
+  if (shape.banner) spin.dataset.place = 'end';
   btn.appendChild(spin);
+
+  let rail = null;
+  if (shape.rail) {
+    rail = document.createElement('span');
+    rail.className = 'btn__rail';
+    btn.appendChild(rail);
+  }
 
   try {
     return await fn();
@@ -129,31 +168,56 @@ export async function withLoading(btn, fn, { minMs = 300, mode = 'true' } = {}) 
     delete btn.dataset.loading;
     btn.removeAttribute('aria-busy');
     spin.remove();
+    rail?.remove();
   }
 }
+
+/* Tudo o que responde a um clique e merece dizer que está trabalhando. */
+const LOADABLE = [
+  '.btn', '.side-link', '.settings-nav__tab', '.segmented__opt',
+  '.chip--interactive', '.chip', '.item', '.env-card', '.avatar',
+  '.menu__item', '.palette__row', '.color-dot', '.icon-opt',
+  '.topbar__link', '.logo-drop', 'a[href]', '[role="button"]',
+].join(', ');
 
 /**
  * Liga o carregamento automático em toda a interface.
  *
- * Qualquer botão clicado mostra o estado por um instante — inclusive as
+ * Qualquer coisa clicada mostra o estado por um instante — inclusive as
  * ações locais, como criar um lembrete ou trocar de ambiente, que
- * respondem rápido demais para dar retorno sozinhas. Um `data-noload`
- * dispensa o efeito onde ele atrapalharia (a caixa de conclusão, por
- * exemplo, que precisa ser imediata).
+ * respondem rápido demais para dar retorno sozinhas. A duração mínima
+ * também acompanha o tamanho do alvo: um cartão grande sugere mais
+ * trabalho do que um pontinho de cor, e a resposta segue essa leitura.
+ *
+ * Um `data-noload` dispensa o efeito onde ele atrapalharia. A caixa de
+ * conclusão é o caso claro: marcar um item precisa ser instantâneo, e
+ * qualquer indicador ali só atrasaria a sensação de ter concluído.
  */
 export function bindAutoLoading(root = document) {
   // Escuta no `click`, e não no `pointerdown`: se o estado entrasse antes,
   // o próprio clique seria bloqueado e a ação nunca aconteceria.
   root.addEventListener('click', (ev) => {
-    const btn = ev.target.closest('.btn, .side-link, .settings-nav__tab, .segmented__opt, .chip--interactive');
+    // O clique pode ter nascido dentro de algo que pediu para ficar de
+    // fora; nesse caso nem o ancestral responde.
+    if (ev.target.closest('[data-noload], .check')) return;
+
+    const btn = ev.target.closest(LOADABLE);
     if (!btn) return;
-    if (btn.hasAttribute('data-noload') || btn.dataset.loading) return;
+    if (btn.dataset.loading) return;
     if (btn.disabled || btn.getAttribute('aria-disabled') === 'true') return;
+
+    // Âncoras que saem do site levam o navegador junto: um indicador que
+    // nunca some ficaria preso na tela ao voltar.
+    if (btn.tagName === 'A' && btn.target === '_blank') return;
+
+    const { area } = shapeLoader(btn);
+    // ~280ms num alvo pequeno, ~460ms num cartão grande
+    const minMs = Math.round(280 + Math.min(180, Math.sqrt(area) * 1.6));
 
     withLoading(btn, async () => {
       // Espera a interface se redesenhar antes de tirar o indicador
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    }, { minMs: 300, mode: 'auto' });
+    }, { minMs, mode: 'auto' });
   }, { passive: true });
 }
 

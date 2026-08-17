@@ -66,6 +66,44 @@ float fbm(vec2 p) {
   return v;
 }
 
+/* Um risco de luz com cabeça e cauda, atravessando o quadro.
+   A distância é medida até o segmento que vai da cabeça para trás, e
+   não até um ponto: é isso que dá o rastro alongado em vez de um borrão
+   redondo. */
+float streak(vec2 p, vec2 head, vec2 dir, float len, float width) {
+  vec2 d = p - head;
+  float along = clamp(dot(d, -dir), 0.0, len);
+  float dist = length(p - (head - dir * along));
+  float body = exp(-(dist * dist) / (width * width));
+  float tail = 1.0 - along / len;
+  return body * tail * tail;
+}
+
+/* Três cometas em fases diferentes, cruzando a cena de tempos em tempos.
+   Cada um some antes de chegar à borda, então nunca há corte seco. */
+float comets(vec2 p, float t) {
+  float total = 0.0;
+  for (int i = 0; i < 3; i++) {
+    float fi = float(i);
+    float seed = fract(sin(fi * 12.9898) * 43758.5453);
+
+    // um ciclo longo: o cometa passa e a cena descansa
+    float cycle = t * 0.055 + seed;
+    float phase = fract(cycle);
+    float run = floor(cycle);                    // muda a trajetória a cada volta
+    float jitter = fract(sin(run * 78.233 + fi * 3.7) * 43758.5453);
+
+    vec2 dir = normalize(vec2(0.92, -0.42 - jitter * 0.3));
+    vec2 start = vec2(-1.9, 0.95 - jitter * 1.5);
+    vec2 head = start + dir * phase * 4.2;
+
+    // acende no meio da travessia e apaga antes do fim
+    float life = smoothstep(0.0, 0.18, phase) * smoothstep(1.0, 0.72, phase);
+    total += streak(p, head, dir, 0.62 + jitter * 0.3, 0.016 + seed * 0.012) * life;
+  }
+  return total;
+}
+
 void main() {
   vec2 uv = vUv;
   vec2 p = (uv - 0.5) * vec2(uRes.x / uRes.y, 1.0);
@@ -104,15 +142,20 @@ void main() {
   float drift = sin(uTime * 0.075) * 0.5 + 0.5;
   vec3 tint = mix(cool, warm, smoothstep(-0.75, 0.75, q.x + drift * 1.1 - 0.55));
 
-  float glow = (curtain + beams) * shape * (0.19 + uPulse * 0.26);
+  float glow = (curtain + beams) * shape * (0.34 + uPulse * 0.30);
 
   // brilho difuso ao redor do ponteiro
-  float halo = exp(-length(p - uPointer * 0.5) * 2.4) * 0.055;
+  float halo = exp(-length(p - uPointer * 0.5) * 2.4) * 0.075;
 
   // horizonte respirando na base da tela
-  float horizon = exp(-abs(p.y + 0.66) * 6.5) * (0.045 + 0.025 * sin(uTime * 0.45));
+  float horizon = exp(-abs(p.y + 0.66) * 6.5) * (0.07 + 0.035 * sin(uTime * 0.45));
 
-  outColor = vec4(tint * glow + uAccent * halo + tint * horizon, 1.0);
+  // cometas: o movimento que se percebe de relance, sem estar olhando
+  float trail = comets(p, uTime);
+  vec3 trailTint = mix(vec3(0.62, 0.90, 1.0), uAccent, 0.35);
+
+  vec3 color = tint * glow + uAccent * halo + tint * horizon + trailTint * trail * 0.85;
+  outColor = vec4(color, 1.0);
 }`;
 
 /* ------------------------------------------------------------------ */
@@ -180,6 +223,7 @@ uniform vec3  uAccent;
 uniform float uFogNear;
 uniform float uFogFar;
 uniform float uPulse;
+uniform float uCardFade;   // quanto as placas recuam atrás do conteúdo
 
 out vec4 outColor;
 
@@ -242,7 +286,7 @@ void main() {
   fog = pow(fog, 1.45);
 
   float alpha = fog * (0.24 + rim * 0.42 + edge * 0.34 + ui * 0.10 * vFace);
-  outColor = vec4(base * fog, clamp(alpha, 0.0, 0.9));
+  outColor = vec4(base * fog * uCardFade, clamp(alpha, 0.0, 0.9) * uCardFade);
 }`;
 
 /* ------------------------------------------------------------------ */
@@ -271,11 +315,12 @@ precision mediump float;
 in float vAlpha;
 in float vDepth;
 uniform vec3 uAccent;
+uniform float uCardFade;
 out vec4 outColor;
 
 void main() {
   float fog = 1.0 - clamp((vDepth - 6.0) / 38.0, 0.0, 1.0);
-  outColor = vec4(uAccent * vAlpha * fog * 0.9, vAlpha * fog * 0.34);
+  outColor = vec4(uAccent * vAlpha * fog * 0.9 * uCardFade, vAlpha * fog * 0.34 * uCardFade);
 }`;
 
 /* ------------------------------------------------------------------ */
@@ -395,6 +440,12 @@ export class Scene {
     this.ripples = [];
     this.pointer = { x: 0, y: 0, tx: 0, ty: 0 };
     this.scroll = { v: 0, t: 0 };
+    /* As placas são a camada que compete com o conteúdo: dentro do app
+       elas recuam, enquanto a aurora e os cometas continuam inteiros.
+       Separar as duas coisas é o que permite ter fundo vivo e texto
+       legível ao mesmo tempo — baixar a opacidade do canvas apagaria os
+       dois juntos. */
+    this.cardFade = { v: 1, t: 1 };
     // Sem cursor não há de onde tirar movimento: a cena passa a se mover
     // sozinha, num vaivém lento que nunca repete o mesmo caminho.
     this.selfDrive = device.touch;
@@ -626,6 +677,17 @@ export class Scene {
     this.proj = M4.perspective(Math.PI / 4, w / h, 0.1, 120);
   }
 
+  /**
+   * Ajusta a cena à tela em que a pessoa está.
+   *
+   * Na apresentação as placas são o assunto; dentro do app elas viram
+   * ambiente e saem da frente do texto. A transição é suave, então
+   * trocar de tela não pisca.
+   */
+  setMood(view) {
+    this.cardFade.t = view === 'app' ? 0.26 : view === 'auth' ? 0.6 : 1;
+  }
+
   /** Um item capturado provoca uma onda geral na cena. */
   pulseAt(strength = 1) {
     this.pulse = Math.min(1.4, this.pulse + strength);
@@ -773,6 +835,7 @@ export class Scene {
     this.pointer.x += (this.pointer.tx - this.pointer.x) * 0.045;
     this.pointer.y += (this.pointer.ty - this.pointer.y) * 0.045;
     this.scroll.v += (this.scroll.t - this.scroll.v) * 0.06;
+    this.cardFade.v += (this.cardFade.t - this.cardFade.v) * 0.06;
     this.pulse *= 0.945;
 
     this._step(time, dt);
@@ -820,6 +883,7 @@ export class Scene {
       gl.uniformMatrix4fv(lu.uProj, false, this.proj);
       gl.uniformMatrix4fv(lu.uView, false, view);
       gl.uniform3fv(lu.uAccent, this.opts.accent);
+      gl.uniform1f(lu.uCardFade, this.cardFade.v);
       gl.drawArrays(gl.LINES, 0, this.lineCount * 2);
     }
 
@@ -840,6 +904,7 @@ export class Scene {
     gl.uniform1f(u.uFogNear, 6);
     gl.uniform1f(u.uFogFar, 42);
     gl.uniform1f(u.uPulse, this.pulse);
+    gl.uniform1f(u.uCardFade, this.cardFade.v);
     gl.drawElementsInstanced(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0, drawn);
 
     /* 4. poeira */
