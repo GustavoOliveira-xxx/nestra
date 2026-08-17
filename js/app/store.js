@@ -803,6 +803,147 @@ class Store extends EventTarget {
       .slice(0, 24);
   }
 
+  /* ---------------- importação ---------------- */
+
+  /**
+   * Traz de volta um export do Nestra.
+   *
+   * Existe porque exportar sem poder importar não é levar os dados
+   * embora — é só olhar para eles. E há um caso em que isso deixa de ser
+   * teórico: os dados ficam guardados por endereço, então mudar o site de
+   * lugar (do GitHub Pages para um domínio publicado, por exemplo) abre
+   * um espaço vazio, com tudo intacto no endereço antigo. É este método
+   * que atravessa essa ponte.
+   *
+   * Nada é sobrescrito. Os identificadores originais são preservados, e
+   * o que já existe por aqui é ignorado — importar o mesmo arquivo duas
+   * vezes não duplica nada.
+   *
+   * As preferências ficam de fora de propósito: quem importa quer os
+   * ambientes e os itens de volta, não trocar o tema no meio do caminho.
+   */
+  importData(raw) {
+    let data;
+    try {
+      data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    } catch {
+      throw new Error('Não consegui ler o arquivo. Ele precisa ser o JSON exportado pelo Nestra.');
+    }
+
+    if (!data || typeof data !== 'object') {
+      throw new Error('Arquivo não reconhecido.');
+    }
+
+    const envsIn = Array.isArray(data.environments) ? data.environments : [];
+    const itemsIn = Array.isArray(data.items) ? data.items : [];
+
+    if (!envsIn.length && !itemsIn.length) {
+      throw new Error('O arquivo não tem ambientes nem itens para importar.');
+    }
+
+    const envsAqui = new Set(this.state.environments.map((e) => e.id));
+    const itensAqui = new Set(this.state.items.map((i) => i.id));
+    const agora = new Date().toISOString();
+
+    /* Ambientes iguais de nome, vindos de contas diferentes, têm
+       identificadores diferentes. Sem casar por nome, importar numa conta
+       recém-criada produziria dois "Trabalho", dois "Estudos" e dois
+       "Pessoal" — os de exemplo e os do arquivo. Aqui o que chega é
+       reconhecido pelo nome e os itens são religados ao ambiente que já
+       existe. */
+    const porNome = new Map(
+      this.state.environments.map((e) => [String(e.name).trim().toLowerCase(), e.id]),
+    );
+    const religar = new Map();   // id do arquivo → id daqui
+
+    let ambientes = 0;
+    let itens = 0;
+
+    /* --- ambientes --- */
+    envsIn.forEach((e, i) => {
+      if (!e || !e.id || envsAqui.has(e.id)) return;
+
+      const chave = String(e.name || '').trim().toLowerCase();
+      const jaExiste = porNome.get(chave);
+      if (jaExiste) {
+        religar.set(e.id, jaExiste);
+        return;
+      }
+
+      const env = {
+        id: e.id,
+        name: String(e.name || 'Ambiente').slice(0, 60),
+        slug: e.slug || slugify(e.name || 'ambiente'),
+        color: /^#[0-9a-f]{6}$/i.test(e.color) ? e.color : '#2F6BFF',
+        icon: String(e.icon || 'layers').slice(0, 30),
+        description: e.description || null,
+        position: Number.isInteger(e.position) ? e.position : this.state.environments.length + i,
+        isDefault: false,          // o padrão é uma escolha local, não vem no arquivo
+        archivedAt: e.archivedAt || null,
+        createdAt: e.createdAt || agora,
+      };
+
+      this.state.environments.push(env);
+      envsAqui.add(env.id);
+      porNome.set(chave, env.id);
+      this.queue('POST', '/environments', env);
+      ambientes++;
+    });
+
+    /* --- itens --- */
+    itemsIn.forEach((i) => {
+      if (!i || !i.id || itensAqui.has(i.id)) return;
+      const titulo = String(i.title || '').trim();
+      if (!titulo) return;
+
+      /* Segue o religamento por nome; e um item que aponta para um
+         ambiente que não veio no arquivo iria parar num lugar invisível,
+         então cai na caixa de entrada, onde a pessoa vê e decide. */
+      const alvo = religar.get(i.environmentId) || i.environmentId;
+      const ambienteValido = alvo && envsAqui.has(alvo);
+
+      const item = {
+        id: i.id,
+        environmentId: ambienteValido ? alvo : null,
+        type: ['task', 'reminder', 'commitment', 'idea'].includes(i.type) ? i.type : 'task',
+        title: titulo.slice(0, 280),
+        description: i.description || null,
+        status: ['pending', 'done', 'archived'].includes(i.status) ? i.status : 'pending',
+        priority: ['low', 'normal', 'high', 'urgent'].includes(i.priority) ? i.priority : 'normal',
+        dueDate: i.dueDate || null,
+        dueTime: i.dueTime || null,
+        timePeriod: i.timePeriod || 'any',
+        pinned: Boolean(i.pinned),
+        source: i.source || 'import',
+        rawInput: i.rawInput || null,
+        parseConfidence: i.parseConfidence ?? null,
+        needsReview: Boolean(i.needsReview),
+        checklist: Array.isArray(i.checklist) ? i.checklist : [],
+        tags: Array.isArray(i.tags) ? i.tags : [],
+        snoozedUntil: i.snoozedUntil || null,
+        completedAt: i.completedAt || null,
+        deletedAt: i.deletedAt || null,
+        createdAt: i.createdAt || agora,
+        updatedAt: agora,
+      };
+
+      this.state.items.push(item);
+      itensAqui.add(item.id);
+      this.queue('POST', '/items', item);
+      itens++;
+    });
+
+    // ordem de sempre: o mais recente primeiro
+    this.state.items.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+
+    this.persist();
+    this.emit('environments');
+    this.emit('items', { action: 'import' });
+
+    const ignorados = (envsIn.length - ambientes) + (itemsIn.length - itens);
+    return { ambientes, itens, ignorados };
+  }
+
   /* ---------------- exportação (§18) ---------------- */
 
   exportJSON() {

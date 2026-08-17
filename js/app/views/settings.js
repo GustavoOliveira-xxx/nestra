@@ -113,6 +113,62 @@ function logoPicker(onChange) {
   return el('div', {}, [zone, actions]);
 }
 
+/* ---------------------------------------------------------------------
+   IMPORTAR UM EXPORT
+
+   O par que faltava do "Baixar JSON". Sem ele, exportar não era levar os
+   dados embora — era só olhar para eles de fora.
+
+   O caso concreto: o conteúdo fica guardado por endereço, então publicar
+   o site em outro lugar abre um espaço vazio, com tudo intacto no
+   endereço antigo. Aqui está a ponte entre os dois.
+   --------------------------------------------------------------------- */
+function importButton(onDone) {
+  const input = el('input', {
+    type: 'file',
+    accept: 'application/json,.json',
+    class: 'sr-only',
+    id: 'importFile',
+  });
+
+  const botao = el('button', {
+    class: 'btn btn--outline btn--sm',
+    html: icon('inbox', 15) + 'Escolher arquivo',
+    onClick: () => input.click(),
+  });
+
+  input.addEventListener('change', async () => {
+    const arquivo = input.files?.[0];
+    if (!arquivo) return;
+
+    try {
+      const texto = await arquivo.text();
+      const { ambientes, itens, ignorados } = store.importData(texto);
+
+      const partes = [];
+      if (ambientes) partes.push(`${ambientes} ${ambientes === 1 ? 'ambiente' : 'ambientes'}`);
+      if (itens) partes.push(`${itens} ${itens === 1 ? 'item' : 'itens'}`);
+
+      if (!partes.length) {
+        toast('Esse arquivo já tinha sido importado: nada de novo para trazer.');
+      } else {
+        toast(`Importado: ${partes.join(' e ')}.` +
+          (ignorados ? ` ${ignorados} já existiam por aqui.` : ''), { kind: 'success' });
+        // Se houver servidor, o que entrou sobe agora
+        store.flush();
+      }
+
+      onDone?.();
+    } catch (err) {
+      toast(err.message || 'Não consegui importar esse arquivo.', { kind: 'error' });
+    } finally {
+      input.value = '';   // permite reescolher o mesmo arquivo
+    }
+  });
+
+  return el('div', { class: 'row gap-2' }, [botao, input]);
+}
+
 const TABS = [
   { id: 'appearance', label: 'Aparência', icon: 'sparkle' },
   { id: 'behavior', label: 'Comportamento', icon: 'settings' },
@@ -440,6 +496,9 @@ export function renderSettings(root, { onNavigate, applyPrefs }) {
             toast('Exportação pronta.', { kind: 'success' });
           },
         })),
+      row('Importar um JSON',
+        'Traz de volta ambientes e itens de um export do Nestra — inclusive de outro endereço ou de outro navegador. Nada é sobrescrito: o que já existe aqui é mantido, e importar o mesmo arquivo duas vezes não duplica nada.',
+        importButton(rerender)),
     );
 
     /* --- Sincronização entre aparelhos --- */
