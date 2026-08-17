@@ -9,6 +9,86 @@ mensagem e autoria, sem sobrescrever nada à mão.
 
 ---
 
+# Terceira rodada
+
+## 9. Carregamento ao navegar pela barra lateral
+
+Trocar de seção monta uma tela inteira, e isso acontecia em silêncio.
+Agora a marca aparece girando sobre a área de conteúdo enquanto a próxima
+tela é montada, na mesma linguagem da abertura do site. Cobre só o
+conteúdo, não a barra lateral nem o topo: quem clicou continua vendo onde
+está e pode mudar de ideia no meio.
+
+## 10. O retângulo em branco ao trocar de aba
+
+A abertura da tela Hoje aparecia vazia, com ícone de imagem quebrada,
+durante a troca para outra seção.
+
+A causa era a ordem das operações. As peças 3D eram desmontadas **antes**
+de o conteúdo ser trocado — mas a troca tem uma animação de saída de
+quase 300 ms, na qual o nó continua na tela. O contexto WebGL era
+destruído enquanto o canvas ainda estava visível, e canvas sem contexto
+não desenha nada.
+
+A limpeza passou a acontecer no instante exato em que o conteúdo antigo
+sai do documento. Como o pedido foi garantir que não aconteça em item
+nenhum, entraram mais duas defesas, nas três peças (marca, ambiente e
+cartão):
+
+- ao destruir uma peça, o canvas sai de cena junto — mesmo que o nó demore
+  a ser removido, não sobra retângulo claro no lugar;
+- `webglcontextlost` passou a ser tratado: o navegador pode tomar o
+  contexto de volta a qualquer momento (troca de GPU, aba parada, memória
+  apertada), e agora isso faz o plano B em CSS entrar no lugar.
+
+Verificado com um vigia que percorre todas as telas a cada quadro
+procurando canvas oculto e ainda anexado ao documento: **zero
+ocorrências**, tanto navegando por URL quanto clicando na barra lateral.
+
+## 11. Conta que vale em qualquer aparelho
+
+O motivo de não dar para entrar no celular ficou claro: o site está no
+**GitHub Pages**, que entrega arquivos e nada mais. A pasta `api/` nunca
+rodou ali — e sem ela não existe onde guardar conta.
+
+O caminho escolhido foi publicar na Vercel. Está tudo em
+**`docs/PUBLICAR.md`**: passo a passo, as duas variáveis de ambiente, uma
+tabela que traduz cada resposta de `/api/health` no que fazer, e o aviso
+de que contas criadas no Pages não migram.
+
+Antes de recomendar isso, o backend foi exercitado de verdade — um
+PostgreSQL 16 local, o esquema do repositório aplicado nele e as próprias
+funções de `api/` servidas como a Vercel serviria. Duas correções saíram
+desse exercício:
+
+- **o cookie de sessão era `SameSite=None`**, que é o modo que os
+  navegadores de celular mais restringem. No iOS, com a prevenção de
+  rastreamento que vem ligada, ele pode não ser guardado — a pessoa entra,
+  recarrega e está deslogada. Passou a ser `Lax`, que é mais seguro e
+  sobrevive a essas proteções;
+- **banco fora do ar virava um 500** e o app tratava como "não há API",
+  deixando um "somente neste dispositivo" sem explicação. Agora
+  `/api/health` se identifica e diz o que falta, e a tela de entrar
+  repassa o motivo.
+
+A tela de acesso também passou a dizer, **antes da senha**, onde a conta
+vai morar. Descobrir que ela é só daquele navegador depois de tentar
+entrar no celular é a pior hora possível.
+
+### Arquivos desta rodada
+
+    api/_lib/http.js           cookie SameSite conforme a origem
+    api/health.js              diagnóstico em vez de 500 mudo
+    js/app/api.js              distingue "sem API" de "banco fora"
+    js/gfx/interactions.js     carregamento da seção, limpeza no swap
+    js/gfx/{envhero,orb,logo3d}.js   canvas nunca fica morto na tela
+    js/main.js                 ordem da limpeza, aviso na tela de acesso
+    css/fx.css, css/views.css  véu de carregamento, aviso de acesso
+    docs/PUBLICAR.md           como publicar (novo)
+    .gitignore                 faltava (novo)
+
+---
+
 # Segunda rodada
 
 ## 6. Load em todos os cliques, do tamanho do alvo

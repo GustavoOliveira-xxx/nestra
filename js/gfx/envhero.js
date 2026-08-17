@@ -327,6 +327,7 @@ export class EnvHero {
   constructor(canvas, { color = '#2F6BFF', icon = 'layers', energy = 0 } = {}) {
     this.canvas = canvas;
     this.host = canvas.closest('.env-hero') || canvas.parentElement;
+    this.hexColor = color;
     this.color = hexToRgb(color);
     this.shape = SHAPE_BY_ICON[icon] ?? 0;
     this.energy = Math.max(0, Math.min(1, energy));
@@ -466,6 +467,19 @@ export class EnvHero {
 
     this._onQuality = () => { this._dirty = true; };
     quality.addEventListener('change', this._onQuality);
+
+    /* O navegador pode tomar de volta o contexto WebGL a qualquer momento
+       — troca de GPU, aba em segundo plano por muito tempo, memória
+       apertada. Sem tratar isso, o canvas fica na tela sem nada dentro.
+       Aqui ele sai de cena e o plano B em CSS entra no lugar. */
+    this._onLost = (ev) => {
+      ev.preventDefault();
+      this.stop();
+      this.gl = null;
+      glBudget.release(this);
+      mountCssFallback(this.canvas, { color: this.hexColor });
+    };
+    this.canvas.addEventListener('webglcontextlost', this._onLost);
   }
 
   resize() {
@@ -559,6 +573,7 @@ export class EnvHero {
     this.host?.removeEventListener('pointerleave', this._onLeave);
     this._unwatch?.();
     this._unobserve?.();
+    this.canvas.removeEventListener('webglcontextlost', this._onLost);
 
     if (this.gl) {
       glBudget.release(this);
@@ -566,6 +581,12 @@ export class EnvHero {
       if (lose) lose.loseContext();
       this.gl = null;
     }
+
+    /* Um canvas sem contexto não desenha nada, mas continua ocupando o
+       espaço dele — e em alguns navegadores aparece como um retângulo
+       claro. Tirá-lo de cena junto com o contexto fecha esse buraco de
+       uma vez, mesmo que o nó ainda demore para sair do documento. */
+    this.canvas.style.display = 'none';
 
     // Sem a marca, quem reaproveita o nó sabe que precisa montar de novo
     if (this.host?.dataset?.alive === 'gl') delete this.host.dataset.alive;

@@ -91,6 +91,29 @@
 /* A marca fica acima da grade da cortina */
 .fx-veil__loader { position: relative; z-index: 2; }
 
+/* Carregamento de uma seção, sobre a área de conteúdo.
+   Fica presa ao topo da região visível em vez de centralizada na altura
+   inteira: numa lista longa, o centro do conteúdo pode estar bem abaixo
+   da dobra, e a marca giraria onde ninguém vê. */
+.view-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: min(22vh, 180px);
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--bg) 82%, transparent),
+      color-mix(in srgb, var(--bg) 62%, transparent));
+  backdrop-filter: blur(3px);
+  pointer-events: none;
+}
+.main { position: relative; }
+
+[data-gfx='low'] .view-loading { backdrop-filter: none; }
+
 .fx-veil::after {
   content: '';
   position: absolute;

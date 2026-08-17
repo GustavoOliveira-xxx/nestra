@@ -230,9 +230,10 @@ export function bindAutoLoading(root = document) {
  * e desfoca, o que entra sobe em escada. Nada de corte seco.
  */
 export async function swapView(container, render, options = {}) {
-  const { direction = 'forward' } = options;
+  const { direction = 'forward', onSwap = null } = options;
 
   if (reduced() || !container.children.length) {
+    onSwap?.();
     container.replaceChildren();
     render(container);
     return;
@@ -259,6 +260,12 @@ export async function swapView(container, render, options = {}) {
   );
 
   await Promise.all(outAnim.map((a) => a.finished.catch(() => {})));
+
+  /* Só agora as peças 3D podem ser desmontadas.
+     Desmontá-las antes — que era o que acontecia — destruía o contexto
+     WebGL enquanto o nó ainda estava na tela saindo de cena, e o canvas
+     morto virava um retângulo em branco durante a animação inteira. */
+  onSwap?.();
 
   container.replaceChildren();
   render(container);
@@ -336,6 +343,55 @@ export function brandLoader(label) {
   }
 
   return box;
+}
+
+/**
+ * O carregamento da própria página, sobre a área de conteúdo.
+ *
+ * Trocar de seção pela barra lateral monta uma tela inteira: a lista, os
+ * agrupamentos, as peças 3D. Isso acontece rápido, e antes acontecia em
+ * silêncio — clicava-se em "Ambientes" e a tela simplesmente pulava. Aqui
+ * a marca aparece girando por cima do conteúdo enquanto a próxima tela é
+ * montada, com a mesma linguagem da abertura do site.
+ *
+ * Cobre só a área de conteúdo, não a barra lateral nem o topo: quem
+ * clicou continua vendo onde está e pode mudar de ideia no meio.
+ *
+ * @returns {() => Promise<void>} chame para encerrar; ela respeita o
+ *          tempo mínimo antes de sumir, para não piscar.
+ */
+export function viewLoading(host, { minMs = 420 } = {}) {
+  if (reduced() || !host) return async () => {};
+
+  const t0 = performance.now();
+
+  // Navegação rápida não pode empilhar véus por cima uns dos outros
+  host.querySelectorAll(':scope > .view-loading').forEach((old) => old.remove());
+
+  const veil = document.createElement('div');
+  veil.className = 'view-loading';
+  veil.setAttribute('aria-hidden', 'true');
+  veil.appendChild(brandLoader());
+  host.appendChild(veil);
+
+  veil.animate([{ opacity: 0 }, { opacity: 1 }],
+    { duration: 140, easing: 'ease-out', fill: 'forwards' });
+
+  /* Rede de segurança: se por qualquer motivo o encerramento não for
+     chamado — uma exceção no meio da montagem da tela, por exemplo —, o
+     véu sai sozinho. Um carregamento preso sobre o conteúdo seria pior
+     do que qualquer falha que ele estivesse escondendo. */
+  const failsafe = setTimeout(() => veil.remove(), 6000);
+
+  return async () => {
+    const elapsed = performance.now() - t0;
+    if (elapsed < minMs) await sleep(minMs - elapsed);
+
+    clearTimeout(failsafe);
+    const out = veil.animate([{ opacity: 1 }, { opacity: 0 }],
+      { duration: 260, easing: 'ease-out', fill: 'forwards' });
+    out.finished.then(() => veil.remove()).catch(() => veil.remove());
+  };
 }
 
 export function screenTransition() {

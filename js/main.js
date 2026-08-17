@@ -11,7 +11,7 @@ import { Scene } from './gfx/scene.js';
 import { initFx, bindRipple, bindCursorGlow, bindReveal, typewriter, bindTilt } from './gfx/fx.js';
 import {
   bindGlobalClick, bindAutoLoading, bindCursorTrail,
-  swapView, screenTransition, withLoading, celebrate,
+  swapView, screenTransition, viewLoading, withLoading, celebrate,
 } from './gfx/interactions.js';
 import { clearOrbs } from './gfx/orb.js';
 import { clearEnvHeroes } from './gfx/envhero.js';
@@ -610,13 +610,27 @@ function renderAuth(mode) {
         text: isRegister ? 'Entrar' : 'Criar agora',
       }),
     ]),
-    el('p', {
-      class: 'auth__foot',
-      style: { marginTop: 'var(--s-3)', fontSize: 'var(--fs-xs)', color: 'var(--text-4)' },
-      text: store.state.mode === 'remote'
-        ? 'Conectado ao banco Neon.'
-        : 'Sem API publicada: os dados ficam apenas neste navegador.',
-    }),
+    /* Onde a conta vai morar — dito antes de a pessoa digitar a senha.
+       Em modo local isso não é um detalhe técnico: a conta criada aqui
+       não existe em nenhum outro aparelho, e descobrir isso só depois de
+       tentar entrar no celular é a pior hora possível. */
+    store.state.mode === 'remote'
+      ? el('p', {
+          class: 'auth__note auth__note--ok',
+          html: icon('devices', 14) +
+            '<span>Sua conta vale em qualquer aparelho: entre com o mesmo e-mail no celular e verá os mesmos itens.</span>',
+        })
+      : el('p', {
+          class: 'auth__note auth__note--warn',
+          html: icon('alert', 14) + '<span>' + (api.degraded
+            // A API existe: o problema é outro, e dá para nomear
+            ? `<b>O servidor respondeu, mas o banco não.</b> ${api.degraded.message} ` +
+              'Enquanto isso, a conta criada aqui fica só neste navegador.'
+            : '<b>Este endereço guarda os dados só neste navegador.</b> ' +
+              'A conta criada aqui não vai existir no celular — e entrar com ela lá abriria um espaço vazio. ' +
+              'Para a mesma conta valer nos dois, o site precisa ser publicado junto da API.'
+          ) + '</span>',
+        }),
     el('p', { class: 'auth__foot', style: { marginTop: 'var(--s-4)' } }, [
       el('a', { href: '#/', text: '← Voltar para a apresentação' }),
     ]),
@@ -924,20 +938,31 @@ function renderCurrentView({ animate = false } = {}) {
 
   /* As peças 3D vivem só enquanto a tela delas existe. Sair da tela sem
      desmontá-las deixaria contextos WebGL pendurados — e o navegador tem
-     um teto baixo deles, ainda mais no celular. */
-  clearOrbs();
-  if (r.name !== 'environment') {
-    clearEnvHeroes();
-    root.__envHero = null;
-  }
-  if (r.name !== 'today') {
-    clearTodayBrand();
-    root.__todayHero = null;
-  }
+     um teto baixo deles, ainda mais no celular.
+
+     Mas desmontar cedo demais é pior: o nó continua na tela durante a
+     animação de saída, e um canvas sem contexto vira um retângulo em
+     branco. Por isso a limpeza é entregue ao `swapView`, que a executa
+     no instante exato em que o conteúdo antigo sai do documento. */
+  const cleanup = () => {
+    clearOrbs();
+    if (r.name !== 'environment') {
+      clearEnvHeroes();
+      root.__envHero = null;
+    }
+    if (r.name !== 'today') {
+      clearTodayBrand();
+      root.__todayHero = null;
+    }
+  };
 
   if (animate) {
-    swapView(root, draw);
+    // Navegar pela barra lateral monta uma tela inteira: a marca girando
+    // por cima do conteúdo mostra que isso está acontecendo.
+    const done = viewLoading($('.main'));
+    swapView(root, draw, { onSwap: cleanup }).then(done, done);
   } else {
+    cleanup();
     root.replaceChildren();
     draw(root);
   }

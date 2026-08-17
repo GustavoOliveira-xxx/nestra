@@ -1,7 +1,7 @@
 From 262f4108543d2bf96cc4e091a3d7d6516d03f8f9 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Mon, 17 Aug 2026 01:47:54 +0000
-Subject: [PATCH 1/2] =?UTF-8?q?Sincroniza=20a=20conta=20entre=20aparelhos?=
+Subject: [PATCH 1/4] =?UTF-8?q?Sincroniza=20a=20conta=20entre=20aparelhos?=
  =?UTF-8?q?=20e=20refaz=20a=20decora=C3=A7=C3=A3o=203D?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -3072,7 +3072,7 @@ index ed5a59e..a07f1a1 100644
 From d9e3bb89eb754c797aa9c382d41d2b3950c9785d Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Mon, 17 Aug 2026 03:05:39 +0000
-Subject: [PATCH 2/2] =?UTF-8?q?Marca=203D=20na=20tela=20Hoje,=20fundo=20vi?=
+Subject: [PATCH 2/4] =?UTF-8?q?Marca=203D=20na=20tela=20Hoje,=20fundo=20vi?=
  =?UTF-8?q?s=C3=ADvel=20e=20load=20proporcional?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -4112,6 +4112,857 @@ index 8ec2b9e..836ad56 100644
  
    if (animate) {
      swapView(root, draw);
+-- 
+2.43.0
+
+
+From 419bab8bd765ff01ef5a4f0611e39405498de773 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 17 Aug 2026 11:22:09 +0000
+Subject: [PATCH 3/4] =?UTF-8?q?Corrige=20o=20canvas=20em=20branco=20na=20t?=
+ =?UTF-8?q?roca=20de=20tela=20e=20carrega=20a=20se=C3=A7=C3=A3o=20com=20a?=
+ =?UTF-8?q?=20marca?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+**O retângulo em branco ao trocar de aba**
+
+A abertura da tela Hoje aparecia vazia, com o ícone de imagem quebrada,
+durante a troca para outra seção.
+
+A causa estava na ordem. `renderCurrentView` desmontava as peças 3D
+primeiro e só então pedia a troca de conteúdo — mas a troca tem uma
+animação de saída de quase 300ms, na qual o nó continua na tela. Ou seja:
+o contexto WebGL era destruído enquanto o canvas ainda estava visível, e
+canvas sem contexto não desenha nada.
+
+A limpeza passou a ser entregue ao `swapView`, que a executa no instante
+exato em que o conteúdo antigo sai do documento.
+
+Como o pedido foi garantir que não aconteça em item nenhum, entraram
+mais duas defesas, nas três peças (marca, ambiente e cartão):
+
+- ao destruir uma peça, o canvas sai de cena junto. Mesmo que o nó demore
+  a ser removido, não sobra um retângulo claro no lugar;
+- `webglcontextlost` é tratado. O navegador pode tomar o contexto de
+  volta a qualquer momento — troca de GPU, aba parada, memória apertada —
+  e agora isso faz o plano B em CSS entrar no lugar, em vez de deixar um
+  vazio.
+
+Verificado com um vigia que percorre todas as telas a cada quadro
+procurando canvas oculto e ainda anexado: zero ocorrências, tanto pela
+navegação por URL quanto clicando na barra lateral.
+
+**Carregamento ao navegar pela barra lateral**
+
+Trocar de seção monta uma tela inteira e antes acontecia em silêncio.
+Agora a marca aparece girando sobre a área de conteúdo enquanto a
+próxima tela é montada, na mesma linguagem da abertura do site.
+
+Cobre só o conteúdo, não a barra lateral nem o topo: quem clicou continua
+vendo onde está e pode mudar de ideia no meio. Tem tempo mínimo, para não
+piscar, e uma rede de segurança que o retira sozinho — um carregamento
+preso sobre o conteúdo seria pior do que qualquer falha que ele
+estivesse escondendo.
+
+**Onde a conta mora, dito antes da senha**
+
+Em modo local, a tela de acesso avisava com uma linha cinza de rodapé. Só
+que isso não é um detalhe técnico: a conta criada ali não existe em
+nenhum outro aparelho, e descobrir isso depois de tentar entrar no
+celular é a pior hora possível. O aviso virou parte do formulário e diz o
+que acontece e o que falta para a conta valer nos dois.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01JsKkE7gaFSW9JmXiX6Bgi8
+---
+ css/fx.css             | 23 ++++++++++++++++
+ css/views.css          | 23 ++++++++++++++++
+ js/gfx/envhero.js      | 21 +++++++++++++++
+ js/gfx/interactions.js | 58 ++++++++++++++++++++++++++++++++++++++++-
+ js/gfx/logo3d.js       | 17 ++++++++++++
+ js/gfx/orb.js          | 41 ++++++++++++++++++++++-------
+ js/main.js             | 59 ++++++++++++++++++++++++++++--------------
+ 7 files changed, 212 insertions(+), 30 deletions(-)
+
+diff --git a/css/fx.css b/css/fx.css
+index cfc7c80..165c175 100644
+--- a/css/fx.css
++++ b/css/fx.css
+@@ -91,6 +91,29 @@
+ /* A marca fica acima da grade da cortina */
+ .fx-veil__loader { position: relative; z-index: 2; }
+ 
++/* Carregamento de uma seção, sobre a área de conteúdo.
++   Fica presa ao topo da região visível em vez de centralizada na altura
++   inteira: numa lista longa, o centro do conteúdo pode estar bem abaixo
++   da dobra, e a marca giraria onde ninguém vê. */
++.view-loading {
++  position: absolute;
++  inset: 0;
++  z-index: 30;
++  display: flex;
++  align-items: flex-start;
++  justify-content: center;
++  padding-top: min(22vh, 180px);
++  background:
++    linear-gradient(180deg,
++      color-mix(in srgb, var(--bg) 82%, transparent),
++      color-mix(in srgb, var(--bg) 62%, transparent));
++  backdrop-filter: blur(3px);
++  pointer-events: none;
++}
++.main { position: relative; }
++
++[data-gfx='low'] .view-loading { backdrop-filter: none; }
++
+ .fx-veil::after {
+   content: '';
+   position: absolute;
+diff --git a/css/views.css b/css/views.css
+index 89458a1..7e1d6b1 100644
+--- a/css/views.css
++++ b/css/views.css
+@@ -339,6 +339,29 @@
+ .auth__form  { display: flex; flex-direction: column; gap: var(--s-4); }
+ .auth__foot  { margin-top: var(--s-5); font-size: var(--fs-sm); color: var(--text-3); text-align: center; }
+ 
++/* Onde a conta vai morar — o aviso é parte do formulário, não rodapé */
++.auth__note {
++  display: flex;
++  align-items: flex-start;
++  gap: 10px;
++  margin-top: var(--s-4);
++  padding: 11px 13px;
++  border: 1px solid var(--line-2);
++  border-left-width: 2px;
++  border-radius: var(--r-2);
++  background: var(--surface);
++  font-size: var(--fs-xs);
++  line-height: 1.55;
++  color: var(--text-2);
++  text-align: left;
++}
++.auth__note svg { flex: 0 0 14px; margin-top: 2px; }
++.auth__note b { color: var(--text); font-weight: 600; }
++.auth__note--ok   { border-left-color: var(--success); color: var(--text-2); }
++.auth__note--ok   svg { color: var(--success); }
++.auth__note--warn { border-left-color: var(--overdue); background: var(--overdue-dim); }
++.auth__note--warn svg { color: var(--overdue); }
++
+ /* Força da senha: quatro blocos retos */
+ .pw-meter { display: flex; gap: 3px; margin-top: 6px; }
+ .pw-meter i {
+diff --git a/js/gfx/envhero.js b/js/gfx/envhero.js
+index b2239c3..537e35a 100644
+--- a/js/gfx/envhero.js
++++ b/js/gfx/envhero.js
+@@ -327,6 +327,7 @@ export class EnvHero {
+   constructor(canvas, { color = '#2F6BFF', icon = 'layers', energy = 0 } = {}) {
+     this.canvas = canvas;
+     this.host = canvas.closest('.env-hero') || canvas.parentElement;
++    this.hexColor = color;
+     this.color = hexToRgb(color);
+     this.shape = SHAPE_BY_ICON[icon] ?? 0;
+     this.energy = Math.max(0, Math.min(1, energy));
+@@ -466,6 +467,19 @@ export class EnvHero {
+ 
+     this._onQuality = () => { this._dirty = true; };
+     quality.addEventListener('change', this._onQuality);
++
++    /* O navegador pode tomar de volta o contexto WebGL a qualquer momento
++       — troca de GPU, aba em segundo plano por muito tempo, memória
++       apertada. Sem tratar isso, o canvas fica na tela sem nada dentro.
++       Aqui ele sai de cena e o plano B em CSS entra no lugar. */
++    this._onLost = (ev) => {
++      ev.preventDefault();
++      this.stop();
++      this.gl = null;
++      glBudget.release(this);
++      mountCssFallback(this.canvas, { color: this.hexColor });
++    };
++    this.canvas.addEventListener('webglcontextlost', this._onLost);
+   }
+ 
+   resize() {
+@@ -559,6 +573,7 @@ export class EnvHero {
+     this.host?.removeEventListener('pointerleave', this._onLeave);
+     this._unwatch?.();
+     this._unobserve?.();
++    this.canvas.removeEventListener('webglcontextlost', this._onLost);
+ 
+     if (this.gl) {
+       glBudget.release(this);
+@@ -567,6 +582,12 @@ export class EnvHero {
+       this.gl = null;
+     }
+ 
++    /* Um canvas sem contexto não desenha nada, mas continua ocupando o
++       espaço dele — e em alguns navegadores aparece como um retângulo
++       claro. Tirá-lo de cena junto com o contexto fecha esse buraco de
++       uma vez, mesmo que o nó ainda demore para sair do documento. */
++    this.canvas.style.display = 'none';
++
+     // Sem a marca, quem reaproveita o nó sabe que precisa montar de novo
+     if (this.host?.dataset?.alive === 'gl') delete this.host.dataset.alive;
+     active.delete(this);
+diff --git a/js/gfx/interactions.js b/js/gfx/interactions.js
+index 5cc6a89..db555b0 100644
+--- a/js/gfx/interactions.js
++++ b/js/gfx/interactions.js
+@@ -230,9 +230,10 @@ export function bindAutoLoading(root = document) {
+  * e desfoca, o que entra sobe em escada. Nada de corte seco.
+  */
+ export async function swapView(container, render, options = {}) {
+-  const { direction = 'forward' } = options;
++  const { direction = 'forward', onSwap = null } = options;
+ 
+   if (reduced() || !container.children.length) {
++    onSwap?.();
+     container.replaceChildren();
+     render(container);
+     return;
+@@ -260,6 +261,12 @@ export async function swapView(container, render, options = {}) {
+ 
+   await Promise.all(outAnim.map((a) => a.finished.catch(() => {})));
+ 
++  /* Só agora as peças 3D podem ser desmontadas.
++     Desmontá-las antes — que era o que acontecia — destruía o contexto
++     WebGL enquanto o nó ainda estava na tela saindo de cena, e o canvas
++     morto virava um retângulo em branco durante a animação inteira. */
++  onSwap?.();
++
+   container.replaceChildren();
+   render(container);
+ 
+@@ -338,6 +345,55 @@ export function brandLoader(label) {
+   return box;
+ }
+ 
++/**
++ * O carregamento da própria página, sobre a área de conteúdo.
++ *
++ * Trocar de seção pela barra lateral monta uma tela inteira: a lista, os
++ * agrupamentos, as peças 3D. Isso acontece rápido, e antes acontecia em
++ * silêncio — clicava-se em "Ambientes" e a tela simplesmente pulava. Aqui
++ * a marca aparece girando por cima do conteúdo enquanto a próxima tela é
++ * montada, com a mesma linguagem da abertura do site.
++ *
++ * Cobre só a área de conteúdo, não a barra lateral nem o topo: quem
++ * clicou continua vendo onde está e pode mudar de ideia no meio.
++ *
++ * @returns {() => Promise<void>} chame para encerrar; ela respeita o
++ *          tempo mínimo antes de sumir, para não piscar.
++ */
++export function viewLoading(host, { minMs = 420 } = {}) {
++  if (reduced() || !host) return async () => {};
++
++  const t0 = performance.now();
++
++  // Navegação rápida não pode empilhar véus por cima uns dos outros
++  host.querySelectorAll(':scope > .view-loading').forEach((old) => old.remove());
++
++  const veil = document.createElement('div');
++  veil.className = 'view-loading';
++  veil.setAttribute('aria-hidden', 'true');
++  veil.appendChild(brandLoader());
++  host.appendChild(veil);
++
++  veil.animate([{ opacity: 0 }, { opacity: 1 }],
++    { duration: 140, easing: 'ease-out', fill: 'forwards' });
++
++  /* Rede de segurança: se por qualquer motivo o encerramento não for
++     chamado — uma exceção no meio da montagem da tela, por exemplo —, o
++     véu sai sozinho. Um carregamento preso sobre o conteúdo seria pior
++     do que qualquer falha que ele estivesse escondendo. */
++  const failsafe = setTimeout(() => veil.remove(), 6000);
++
++  return async () => {
++    const elapsed = performance.now() - t0;
++    if (elapsed < minMs) await sleep(minMs - elapsed);
++
++    clearTimeout(failsafe);
++    const out = veil.animate([{ opacity: 1 }, { opacity: 0 }],
++      { duration: 260, easing: 'ease-out', fill: 'forwards' });
++    out.finished.then(() => veil.remove()).catch(() => veil.remove());
++  };
++}
++
+ export function screenTransition() {
+   if (reduced()) return () => {};
+ 
+diff --git a/js/gfx/logo3d.js b/js/gfx/logo3d.js
+index f0c5da1..346f239 100644
+--- a/js/gfx/logo3d.js
++++ b/js/gfx/logo3d.js
+@@ -578,6 +578,17 @@ export class Logo3D {
+       else this.start();
+     };
+     document.addEventListener('visibilitychange', this._onVisibility);
++
++    /* Se o navegador tomar o contexto de volta, a marca não pode virar um
++       retângulo vazio: o canvas sai de cena e as cópias empilhadas em CSS
++       assumem — continua sendo a marca, e continua tendo volume. */
++    this._onLost = (ev) => {
++      ev.preventDefault();
++      this.stop();
++      this.gl = null;
++      this._fallback();
++    };
++    this.canvas.addEventListener('webglcontextlost', this._onLost);
+   }
+ 
+   resize() {
+@@ -660,6 +671,8 @@ export class Logo3D {
+     window.removeEventListener('resize', this._onResize);
+     if (this._onPointer) window.removeEventListener('pointermove', this._onPointer);
+     document.removeEventListener('visibilitychange', this._onVisibility);
++    if (this._onLost) this.canvas.removeEventListener('webglcontextlost', this._onLost);
++
+     if (this.gl) {
+       this.gl.deleteTexture(this.sdfTex);
+       this.gl.deleteTexture(this.colTex);
+@@ -667,6 +680,10 @@ export class Logo3D {
+       this.gl.deleteProgram(this.prog.p);
+       const lose = this.gl.getExtension('WEBGL_lose_context');
+       if (lose) lose.loseContext();
++      this.gl = null;
+     }
++
++    // Canvas sem contexto sai de cena, para nunca sobrar um vazio claro
++    this.canvas.style.display = 'none';
+   }
+ }
+diff --git a/js/gfx/orb.js b/js/gfx/orb.js
+index df955b1..4165316 100644
+--- a/js/gfx/orb.js
++++ b/js/gfx/orb.js
+@@ -177,6 +177,7 @@ function hexToRgb(hex) {
+ export class EnvOrb {
+   constructor(canvas, { color = '#2F6BFF', icon = 'layers', energy = 0 } = {}) {
+     this.canvas = canvas;
++    this.hexColor = color;
+     this.color = hexToRgb(color);
+     this.shape = SHAPE_BY_ICON[icon] ?? 0;
+     this.energy = Math.max(0, Math.min(1, energy));
+@@ -258,6 +259,17 @@ export class EnvOrb {
+     this._unobserve = onResize(this.canvas, () => { this._dirty = true; });
+     this._onQuality = () => { this._dirty = true; };
+     quality.addEventListener('change', this._onQuality);
++
++    // Contexto perdido pelo navegador: some o canvas e entra o cubo em CSS
++    this._onLost = (ev) => {
++      ev.preventDefault();
++      this.stop();
++      this.gl = null;
++      glBudget.release(this);
++      this.canvas.style.display = 'none';
++      mountCssCube(this.canvas, this.hexColor);
++    };
++    this.canvas.addEventListener('webglcontextlost', this._onLost);
+   }
+ 
+   resize() {
+@@ -326,6 +338,7 @@ export class EnvOrb {
+     quality.removeEventListener('change', this._onQuality);
+     this._unwatch?.();
+     this._unobserve?.();
++    this.canvas.removeEventListener('webglcontextlost', this._onLost);
+ 
+     if (this.gl) {
+       glBudget.release(this);
+@@ -333,6 +346,9 @@ export class EnvOrb {
+       if (lose) lose.loseContext();
+       this.gl = null;
+     }
++
++    // Canvas sem contexto sai de cena: nunca um retângulo vazio no lugar
++    this.canvas.style.display = 'none';
+     active.delete(this);
+   }
+ }
+@@ -342,22 +358,27 @@ export class EnvOrb {
+    -------------------------------------------------------------------- */
+ const active = new Set();
+ 
++/** Sem WebGL disponível: um sólido em CSS mantém a ideia de peça 3D. */
++function mountCssCube(canvas, color) {
++  const host = canvas.parentElement;
++  if (!host || host.querySelector('.orb-css')) return;
++
++  canvas.style.display = 'none';
++  const cube = document.createElement('div');
++  cube.className = 'orb-css';
++  cube.setAttribute('aria-hidden', 'true');
++  cube.style.setProperty('--orb-color', color || '#2F6BFF');
++  for (let i = 0; i < 6; i++) cube.appendChild(document.createElement('i'));
++  host.appendChild(cube);
++}
++
+ export function mountOrb(canvas, options) {
+   const orb = new EnvOrb(canvas, options);
+   if (orb.init()) {
+     active.add(orb);
+     return orb;
+   }
+-  // Sem WebGL disponível: um sólido em CSS mantém a ideia de peça 3D
+-  const host = canvas.parentElement;
+-  if (host && !host.querySelector('.orb-css')) {
+-    canvas.style.display = 'none';
+-    const cube = document.createElement('div');
+-    cube.className = 'orb-css';
+-    cube.style.setProperty('--orb-color', options?.color || '#2F6BFF');
+-    for (let i = 0; i < 6; i++) cube.appendChild(document.createElement('i'));
+-    host.appendChild(cube);
+-  }
++  mountCssCube(canvas, options?.color);
+   return null;
+ }
+ 
+diff --git a/js/main.js b/js/main.js
+index 836ad56..0854a11 100644
+--- a/js/main.js
++++ b/js/main.js
+@@ -11,7 +11,7 @@ import { Scene } from './gfx/scene.js';
+ import { initFx, bindRipple, bindCursorGlow, bindReveal, typewriter, bindTilt } from './gfx/fx.js';
+ import {
+   bindGlobalClick, bindAutoLoading, bindCursorTrail,
+-  swapView, screenTransition, withLoading, celebrate,
++  swapView, screenTransition, viewLoading, withLoading, celebrate,
+ } from './gfx/interactions.js';
+ import { clearOrbs } from './gfx/orb.js';
+ import { clearEnvHeroes } from './gfx/envhero.js';
+@@ -610,13 +610,23 @@ function renderAuth(mode) {
+         text: isRegister ? 'Entrar' : 'Criar agora',
+       }),
+     ]),
+-    el('p', {
+-      class: 'auth__foot',
+-      style: { marginTop: 'var(--s-3)', fontSize: 'var(--fs-xs)', color: 'var(--text-4)' },
+-      text: store.state.mode === 'remote'
+-        ? 'Conectado ao banco Neon.'
+-        : 'Sem API publicada: os dados ficam apenas neste navegador.',
+-    }),
++    /* Onde a conta vai morar — dito antes de a pessoa digitar a senha.
++       Em modo local isso não é um detalhe técnico: a conta criada aqui
++       não existe em nenhum outro aparelho, e descobrir isso só depois de
++       tentar entrar no celular é a pior hora possível. */
++    store.state.mode === 'remote'
++      ? el('p', {
++          class: 'auth__note auth__note--ok',
++          html: icon('devices', 14) +
++            '<span>Sua conta vale em qualquer aparelho: entre com o mesmo e-mail no celular e verá os mesmos itens.</span>',
++        })
++      : el('p', {
++          class: 'auth__note auth__note--warn',
++          html: icon('alert', 14) +
++            '<span><b>Este endereço guarda os dados só neste navegador.</b> ' +
++            'A conta criada aqui não vai existir no celular — e entrar com ela lá abriria um espaço vazio. ' +
++            'Para a mesma conta valer nos dois, o site precisa ser publicado junto da API.</span>',
++        }),
+     el('p', { class: 'auth__foot', style: { marginTop: 'var(--s-4)' } }, [
+       el('a', { href: '#/', text: '← Voltar para a apresentação' }),
+     ]),
+@@ -924,20 +934,31 @@ function renderCurrentView({ animate = false } = {}) {
+ 
+   /* As peças 3D vivem só enquanto a tela delas existe. Sair da tela sem
+      desmontá-las deixaria contextos WebGL pendurados — e o navegador tem
+-     um teto baixo deles, ainda mais no celular. */
+-  clearOrbs();
+-  if (r.name !== 'environment') {
+-    clearEnvHeroes();
+-    root.__envHero = null;
+-  }
+-  if (r.name !== 'today') {
+-    clearTodayBrand();
+-    root.__todayHero = null;
+-  }
++     um teto baixo deles, ainda mais no celular.
++
++     Mas desmontar cedo demais é pior: o nó continua na tela durante a
++     animação de saída, e um canvas sem contexto vira um retângulo em
++     branco. Por isso a limpeza é entregue ao `swapView`, que a executa
++     no instante exato em que o conteúdo antigo sai do documento. */
++  const cleanup = () => {
++    clearOrbs();
++    if (r.name !== 'environment') {
++      clearEnvHeroes();
++      root.__envHero = null;
++    }
++    if (r.name !== 'today') {
++      clearTodayBrand();
++      root.__todayHero = null;
++    }
++  };
+ 
+   if (animate) {
+-    swapView(root, draw);
++    // Navegar pela barra lateral monta uma tela inteira: a marca girando
++    // por cima do conteúdo mostra que isso está acontecendo.
++    const done = viewLoading($('.main'));
++    swapView(root, draw, { onSwap: cleanup }).then(done, done);
+   } else {
++    cleanup();
+     root.replaceChildren();
+     draw(root);
+   }
+-- 
+2.43.0
+
+
+From f5b553ac00a98fb9608fcbccdb929924dc40feed Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 17 Aug 2026 11:33:49 +0000
+Subject: [PATCH 4/4] =?UTF-8?q?Prepara=20e=20verifica=20a=20publica=C3=A7?=
+ =?UTF-8?q?=C3=A3o=20com=20conta=20por=20aparelho?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+O site está no GitHub Pages, que entrega arquivos e nada mais: a pasta
+api/ nunca rodou ali, e sem ela não existe onde guardar conta. Daí o
+"somente neste dispositivo" e a conta do computador não existir no
+celular. O caminho escolhido foi publicar na Vercel, onde as funções
+rodam ao lado do site e a descoberta automática da API já liga sozinha.
+
+Antes de recomendar isso, o backend foi exercitado de verdade: um
+PostgreSQL 16 local, o esquema do repositório aplicado nele e as próprias
+funções de api/ servidas como a Vercel serviria. Vinte e duas tabelas sem
+erro, e dezenove verificações passando — cadastro, sessão, criação e
+conclusão de item, e principalmente o isolamento: uma conta não enxerga
+nem altera item de outra, senha errada devolve a mesma mensagem de e-mail
+inexistente, e sem sessão nenhuma rota responde dado nenhum. Depois o
+fluxo inteiro em dois navegadores separados, como dois aparelhos.
+
+Esse exercício encontrou duas coisas que valia corrigir antes:
+
+**O cookie de sessão era SameSite=None**, que é o modo que os navegadores
+de celular mais restringem — no iOS, com a prevenção de rastreamento que
+vem ligada por padrão, ele pode simplesmente não ser guardado, e a pessoa
+entra, recarrega e está deslogada. Publicado tudo na mesma origem, Lax é
+mais seguro e sobrevive a essas proteções. O None só entra quando existe
+uma lista de origens externas configurada, que é quando ele é necessário.
+
+**Banco fora do ar virava 500**, o front tratava como "não há API" e a
+pessoa via um "somente neste dispositivo" sem explicação, sem ter como
+saber que faltava uma variável de ambiente. Agora /health responde 200 se
+identificando e dizendo o que falta, e a tela de entrar repassa o motivo.
+
+Junto vai docs/PUBLICAR.md, com o passo a passo, uma tabela que traduz
+cada resposta de /health no que fazer, e o aviso de que contas criadas no
+Pages não migram — elas existem só naquele navegador.
+
+Também entra um .gitignore, que faltava: sem ele um `npm install` deixa o
+node_modules pronto para ser commitado sem querer.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01JsKkE7gaFSW9JmXiX6Bgi8
+---
+ .gitignore       |   7 +++
+ api/_lib/http.js |  12 +++-
+ api/health.js    |  47 ++++++++++++++--
+ docs/PUBLICAR.md | 142 +++++++++++++++++++++++++++++++++++++++++++++++
+ js/app/api.js    |  12 +++-
+ js/main.js       |  12 ++--
+ 6 files changed, 220 insertions(+), 12 deletions(-)
+ create mode 100644 .gitignore
+ create mode 100644 docs/PUBLICAR.md
+
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..179962a
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,7 @@
++node_modules/
++.vercel/
++.env
++.env.*
++!.env.example
++.DS_Store
++*.log
+diff --git a/api/_lib/http.js b/api/_lib/http.js
+index 4104e4a..a72db36 100644
+--- a/api/_lib/http.js
++++ b/api/_lib/http.js
+@@ -65,12 +65,22 @@ export function parseCookies(req) {
+ }
+ 
+ export function setCookie(res, name, value, { maxAge = 60 * 60 * 24 * 30, clear = false } = {}) {
++  /* `SameSite=None` só é necessário quando o site e a API moram em
++     origens diferentes — e é justamente o modo que os navegadores de
++     celular mais restringem. No iOS, com "prevenir rastreamento entre
++     sites" ligado (que vem ligado), um cookie `None` pode simplesmente
++     não ser guardado, e a pessoa entra, recarrega e está deslogada.
++     Publicado tudo na mesma origem, `Lax` é mais seguro e sobrevive a
++     essas proteções. Só quando existe uma lista de origens externas
++     configurada é que o cookie precisa afrouxar. */
++  const crossSite = ALLOWED.length > 0;
++
+   const bits = [
+     `${name}=${clear ? '' : encodeURIComponent(value)}`,
+     'Path=/',
+     'HttpOnly',
+     'Secure',
+-    'SameSite=None',
++    crossSite ? 'SameSite=None' : 'SameSite=Lax',
+     `Max-Age=${clear ? 0 : maxAge}`,
+   ];
+   const prev = res.getHeader('Set-Cookie');
+diff --git a/api/health.js b/api/health.js
+index 3277bef..13b4f4c 100644
+--- a/api/health.js
++++ b/api/health.js
+@@ -1,11 +1,46 @@
++/* =====================================================================
++   GET /api/health — a API está de pé? o banco responde?
++
++   O front usa esta resposta para decidir entre sincronizar e guardar
++   tudo só no navegador. Por isso ela precisa distinguir dois casos que
++   parecem iguais de fora:
++
++     • não existe API publicada  → o navegador recebe 404 e cai no modo
++       local, que é o comportamento certo;
++     • a API existe mas o banco não respondeu → antes isto virava um 500,
++       o front tratava como "sem API" e a pessoa ficava com um "somente
++       neste dispositivo" sem explicação, sem ter como saber que faltava
++       só uma variável de ambiente.
++
++   O segundo caso agora responde 200 identificando o serviço e dizendo o
++   que falta, para a interface poder ser específica.
++   ===================================================================== */
++
+ import { sql } from './_lib/db.js';
+ import { handler, json } from './_lib/http.js';
+ 
+ export default handler(async (req, res) => {
+-  const rows = await sql`select 1 as ok`;
+-  json(res, 200, {
+-    ok: rows[0]?.ok === 1,
+-    service: 'nestra-api',
+-    time: new Date().toISOString(),
+-  });
++  const base = { service: 'nestra-api', time: new Date().toISOString() };
++
++  if (!process.env.DATABASE_URL) {
++    return json(res, 200, {
++      ...base,
++      ok: false,
++      reason: 'sem_banco',
++      message: 'A API está no ar, mas falta a variável DATABASE_URL.',
++    });
++  }
++
++  try {
++    const rows = await sql`select 1 as ok`;
++    return json(res, 200, { ...base, ok: rows[0]?.ok === 1 });
++  } catch {
++    // O detalhe fica no log; a resposta diz só o suficiente para agir
++    return json(res, 200, {
++      ...base,
++      ok: false,
++      reason: 'banco_indisponivel',
++      message: 'A API está no ar, mas o banco não respondeu. Confira a DATABASE_URL e se o esquema foi aplicado.',
++    });
++  }
+ });
+diff --git a/docs/PUBLICAR.md b/docs/PUBLICAR.md
+new file mode 100644
+index 0000000..3bd9264
+--- /dev/null
++++ b/docs/PUBLICAR.md
+@@ -0,0 +1,142 @@
++# Publicar o Nestra com conta que vale em qualquer aparelho
++
++O site hoje está no GitHub Pages. O Pages entrega arquivos e nada mais:
++ele não executa a pasta `api/`, e sem ela não existe onde guardar uma
++conta. É por isso que o app diz **“somente neste dispositivo”** e por que
++a conta criada no computador não aparece no celular.
++
++Publicando o mesmo repositório na Vercel, as funções passam a rodar ao
++lado do site, o app encontra a API sozinha e a sincronização liga sem
++nenhuma configuração no código.
++
++O tempo total é de uns dez minutos, quase todos esperando.
++
++---
++
++## O que você vai precisar
++
++- uma conta na [Vercel](https://vercel.com) (o plano gratuito basta);
++- uma conta no [Neon](https://neon.tech) (o plano gratuito basta);
++- o repositório no GitHub — já está.
++
++---
++
++## 1. Criar o banco no Neon
++
++1. Entre no Neon e crie um projeto. Região mais perto de você
++   (`South America (São Paulo)` se estiver no Brasil) deixa o app mais
++   rápido.
++2. Copie a **connection string** do projeto. Ela se parece com:
++
++       postgresql://usuario:senha@ep-algo-123456.sa-east-1.aws.neon.tech/neondb?sslmode=require
++
++Guarde essa linha: ela é a `DATABASE_URL` do passo 3.
++
++> Ela dá acesso total ao banco. Não coloque no repositório nem em
++> nenhum arquivo do projeto — ela vive só nas variáveis de ambiente da
++> Vercel, e o navegador nunca a recebe.
++
++## 2. Aplicar o esquema
++
++Na sua máquina, dentro da pasta do projeto:
++
++    npm install
++    DATABASE_URL='cole-a-string-aqui' npm run db:schema
++
++Isso cria as 22 tabelas, os índices e as políticas de isolamento por
++linha. O comando pode ser repetido sem problema: ele não apaga nada.
++
++## 3. Publicar na Vercel
++
++1. Em vercel.com → **Add New… → Project** → importe `nestra2`.
++2. Nas configurações de build, **não mude nada**: o `vercel.json` do
++   repositório já diz o que fazer.
++3. Antes de concluir, abra **Environment Variables** e cadastre duas:
++
++   | Nome | Valor |
++   |---|---|
++   | `DATABASE_URL` | a connection string do passo 1 |
++   | `NESTRA_IP_SALT` | um texto secreto qualquer, longo e estável |
++
++   O `NESTRA_IP_SALT` embaralha os endereços de IP usados para limitar
++   tentativas de login. Serve para que nem o próprio banco guarde IP em
++   claro. Escolha uma vez e não troque mais — trocar só zera a contagem
++   de tentativas.
++
++4. **Deploy**.
++
++## 4. Conferir
++
++Abra o endereço que a Vercel deu e olhe o rodapé da barra lateral:
++
++- **“sincronizado”** → está tudo certo, pode seguir;
++- **“somente neste dispositivo”** → veja o diagnóstico abaixo.
++
++Agora crie uma conta nova por ali. Depois abra o mesmo endereço no
++celular e entre com o mesmo e-mail e a mesma senha: os ambientes e os
++itens têm que estar lá.
++
++---
++
++## Quando alguma coisa não bate
++
++Abra `SEU-ENDERECO/api/health` no navegador. A resposta diz o que está
++acontecendo:
++
++| Resposta | O que significa | O que fazer |
++|---|---|---|
++| `{"service":"nestra-api","ok":true}` | API e banco de pé | nada, está certo |
++| `{"ok":false,"reason":"sem_banco"}` | falta a `DATABASE_URL` | cadastre a variável e publique de novo |
++| `{"ok":false,"reason":"banco_indisponivel"}` | a variável existe mas o banco não respondeu | confira se a string está inteira, se termina com `?sslmode=require` e se o esquema do passo 2 foi aplicado |
++| página 404 | as funções não subiram | confirme que a pasta `api/` está no repositório e que o `vercel.json` não foi alterado |
++
++A tela de entrar também mostra o motivo, em vez de só avisar que os dados
++ficam no aparelho.
++
++Depois de cadastrar ou mudar uma variável de ambiente é **preciso
++publicar de novo** — a Vercel só lê as variáveis no momento do deploy.
++
++---
++
++## Perguntas que costumam aparecer
++
++**E o endereço do GitHub Pages, continua funcionando?**
++Continua, e continua guardando os dados só no navegador. Se quiser evitar
++confusão, o mais limpo é desligar o Pages nas configurações do
++repositório e usar só o endereço da Vercel.
++
++**As contas que eu já criei vêm junto?**
++Não. Elas existem apenas no navegador onde foram criadas — o servidor
++nunca soube delas. Antes de migrar, entre na conta antiga, vá em
++**Configurações → Meus dados → Baixar JSON**, e depois crie a conta de
++novo no endereço publicado.
++
++**Posso usar meu próprio domínio?**
++Pode. Em Settings → Domains, na Vercel. Como o site e a API continuam na
++mesma origem, nada mais precisa ser ajustado.
++
++**E se eu quiser o site num endereço e a API em outro?**
++Aí cadastre também `NESTRA_ALLOWED_ORIGINS` com a lista de endereços do
++site, separados por vírgula. O servidor passa a aceitar aqueles cabeçalhos
++de origem e afrouxa o cookie de sessão para funcionar entre origens
++diferentes. Enquanto essa variável não existir, só a mesma origem é
++aceita — que é a configuração mais restrita e a recomendada.
++
++---
++
++## O que já foi verificado
++
++Antes de escrever este guia, o backend foi exercitado contra um
++PostgreSQL de verdade, com o mesmo código que vai rodar na Vercel:
++
++- o esquema aplica limpo, 22 tabelas, sem erro;
++- cadastro cria a conta e os três ambientes de exemplo;
++- o cookie de sessão sai `HttpOnly`, `Secure` e `SameSite=Lax`;
++- e-mail repetido é recusado sem confirmar que já existe;
++- uma conta não enxerga nem consegue alterar item de outra;
++- senha errada devolve a mesma mensagem de e-mail inexistente;
++- sem sessão, nenhuma rota responde dado nenhum.
++
++E o fluxo inteiro em dois navegadores separados, como dois aparelhos: a
++conta criada em um entra no outro, o item escrito em um aparece no outro
++sozinho, e concluir num reflete no outro.
+diff --git a/js/app/api.js b/js/app/api.js
+index 173859f..e3b78af 100644
+--- a/js/app/api.js
++++ b/js/app/api.js
+@@ -84,9 +84,19 @@ export const api = {
+         return false;
+       }
+       const payload = await res.json().catch(() => null);
+-      this.online = payload?.service === 'nestra-api';
++      const isNestra = payload?.service === 'nestra-api';
++
++      /* API publicada mas com o banco fora do ar é diferente de não haver
++         API nenhuma. Nos dois casos o app funciona local, mas só no
++         primeiro dá para dizer à pessoa o que exatamente falta. */
++      this.degraded = isNestra && payload.ok === false
++        ? { reason: payload.reason || 'desconhecido', message: payload.message || '' }
++        : null;
++
++      this.online = isNestra && payload.ok !== false;
+     } catch {
+       this.online = false;
++      this.degraded = null;
+     }
+     return this.online;
+   },
+diff --git a/js/main.js b/js/main.js
+index 0854a11..93c9c9e 100644
+--- a/js/main.js
++++ b/js/main.js
+@@ -622,10 +622,14 @@ function renderAuth(mode) {
+         })
+       : el('p', {
+           class: 'auth__note auth__note--warn',
+-          html: icon('alert', 14) +
+-            '<span><b>Este endereço guarda os dados só neste navegador.</b> ' +
+-            'A conta criada aqui não vai existir no celular — e entrar com ela lá abriria um espaço vazio. ' +
+-            'Para a mesma conta valer nos dois, o site precisa ser publicado junto da API.</span>',
++          html: icon('alert', 14) + '<span>' + (api.degraded
++            // A API existe: o problema é outro, e dá para nomear
++            ? `<b>O servidor respondeu, mas o banco não.</b> ${api.degraded.message} ` +
++              'Enquanto isso, a conta criada aqui fica só neste navegador.'
++            : '<b>Este endereço guarda os dados só neste navegador.</b> ' +
++              'A conta criada aqui não vai existir no celular — e entrar com ela lá abriria um espaço vazio. ' +
++              'Para a mesma conta valer nos dois, o site precisa ser publicado junto da API.'
++          ) + '</span>',
+         }),
+     el('p', { class: 'auth__foot', style: { marginTop: 'var(--s-4)' } }, [
+       el('a', { href: '#/', text: '← Voltar para a apresentação' }),
 -- 
 2.43.0
 

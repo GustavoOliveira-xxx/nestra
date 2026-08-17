@@ -65,12 +65,22 @@ export function parseCookies(req) {
 }
 
 export function setCookie(res, name, value, { maxAge = 60 * 60 * 24 * 30, clear = false } = {}) {
+  /* `SameSite=None` só é necessário quando o site e a API moram em
+     origens diferentes — e é justamente o modo que os navegadores de
+     celular mais restringem. No iOS, com "prevenir rastreamento entre
+     sites" ligado (que vem ligado), um cookie `None` pode simplesmente
+     não ser guardado, e a pessoa entra, recarrega e está deslogada.
+     Publicado tudo na mesma origem, `Lax` é mais seguro e sobrevive a
+     essas proteções. Só quando existe uma lista de origens externas
+     configurada é que o cookie precisa afrouxar. */
+  const crossSite = ALLOWED.length > 0;
+
   const bits = [
     `${name}=${clear ? '' : encodeURIComponent(value)}`,
     'Path=/',
     'HttpOnly',
     'Secure',
-    'SameSite=None',
+    crossSite ? 'SameSite=None' : 'SameSite=Lax',
     `Max-Age=${clear ? 0 : maxAge}`,
   ];
   const prev = res.getHeader('Set-Cookie');

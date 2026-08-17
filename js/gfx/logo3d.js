@@ -578,6 +578,17 @@ export class Logo3D {
       else this.start();
     };
     document.addEventListener('visibilitychange', this._onVisibility);
+
+    /* Se o navegador tomar o contexto de volta, a marca não pode virar um
+       retângulo vazio: o canvas sai de cena e as cópias empilhadas em CSS
+       assumem — continua sendo a marca, e continua tendo volume. */
+    this._onLost = (ev) => {
+      ev.preventDefault();
+      this.stop();
+      this.gl = null;
+      this._fallback();
+    };
+    this.canvas.addEventListener('webglcontextlost', this._onLost);
   }
 
   resize() {
@@ -660,6 +671,8 @@ export class Logo3D {
     window.removeEventListener('resize', this._onResize);
     if (this._onPointer) window.removeEventListener('pointermove', this._onPointer);
     document.removeEventListener('visibilitychange', this._onVisibility);
+    if (this._onLost) this.canvas.removeEventListener('webglcontextlost', this._onLost);
+
     if (this.gl) {
       this.gl.deleteTexture(this.sdfTex);
       this.gl.deleteTexture(this.colTex);
@@ -667,6 +680,10 @@ export class Logo3D {
       this.gl.deleteProgram(this.prog.p);
       const lose = this.gl.getExtension('WEBGL_lose_context');
       if (lose) lose.loseContext();
+      this.gl = null;
     }
+
+    // Canvas sem contexto sai de cena, para nunca sobrar um vazio claro
+    this.canvas.style.display = 'none';
   }
 }

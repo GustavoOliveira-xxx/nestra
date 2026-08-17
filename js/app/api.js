@@ -84,9 +84,19 @@ export const api = {
         return false;
       }
       const payload = await res.json().catch(() => null);
-      this.online = payload?.service === 'nestra-api';
+      const isNestra = payload?.service === 'nestra-api';
+
+      /* API publicada mas com o banco fora do ar é diferente de não haver
+         API nenhuma. Nos dois casos o app funciona local, mas só no
+         primeiro dá para dizer à pessoa o que exatamente falta. */
+      this.degraded = isNestra && payload.ok === false
+        ? { reason: payload.reason || 'desconhecido', message: payload.message || '' }
+        : null;
+
+      this.online = isNestra && payload.ok !== false;
     } catch {
       this.online = false;
+      this.degraded = null;
     }
     return this.online;
   },

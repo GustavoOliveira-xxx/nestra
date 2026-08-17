@@ -177,6 +177,7 @@ function hexToRgb(hex) {
 export class EnvOrb {
   constructor(canvas, { color = '#2F6BFF', icon = 'layers', energy = 0 } = {}) {
     this.canvas = canvas;
+    this.hexColor = color;
     this.color = hexToRgb(color);
     this.shape = SHAPE_BY_ICON[icon] ?? 0;
     this.energy = Math.max(0, Math.min(1, energy));
@@ -258,6 +259,17 @@ export class EnvOrb {
     this._unobserve = onResize(this.canvas, () => { this._dirty = true; });
     this._onQuality = () => { this._dirty = true; };
     quality.addEventListener('change', this._onQuality);
+
+    // Contexto perdido pelo navegador: some o canvas e entra o cubo em CSS
+    this._onLost = (ev) => {
+      ev.preventDefault();
+      this.stop();
+      this.gl = null;
+      glBudget.release(this);
+      this.canvas.style.display = 'none';
+      mountCssCube(this.canvas, this.hexColor);
+    };
+    this.canvas.addEventListener('webglcontextlost', this._onLost);
   }
 
   resize() {
@@ -326,6 +338,7 @@ export class EnvOrb {
     quality.removeEventListener('change', this._onQuality);
     this._unwatch?.();
     this._unobserve?.();
+    this.canvas.removeEventListener('webglcontextlost', this._onLost);
 
     if (this.gl) {
       glBudget.release(this);
@@ -333,6 +346,9 @@ export class EnvOrb {
       if (lose) lose.loseContext();
       this.gl = null;
     }
+
+    // Canvas sem contexto sai de cena: nunca um retângulo vazio no lugar
+    this.canvas.style.display = 'none';
     active.delete(this);
   }
 }
@@ -342,22 +358,27 @@ export class EnvOrb {
    -------------------------------------------------------------------- */
 const active = new Set();
 
+/** Sem WebGL disponível: um sólido em CSS mantém a ideia de peça 3D. */
+function mountCssCube(canvas, color) {
+  const host = canvas.parentElement;
+  if (!host || host.querySelector('.orb-css')) return;
+
+  canvas.style.display = 'none';
+  const cube = document.createElement('div');
+  cube.className = 'orb-css';
+  cube.setAttribute('aria-hidden', 'true');
+  cube.style.setProperty('--orb-color', color || '#2F6BFF');
+  for (let i = 0; i < 6; i++) cube.appendChild(document.createElement('i'));
+  host.appendChild(cube);
+}
+
 export function mountOrb(canvas, options) {
   const orb = new EnvOrb(canvas, options);
   if (orb.init()) {
     active.add(orb);
     return orb;
   }
-  // Sem WebGL disponível: um sólido em CSS mantém a ideia de peça 3D
-  const host = canvas.parentElement;
-  if (host && !host.querySelector('.orb-css')) {
-    canvas.style.display = 'none';
-    const cube = document.createElement('div');
-    cube.className = 'orb-css';
-    cube.style.setProperty('--orb-color', options?.color || '#2F6BFF');
-    for (let i = 0; i < 6; i++) cube.appendChild(document.createElement('i'));
-    host.appendChild(cube);
-  }
+  mountCssCube(canvas, options?.color);
   return null;
 }
 
