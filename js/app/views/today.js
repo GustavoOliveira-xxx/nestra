@@ -14,6 +14,8 @@ import { renderItem } from './items.js';
 import { createCapture } from './capture.js';
 import { humanDate, todayIn, toISODate } from '../nlp.js';
 import { celebrate } from '../../gfx/interactions.js';
+import { mountEnvHero, clearEnvHeroes } from '../../gfx/envhero.js';
+import { device } from '../../core/device.js';
 
 /** Anel de progresso do dia — quanto do que vencia hoje já saiu da frente. */
 function dayRing(done, total) {
@@ -219,6 +221,123 @@ export function renderToday(root, { onNavigate }) {
 }
 
 /* ---------------------------------------------------------------------
+   Abertura da tela de ambiente
+
+   A peça em 3D não é enfeite solto: a forma vem do ícone, a cor vem do
+   ambiente e o brilho interno vem de quanta coisa está pendente ali. Em
+   volta dela ficam o nome, a descrição e os números do ambiente.
+   --------------------------------------------------------------------- */
+function environmentHero(env, stats, { onNavigate }) {
+  const canvas = el('canvas', { class: 'env-hero__canvas', 'aria-hidden': 'true' });
+
+  const number = (value, label, modifier) =>
+    el('div', { class: 'env-hero__stat' + (modifier ? ' env-hero__stat--' + modifier : '') }, [
+      el('span', { class: 'env-hero__stat-n', text: String(value) }),
+      el('span', { class: 'env-hero__stat-l', text: label }),
+    ]);
+
+  const statsRow = el('div', { class: 'env-hero__stats' });
+
+  const paintStats = (s) => {
+    statsRow.replaceChildren(
+      number(s.pending, 'pendentes'),
+      s.overdue ? number(s.overdue, 'atrasados', 'overdue') : number(s.today, 'para hoje'),
+      number(s.done, 'concluídos'),
+    );
+  };
+  paintStats(stats);
+
+  const hero = el('section', {
+    class: 'env-hero',
+    style: { '--env-color': env.color },
+  }, [
+    el('div', { class: 'env-hero__stage' }, [
+      canvas,
+      el('span', { class: 'env-hero__aura', 'aria-hidden': 'true' }),
+    ]),
+
+    el('div', { class: 'env-hero__body' }, [
+      el('span', { class: 'env-hero__kicker' }, [
+        el('span', { class: 'env-hero__kicker-icon', html: icon(env.icon, 13) }),
+        el('span', { text: 'Ambiente' }),
+      ]),
+      el('h1', { class: 'env-hero__title', text: env.name }),
+      el('p', {
+        class: 'env-hero__desc',
+        text: env.description || 'Tudo o que pertence a este contexto fica reunido aqui.',
+      }),
+      statsRow,
+      el('div', { class: 'env-hero__actions' }, [
+        el('button', {
+          class: 'btn btn--ghost btn--sm',
+          html: icon('edit', 15) + 'Editar ambiente',
+          onClick: () => window.dispatchEvent(new CustomEvent('nestra:edit-env', { detail: env.id })),
+        }),
+        el('button', {
+          class: 'btn btn--ghost btn--sm',
+          html: icon('layers', 15) + 'Todos os ambientes',
+          onClick: () => onNavigate('environments'),
+        }),
+      ]),
+    ]),
+
+    el('span', {
+      class: 'env-hero__hint',
+      'aria-hidden': 'true',
+      text: device.touch ? 'arraste a peça' : 'mova o ponteiro · arraste para girar',
+    }),
+  ]);
+
+  hero.dataset.env = env.id;
+  hero.dataset.look = env.color + '·' + env.icon;
+  hero.dataset.alive = 'pending';
+  hero.updateStats = paintStats;
+
+  // O canvas precisa estar no documento para ter tamanho medido
+  requestAnimationFrame(() => {
+    if (!canvas.isConnected) return;
+    mountEnvHero(canvas, {
+      color: env.color,
+      icon: env.icon,
+      energy: Math.min(1, (stats.pending + stats.overdue * 2) / 14),
+    });
+  });
+
+  return hero;
+}
+
+/**
+ * Reaproveita a peça já montada.
+ *
+ * Marcar um item como concluído redesenha a tela inteira. Se a abertura
+ * fosse reconstruída junto, cada clique jogaria fora um contexto WebGL e
+ * abriria outro — o caminho mais curto para o navegador começar a
+ * descartar contextos e a peça sumir. Aqui o mesmo nó volta para a tela,
+ * com os números atualizados; só a troca de ambiente (ou de cor e ícone)
+ * constrói uma peça nova.
+ */
+function keepEnvironmentHero(root, env, stats, options) {
+  const cached = root.__envHero;
+  const look = env.color + '·' + env.icon;
+
+  if (cached &&
+      cached.dataset.env === env.id &&
+      cached.dataset.look === look &&
+      cached.dataset.alive) {
+    cached.updateStats(stats);
+    return cached;
+  }
+
+  // Trocou de ambiente: a peça anterior sai antes, senão as duas
+  // disputam a mesma vaga de contexto WebGL e a nova cai no plano B.
+  if (cached) clearEnvHeroes();
+
+  const fresh = environmentHero(env, stats, options);
+  root.__envHero = fresh;
+  return fresh;
+}
+
+/* ---------------------------------------------------------------------
    Tela de um ambiente (§7.3)
    --------------------------------------------------------------------- */
 export function renderEnvironment(root, envId, { onNavigate }) {
@@ -242,26 +361,7 @@ export function renderEnvironment(root, envId, { onNavigate }) {
 
   const stats = store.environmentStats(envId);
 
-  root.appendChild(el('div', { class: 'view-head' }, [
-    el('div', {}, [
-      el('h1', { class: 'view-title' }, [
-        el('span', {
-          class: 'env-card__icon',
-          style: { '--env-color': env.color, width: '30px', height: '30px' },
-          html: icon(env.icon, 16),
-        }),
-        el('span', { text: env.name }),
-      ]),
-      el('p', { class: 'view-sub', text: env.description || `${stats.pending} pendentes · ${stats.done} concluídos` }),
-    ]),
-    el('div', { class: 'row gap-2' }, [
-      el('button', {
-        class: 'btn btn--ghost btn--sm',
-        html: icon('edit', 15) + 'Editar',
-        onClick: () => window.dispatchEvent(new CustomEvent('nestra:edit-env', { detail: envId })),
-      }),
-    ]),
-  ]));
+  root.appendChild(keepEnvironmentHero(root, env, stats, { onNavigate }));
 
   root.appendChild(createCapture({ environmentId: envId, onCreated: rerender }));
 

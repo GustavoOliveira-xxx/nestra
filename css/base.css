@@ -46,6 +46,12 @@ body {
   overscroll-behavior-y: none;
 }
 
+/* Toque: sem atraso de 300ms e sem zoom por toque duplo em controle */
+button, a, .btn, .chip, .item, .side-link, .env-card, [role='button'] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* O fundo vivo: gradientes de profundidade + a cena WebGL por trás de tudo */
 body::before {
   content: '';
@@ -71,6 +77,16 @@ body::after {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
   animation: grain 6s steps(6) infinite;
 }
+
+/* O grão é uma camada duas vezes maior que a tela repintada seis vezes
+   por segundo. No computador não se sente; no celular é uma das contas
+   mais caras da página, para um efeito que ninguém percebe num painel
+   pequeno. Ali ele fica parado — e some de vez quando o aparelho já
+   estiver sofrendo. */
+@media (max-width: 820px), (pointer: coarse) {
+  body::after { inset: 0; animation: none; opacity: .022; }
+}
+[data-gfx='low'] body::after { display: none; }
 
 h1, h2, h3, h4, h5 {
   font-family: var(--font-display);

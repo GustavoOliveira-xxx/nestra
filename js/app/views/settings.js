@@ -442,30 +442,73 @@ export function renderSettings(root, { onNavigate, applyPrefs }) {
         })),
     );
 
-    const modeChip = el('div', {
+    /* --- Sincronização entre aparelhos --- */
+    const remote = store.state.mode === 'remote';
+
+    panel.appendChild(el('div', { class: 'divider-label', style: { marginTop: 'var(--s-6)' }, text: 'Seus aparelhos' }));
+
+    panel.appendChild(el('div', {
       class: 'chip',
-      style: { marginTop: 'var(--s-5)' },
-      html: icon(store.state.mode === 'remote' ? 'shield' : 'lock', 13) +
-        `<span>Modo atual: <b>${store.state.mode === 'remote' ? 'sincronizado com o Neon' : 'somente neste dispositivo'}</b></span>`,
-    });
-    panel.appendChild(modeChip);
+      style: { marginTop: 'var(--s-4)' },
+      html: icon(remote ? 'devices' : 'lock', 13) +
+        `<span>Modo atual: <b>${remote ? 'sincronizado com o Neon' : 'somente neste dispositivo'}</b></span>`,
+    }));
+
+    /* Três situações diferentes, e cada uma pede uma explicação diferente:
+       sincronizando; servidor no ar mas com uma conta que só existe neste
+       navegador; e sem servidor nenhum. */
+    const syncNote = remote
+      ? 'Entrar com o mesmo e-mail e a mesma senha no celular mostra os mesmos ambientes e os mesmos itens. O que você escreve num aparelho aparece no outro assim que ele volta para a frente — não é preciso exportar nem importar nada.'
+      : api.online
+        ? 'O servidor está no ar, mas esta conta foi criada quando ele ainda não existia: ela vive apenas neste navegador. Exporte seus dados, crie a conta de novo com o mesmo e-mail e ela passará a acompanhar você em qualquer aparelho.'
+        : 'Este navegador não encontrou uma API publicada, então os dados ficam guardados só aqui — entrar com a mesma conta em outro aparelho abriria um espaço vazio. Publique a API junto do site (ou informe o endereço abaixo) e a mesma conta passa a valer nos dois.';
+
+    panel.appendChild(el('p', {
+      class: 'setting-row__desc',
+      style: { marginTop: 'var(--s-3)' },
+      text: syncNote,
+    }));
+
+    if (remote) {
+      panel.appendChild(el('div', { class: 'row gap-3', style: { marginTop: 'var(--s-4)' } }, [
+        el('button', {
+          class: 'btn btn--outline btn--sm',
+          html: icon('refresh', 15) + 'Sincronizar agora',
+          onClick: async () => {
+            await store.flush();
+            const changed = await store.pull({ reason: 'manual' });
+            toast(changed ? 'Trouxe as novidades dos seus outros aparelhos.' : 'Já estava tudo em dia.', {
+              kind: 'success',
+            });
+            if (!changed) rerender();
+          },
+        }),
+        el('span', {
+          class: 'field__hint',
+          style: { margin: '0' },
+          text: 'A busca também acontece sozinha ao voltar para a aba.',
+        }),
+      ]));
+    }
 
     const apiField = el('input', {
       class: 'input',
-      placeholder: 'https://sua-api.vercel.app/api',
-      value: api.base || '',
+      placeholder: api.autoDetected ? api.base : 'https://sua-api.vercel.app/api',
+      value: localStorage.getItem('nestra:api-base') || '',
     });
     apiField.addEventListener('change', () => {
       api.setBase(apiField.value.trim());
       toast('Endereço salvo. Recarregue a página para conectar.', { kind: 'success' });
     });
 
-    panel.appendChild(el('div', { class: 'field', style: { marginTop: 'var(--s-4)' } }, [
+    panel.appendChild(el('div', { class: 'field', style: { marginTop: 'var(--s-5)' } }, [
       el('span', { class: 'field__label', text: 'Endereço da API' }),
       apiField,
       el('span', {
         class: 'field__hint',
-        text: 'Sem uma API publicada, o Nestra funciona só neste navegador. O banco Neon nunca é acessado direto pelo navegador — as credenciais ficam no servidor.',
+        text: api.autoDetected
+          ? `Em branco, o Nestra procura sozinho em ${api.base}. Preencha só para apontar para outro servidor. O banco Neon nunca é acessado direto pelo navegador — as credenciais ficam no servidor.`
+          : 'O banco Neon nunca é acessado direto pelo navegador — as credenciais ficam no servidor.',
       }),
     ]));
 

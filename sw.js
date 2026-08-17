@@ -11,7 +11,7 @@
      • chamadas /api/                               → sempre rede, nunca cacheadas
    ===================================================================== */
 
-const VERSION = 'nestra-v2';
+const VERSION = 'nestra-v3';
 const SHELL = VERSION + '-shell';
 const RUNTIME = VERSION + '-runtime';
 
@@ -29,11 +29,13 @@ const SHELL_FILES = [
   './css/fx.css',
   './js/main.js',
   './js/core/gl.js',
+  './js/core/device.js',
   './js/gfx/logo3d.js',
   './js/gfx/scene.js',
   './js/gfx/fx.js',
   './js/gfx/interactions.js',
   './js/gfx/orb.js',
+  './js/gfx/envhero.js',
   './js/app/api.js',
   './js/app/store.js',
   './js/app/nlp.js',

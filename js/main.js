@@ -14,6 +14,8 @@ import {
   swapView, screenTransition, withLoading, celebrate,
 } from './gfx/interactions.js';
 import { clearOrbs } from './gfx/orb.js';
+import { clearEnvHeroes } from './gfx/envhero.js';
+import { device, quality } from './core/device.js';
 import { renderToday, renderEnvironment } from './app/views/today.js';
 import { renderEnvironments, openEnvironmentForm } from './app/views/environments.js';
 import { renderSettings, renderInbox } from './app/views/settings.js';
@@ -40,18 +42,43 @@ const BOOT_STEPS = [
   'montando a tela Hoje',
 ];
 
+/** Partículas que caem em direção à marca enquanto ela se forma. */
+function seedBootSparks(host) {
+  if (!host || device.reducedMotion) return;
+
+  const total = device.mobile ? 10 : 16;
+  for (let i = 0; i < total; i++) {
+    const angle = (Math.PI * 2 * i) / total + Math.random() * 0.5;
+    const distance = 90 + Math.random() * 120;
+    host.appendChild(el('i', {
+      style: {
+        '--fx': Math.round(Math.cos(angle) * distance) + 'px',
+        '--fy': Math.round(Math.sin(angle) * distance) + 'px',
+        '--dur': (1.9 + Math.random() * 1.6).toFixed(2) + 's',
+        '--delay': (Math.random() * 2.2).toFixed(2) + 's',
+      },
+    }));
+  }
+}
+
 async function boot() {
   const bootEl = $('.boot');
   const meter = $('.boot__meter');
   const pct = $('.boot__pct');
   const task = $('.boot__taskName');
   const log = $('.boot__log');
+  const arc = $('.boot__arc-fill');
 
   const SEGMENTS = 32;
   for (let i = 0; i < SEGMENTS; i++) {
     meter.appendChild(el('span', { class: 'boot__seg' }));
   }
   const segs = Array.from(meter.children);
+
+  seedBootSparks($('.boot__sparks'));
+
+  // Comprimento do arco: 2πr com r = 56, como no viewBox do SVG
+  const ARC = 2 * Math.PI * 56;
 
   let progress = 0;
   const setProgress = (value, label) => {
@@ -62,6 +89,7 @@ async function boot() {
       s.dataset.head = String(i === lit - 1 && progress < 1);
     });
     pct.textContent = Math.round(progress * 100) + '%';
+    if (arc) arc.style.strokeDashoffset = String(ARC * (1 - progress));
     if (label) {
       task.textContent = label;
       const line = el('li', { text: label });
@@ -74,11 +102,17 @@ async function boot() {
   setProgress(0.04, BOOT_STEPS[0]);
   applyPrefs();
 
+  // O vigia de quadros começa junto com a abertura: se o aparelho já
+  // sofrer aqui, a decoração entra num degrau mais leve desde o início.
+  quality.watch();
+  window.nestraQuality = quality;   // visível no console, como a cena
+
   /* A marca sendo construída dentro do próprio carregamento */
   setProgress(0.14, BOOT_STEPS[1]);
 
   // Descobre qual arquivo de logo existe na pasta e usa ele em tudo
   app.logoSrc = await resolveLogoSource();
+  window.nestraLogoSrc = app.logoSrc;   // usado pelo carregador de rota
   document.querySelectorAll('img[data-logo]').forEach((img) => {
     img.src = app.logoSrc;
   });
@@ -101,11 +135,10 @@ async function boot() {
   /* Cena de fundo */
   setProgress(0.5, BOOT_STEPS[2]);
   const sceneCanvas = $('#scene');
-  const reduced = document.documentElement.dataset.motion === 'reduced';
-  if (!reduced) {
-    app.scene = new Scene(sceneCanvas, {
-      density: window.innerWidth < 760 ? 0.5 : 1,
-    });
+  if (!device.reducedMotion) {
+    // A quantidade de peças não é mais decidida pela largura da tela: o
+    // governo de qualidade mede o aparelho e ajusta quadro a quadro.
+    app.scene = new Scene(sceneCanvas, { accent: hexToRgb(store.state.prefs.accent) });
     if (app.scene.init()) {
       window.nestraScene = app.scene;
       sceneCanvas.dataset.ready = 'true';
@@ -121,6 +154,12 @@ async function boot() {
   } catch {
     logged = false;
   }
+
+  // As preferências só existem depois da sessão: cor de destaque,
+  // densidade e movimento precisam ser aplicados de novo agora, senão a
+  // pessoa vê o padrão até abrir as configurações.
+  if (logged) applyPrefs();
+
   setProgress(0.86, BOOT_STEPS[4]);
 
   await sleep(220);
@@ -186,11 +225,25 @@ function startApp(logged) {
   window.addEventListener('hashchange', route);
 
   store.addEventListener('auth', () => {
+    applyPrefs();
     renderShell();
     route();
   });
   store.addEventListener('sync', (ev) => paintSync(ev.detail));
   store.addEventListener('items', scheduleNotifications);
+
+  /* Chegou coisa nova do servidor — provavelmente feita no outro
+     aparelho. A tela atual se redesenha sozinha, sem recarregar nada. */
+  store.addEventListener('pulled', () => {
+    if (!store.state.user) return;
+    // As preferências também viajam entre aparelhos
+    applyPrefs();
+    repaintWhenIdle();
+    scheduleNotifications();
+  });
+
+  // Mantém computador e celular olhando para os mesmos dados
+  store.startAutoSync();
 
   if (!location.hash) {
     location.hash = logged ? '#/hoje' : '#/';
@@ -822,6 +875,33 @@ function paintSync(state) {
   $('#syncLabel').textContent = syncLabel(state);
 }
 
+/**
+ * Redesenha quando a tela estiver livre.
+ *
+ * A busca automática roda a cada 45 segundos. Se ela redesenhasse a tela
+ * no meio de uma frase, a frase iria embora — e perder o que a pessoa
+ * estava escrevendo é justamente o que este produto existe para evitar.
+ * O mesmo vale para um formulário aberto: espera fechar.
+ */
+let repaintTimer = 0;
+
+function repaintWhenIdle() {
+  const focused = document.activeElement;
+  const typing = focused && (
+    /^(INPUT|TEXTAREA|SELECT)$/.test(focused.tagName) || focused.isContentEditable);
+  const dialogOpen = document.querySelector('.overlay[data-open="true"], .palette[data-open="true"]');
+
+  if (typing || dialogOpen) {
+    clearTimeout(repaintTimer);
+    repaintTimer = setTimeout(repaintWhenIdle, 4000);
+    return;
+  }
+
+  clearTimeout(repaintTimer);
+  paintSidebar();
+  renderCurrentView();
+}
+
 function renderCurrentView({ animate = false } = {}) {
   const root = $('#viewRoot');
   if (!root) return;
@@ -838,8 +918,14 @@ function renderCurrentView({ animate = false } = {}) {
     initFx(container);
   };
 
-  // As peças 3D dos ambientes vivem só enquanto a tela deles existe
+  /* As peças 3D vivem só enquanto a tela delas existe. Sair da tela sem
+     desmontá-las deixaria contextos WebGL pendurados — e o navegador tem
+     um teto baixo deles, ainda mais no celular. */
   clearOrbs();
+  if (r.name !== 'environment') {
+    clearEnvHeroes();
+    root.__envHero = null;
+  }
 
   if (animate) {
     swapView(root, draw);

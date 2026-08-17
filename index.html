@@ -9,7 +9,10 @@
 <meta name="theme-color" content="#070911">
 <meta name="color-scheme" content="dark">
 
-<!-- Endereço da API que fala com o Neon. Vazio = modo local. -->
+<!-- Endereço da API que fala com o Neon.
+     Vazio = procura /api na mesma origem (é o caso quando o site é
+     publicado junto das funções). Não encontrando, o app entra em modo
+     local e guarda tudo só neste navegador. -->
 <meta name="nestra-api" content="">
 
 <link rel="manifest" href="manifest.json">
@@ -48,16 +51,35 @@
 <div class="boot" role="status" aria-live="polite" aria-label="Carregando o Nestra">
   <div class="boot__grid" aria-hidden="true"></div>
   <div class="boot__halo" aria-hidden="true"></div>
+  <div class="boot__rays" aria-hidden="true"></div>
 
   <div class="boot__stage">
     <div class="boot__logo">
+      <!-- A marca extrudada em 3D, montada camada por camada pela engine -->
       <canvas id="bootLogo" aria-hidden="true"></canvas>
+
+      <!-- Anéis em órbita ao redor da marca -->
+      <div class="boot__orbit" aria-hidden="true">
+        <span></span><span></span><span></span>
+      </div>
+
+      <!-- Arco que acompanha o progresso, contornando a marca -->
+      <svg class="boot__arc" viewBox="0 0 120 120" aria-hidden="true">
+        <circle class="boot__arc-track" cx="60" cy="60" r="56" />
+        <circle class="boot__arc-fill" cx="60" cy="60" r="56" />
+      </svg>
+
+      <!-- Partículas atraídas para a marca enquanto ela se forma -->
+      <div class="boot__sparks" aria-hidden="true"></div>
+
       <div class="boot__frame" aria-hidden="true">
         <span></span><span></span><span></span><span></span>
       </div>
     </div>
 
-    <div class="boot__wordmark">NESTRA</div>
+    <div class="boot__wordmark" aria-label="Nestra">
+      <span>N</span><span>E</span><span>S</span><span>T</span><span>R</span><span>A</span>
+    </div>
     <div class="boot__tagline">seu espaço para o que importa</div>
 
     <div class="boot__meter" aria-hidden="true"></div>

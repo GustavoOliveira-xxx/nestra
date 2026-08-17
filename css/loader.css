@@ -49,6 +49,23 @@
   animation: glowPulse 3.6s var(--ease-in-out) infinite;
 }
 
+/* Leque de raios girando devagar atrás de tudo */
+.boot__rays {
+  position: absolute;
+  width: min(150vmin, 1400px);
+  aspect-ratio: 1;
+  background: repeating-conic-gradient(
+    from 0deg,
+    color-mix(in srgb, var(--accent) 9%, transparent) 0deg 4deg,
+    transparent 4deg 22deg);
+  mask-image: radial-gradient(circle, transparent 12%, #000 30%, transparent 62%);
+  opacity: .5;
+  animation: bootRays 48s linear infinite;
+}
+@keyframes bootRays {
+  to { transform: rotate(360deg); }
+}
+
 .boot__stage {
   position: relative;
   z-index: 2;
@@ -65,7 +82,99 @@
   width: 190px;
   height: 190px;
 }
-.boot__logo canvas { width: 100%; height: 100%; }
+.boot__logo canvas {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+}
+
+/* --- Anéis em órbita: três elipses inclinadas girando em ritmos
+       diferentes, para a marca parecer suspensa no espaço --- */
+.boot__orbit {
+  position: absolute;
+  inset: -14%;
+  z-index: 1;
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+.boot__orbit span {
+  position: absolute;
+  inset: 0;
+  border: 1px solid color-mix(in srgb, var(--accent) 46%, transparent);
+  border-radius: 50%;
+  animation: bootOrbit 7s linear infinite;
+}
+.boot__orbit span:nth-child(1) { --tiltX: 74deg; --tiltY: 8deg;   animation-duration: 6.4s; }
+.boot__orbit span:nth-child(2) {
+  --tiltX: 66deg; --tiltY: -34deg;
+  inset: 6%;
+  border-color: color-mix(in srgb, var(--cyan) 40%, transparent);
+  animation-duration: 9.2s;
+  animation-direction: reverse;
+}
+.boot__orbit span:nth-child(3) {
+  --tiltX: 82deg; --tiltY: 40deg;
+  inset: -10%;
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--accent) 26%, transparent);
+  animation-duration: 13s;
+}
+@keyframes bootOrbit {
+  from { transform: rotateX(var(--tiltX)) rotateY(var(--tiltY)) rotateZ(0deg); }
+  to   { transform: rotateX(var(--tiltX)) rotateY(var(--tiltY)) rotateZ(360deg); }
+}
+
+/* --- Arco de progresso contornando a marca --- */
+.boot__arc {
+  position: absolute;
+  inset: -16%;
+  z-index: 1;
+  overflow: visible;
+  transform: rotate(-90deg);
+  pointer-events: none;
+  /* O reset global limita SVG a 100% da caixa-mãe; aqui o arco precisa
+     transbordar a marca, senão ele encolhe e sai do centro. */
+  max-width: none;
+}
+.boot__arc circle {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.boot__arc-track { stroke: var(--line-2); opacity: .6; }
+.boot__arc-fill {
+  stroke: var(--cyan);
+  stroke-dasharray: 351.86;               /* 2πr, r = 56 */
+  stroke-dashoffset: 351.86;
+  filter: drop-shadow(0 0 6px var(--cyan));
+  transition: stroke-dashoffset .5s var(--ease-out);
+}
+
+/* --- Partículas puxadas para dentro da marca --- */
+.boot__sparks {
+  position: absolute;
+  inset: -60%;
+  z-index: 0;
+  pointer-events: none;
+}
+.boot__sparks i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: 0 0 8px var(--cyan);
+  opacity: 0;
+  animation: bootSpark var(--dur, 2.4s) var(--ease-in-out) var(--delay, 0s) infinite;
+}
+@keyframes bootSpark {
+  0%   { opacity: 0; transform: translate(-50%, -50%) translate(var(--fx), var(--fy)) scale(1); }
+  22%  { opacity: .9; }
+  100% { opacity: 0; transform: translate(-50%, -50%) translate(0, 0) scale(.2); }
+}
 
 /* Cantoneiras que se afastam enquanto carrega */
 .boot__frame {
@@ -89,15 +198,40 @@
   50%      { opacity: 1;  transform: scale(1.18); }
 }
 
+/* A palavra chega letra a letra, cada uma vindo de trás para a frente */
 .boot__wordmark {
+  display: flex;
   font-family: var(--font-display);
   font-size: var(--fs-xl);
   font-weight: 500;
   letter-spacing: var(--tracking-mega);
   text-indent: var(--tracking-mega);
   color: var(--text);
+  perspective: 420px;
+}
+.boot__wordmark span {
+  display: inline-block;
   opacity: 0;
-  animation: fadeIn .9s var(--ease-out) .35s forwards;
+  animation: bootLetter .8s var(--ease-out) forwards;
+}
+.boot__wordmark span:nth-child(1) { animation-delay: .30s; }
+.boot__wordmark span:nth-child(2) { animation-delay: .38s; }
+.boot__wordmark span:nth-child(3) { animation-delay: .46s; }
+.boot__wordmark span:nth-child(4) { animation-delay: .54s; }
+.boot__wordmark span:nth-child(5) { animation-delay: .62s; }
+.boot__wordmark span:nth-child(6) { animation-delay: .70s; }
+
+@keyframes bootLetter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, -70px) rotateX(-40deg);
+    filter: blur(5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
 }
 
 .boot__tagline {
@@ -216,4 +350,68 @@
   .boot__logo  { width: 148px; height: 148px; }
   .boot__log   { display: none; }
   .boot__stage { gap: var(--s-5); }
+  .boot__rays  { display: none; }        /* gradiente cônico enorme custa caro */
+  .boot__sparks i:nth-child(n + 9) { display: none; }
+  .boot__wordmark { font-size: var(--fs-lg); }
 }
+
+/* Movimento reduzido: a abertura informa sem coreografia (§22) */
+[data-motion='reduced'] .boot__orbit,
+[data-motion='reduced'] .boot__sparks,
+[data-motion='reduced'] .boot__rays,
+[data-motion='reduced'] .boot__grid { display: none; }
+
+[data-motion='reduced'] .boot__wordmark span { opacity: 1; animation: none; }
+
+/* =====================================================================
+   MARCA CARREGANDO — reaproveitada nas trocas de tela
+   A mesma linguagem da abertura, em tamanho de bolso.
+   ===================================================================== */
+.brand-loader {
+  display: grid;
+  place-items: center;
+  width: 92px;
+  height: 92px;
+  position: relative;
+}
+.brand-loader__mark {
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 14px var(--accent-glow));
+  animation: brandBreathe 1.6s var(--ease-in-out) infinite;
+}
+.brand-loader__ring {
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid transparent;
+  border-top-color: var(--accent);
+  border-right-color: color-mix(in srgb, var(--cyan) 60%, transparent);
+  border-radius: 50%;
+  animation: spinnerTurn 1.1s linear infinite;
+}
+.brand-loader__ring:nth-of-type(2) {
+  inset: 12px;
+  border-top-color: transparent;
+  border-bottom-color: color-mix(in srgb, var(--cyan) 70%, transparent);
+  animation-duration: 1.7s;
+  animation-direction: reverse;
+}
+.brand-loader__label {
+  position: absolute;
+  bottom: -26px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+@keyframes brandBreathe {
+  0%, 100% { transform: scale(1)    rotateY(0deg); opacity: .92; }
+  50%      { transform: scale(1.09) rotateY(22deg); opacity: 1; }
+}
+
+[data-motion='reduced'] .brand-loader__mark,
+[data-motion='reduced'] .brand-loader__ring { animation: none; }

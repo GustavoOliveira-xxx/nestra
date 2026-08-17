@@ -79,6 +79,8 @@
   position: fixed;
   inset: 0;
   z-index: 88;
+  display: grid;
+  place-items: center;
   pointer-events: none;
   background:
     linear-gradient(180deg,
@@ -86,6 +88,9 @@
       var(--void) 42%,
       var(--void) 100%);
 }
+/* A marca fica acima da grade da cortina */
+.fx-veil__loader { position: relative; z-index: 2; }
+
 .fx-veil::after {
   content: '';
   position: absolute;
@@ -249,6 +254,270 @@
   from { transform: rotateX(-18deg) rotateY(0deg); }
   to   { transform: rotateX(-18deg) rotateY(360deg); }
 }
+
+/* ---------------------------------------------------------------------
+   ABERTURA 3D DA TELA DE AMBIENTE
+
+   A peça ocupa a metade direita no computador e o topo no celular. O
+   canvas é desenhado pelo ray marching; tudo aqui é moldura.
+   --------------------------------------------------------------------- */
+.env-hero {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr minmax(240px, 42%);
+  align-items: center;
+  gap: var(--s-5);
+  margin-bottom: var(--s-6);
+  padding: var(--s-6) var(--s-6) var(--s-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  background:
+    radial-gradient(120% 140% at 92% 18%,
+      color-mix(in srgb, var(--env-color, var(--accent)) 14%, transparent),
+      transparent 62%),
+    linear-gradient(150deg, var(--surface-2), var(--surface) 62%, var(--bg-2));
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* Fio de luz na cor do ambiente, no topo do painel */
+.env-hero::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg,
+    transparent,
+    var(--env-color, var(--accent)) 25%,
+    var(--env-color, var(--accent)) 75%,
+    transparent);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--env-color, var(--accent)) 70%, transparent);
+}
+
+/* Grade discreta ao fundo, para a peça ter contra o que flutuar */
+.env-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--env-color, var(--accent)) 14%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--env-color, var(--accent)) 14%, transparent) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(circle at 78% 50%, #000 5%, transparent 68%);
+  opacity: .5;
+  animation: envHeroGrid 26s linear infinite;
+}
+@keyframes envHeroGrid {
+  to { background-position: 44px 44px, 44px 44px; }
+}
+
+/* Palco da peça: ordem invertida no grid para o texto vir primeiro no DOM */
+.env-hero__stage {
+  position: relative;
+  order: 2;
+  width: 100%;
+  height: clamp(190px, 22vw, 268px);
+  touch-action: pan-y;   /* arrastar gira a peça sem travar a rolagem */
+}
+.env-hero__canvas {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+}
+.env-hero__canvas:active { cursor: grabbing; }
+
+/* Halo por trás da peça, na cor do ambiente */
+.env-hero__aura {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 68%;
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: radial-gradient(circle,
+    color-mix(in srgb, var(--env-color, var(--accent)) 32%, transparent),
+    transparent 66%);
+  filter: blur(26px);
+  opacity: .7;
+  pointer-events: none;
+  animation: glowPulse 5.2s var(--ease-in-out) infinite;
+}
+
+.env-hero__body {
+  position: relative;
+  z-index: 2;
+  order: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  min-width: 0;
+}
+
+.env-hero__kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  padding: 5px 12px 5px 6px;
+  border: 1px solid color-mix(in srgb, var(--env-color, var(--accent)) 34%, transparent);
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--env-color, var(--accent)) 12%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--env-color, var(--accent)) 72%, var(--text));
+}
+.env-hero__kicker-icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-1);
+  background: color-mix(in srgb, var(--env-color, var(--accent)) 22%, transparent);
+  color: var(--env-color, var(--accent));
+}
+
+.env-hero__title {
+  font-family: var(--font-display);
+  font-size: clamp(26px, 3.4vw, 40px);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: var(--tracking-tight);
+  overflow-wrap: anywhere;
+}
+
+.env-hero__desc {
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  line-height: 1.6;
+  max-width: 46ch;
+}
+
+.env-hero__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-5);
+  margin-top: var(--s-1);
+}
+.env-hero__stat { display: flex; flex-direction: column; gap: 1px; }
+.env-hero__stat-n {
+  font-family: var(--font-display);
+  font-size: var(--fs-2xl);
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.env-hero__stat-l {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+.env-hero__stat--overdue .env-hero__stat-n { color: var(--overdue); }
+
+.env-hero__actions { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
+
+.env-hero__hint {
+  position: absolute;
+  right: var(--s-4);
+  bottom: var(--s-3);
+  z-index: 2;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: .1em;
+  color: var(--text-4);
+  opacity: 0;
+  transition: opacity var(--t-slow) var(--ease-out);
+  pointer-events: none;
+}
+.env-hero:hover .env-hero__hint { opacity: .8; }
+
+/* Plano B em CSS quando não há WebGL disponível para a peça */
+.hero3d-css {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  perspective: 720px;
+  --rx: 0deg;
+  --ry: 0deg;
+}
+.hero3d-css__solid {
+  position: relative;
+  width: 108px;
+  height: 108px;
+  transform-style: preserve-3d;
+  transform: rotateX(var(--rx)) rotateY(var(--ry));
+  animation: heroSolidSpin 14s linear infinite;
+  transition: transform var(--t-slow) var(--ease-out);
+}
+.hero3d-css__solid i {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--piece-color, var(--accent));
+  border-radius: var(--r-2);
+  background: color-mix(in srgb, var(--piece-color, var(--accent)) 15%, transparent);
+  box-shadow: inset 0 0 26px color-mix(in srgb, var(--piece-color, var(--accent)) 32%, transparent);
+}
+.hero3d-css__solid i:nth-child(1) { transform: translateZ(54px); }
+.hero3d-css__solid i:nth-child(2) { transform: rotateY(180deg) translateZ(54px); }
+.hero3d-css__solid i:nth-child(3) { transform: rotateY(90deg)  translateZ(54px); }
+.hero3d-css__solid i:nth-child(4) { transform: rotateY(-90deg) translateZ(54px); }
+.hero3d-css__solid i:nth-child(5) { transform: rotateX(90deg)  translateZ(54px); }
+.hero3d-css__solid i:nth-child(6) { transform: rotateX(-90deg) translateZ(54px); }
+
+.hero3d-css__rings { position: absolute; inset: 0; display: grid; place-items: center; }
+.hero3d-css__rings i {
+  position: absolute;
+  width: 190px;
+  height: 190px;
+  border: 1px solid color-mix(in srgb, var(--piece-color, var(--accent)) 40%, transparent);
+  border-radius: 50%;
+  animation: heroRingSpin 9s linear infinite;
+}
+.hero3d-css__rings i:nth-child(2) { width: 148px; height: 148px; animation-duration: 6.5s; animation-direction: reverse; }
+.hero3d-css__rings i:nth-child(3) { width: 232px; height: 232px; animation-duration: 13s; opacity: .5; }
+
+@keyframes heroSolidSpin {
+  from { transform: rotateX(var(--rx)) rotateY(var(--ry)); }
+  to   { transform: rotateX(var(--rx)) rotateY(calc(var(--ry) + 360deg)); }
+}
+@keyframes heroRingSpin {
+  from { transform: rotateX(72deg) rotateZ(0deg); }
+  to   { transform: rotateX(72deg) rotateZ(360deg); }
+}
+
+@media (max-width: 860px) {
+  .env-hero {
+    grid-template-columns: 1fr;
+    padding: var(--s-5) var(--s-4) var(--s-5);
+    text-align: left;
+  }
+  .env-hero__stage { order: 0; height: clamp(172px, 46vw, 232px); }
+  .env-hero__body  { order: 2; }
+  .env-hero::after { mask-image: radial-gradient(circle at 50% 26%, #000 5%, transparent 62%); }
+  .env-hero__hint  {
+    order: 1;
+    position: static;
+    margin-top: calc(var(--s-2) * -1);
+    text-align: center;
+    opacity: .6;
+  }
+}
+
+/* Movimento reduzido: a peça continua, o cenário para */
+[data-motion='reduced'] .env-hero::after,
+[data-motion='reduced'] .env-hero__aura,
+[data-motion='reduced'] .hero3d-css__solid,
+[data-motion='reduced'] .hero3d-css__rings i { animation: none; }
 
 /* ---------------------------------------------------------------------
    TRILHO ANIMADO DA NAVEGAÇÃO

@@ -15,6 +15,7 @@ import {
   program, fullscreenQuad, buildSDF, rasterize, trimAlpha, toHalf,
   dematte, downscaleRGBA,
 } from '../core/gl.js';
+import { quality, sizeCanvas } from '../core/device.js';
 
 const VS = `#version 300 es
 in vec2 aPos;
@@ -572,15 +573,13 @@ export class Logo3D {
 
   resize() {
     if (!this.gl) return;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const r = this.canvas.getBoundingClientRect();
-    const w = Math.max(1, Math.round(r.width * dpr));
-    const h = Math.max(1, Math.round(r.height * dpr));
-    if (this.canvas.width !== w || this.canvas.height !== h) {
-      this.canvas.width = w;
-      this.canvas.height = h;
-      this.gl.viewport(0, 0, w, h);
-    }
+    // Segue o mesmo teto de resolução das outras peças: numa tela de
+    // celular com dpr 3, desenhar a marca em tamanho real custa nove
+    // vezes mais pixels do que em dpr 1, sem diferença perceptível.
+    const { w, h, dpr, changed } = sizeCanvas(this.canvas, {
+      cap: Math.min(2, quality.dprCap + 0.5),
+    });
+    if (changed) this.gl.viewport(0, 0, w, h);
     this._dpr = dpr;
   }
 

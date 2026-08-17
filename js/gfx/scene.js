@@ -16,6 +16,7 @@
    ===================================================================== */
 
 import { M4, program } from '../core/gl.js';
+import { device, quality, sizeCanvas, glBudget } from '../core/device.js';
 
 /* ------------------------------------------------------------------ */
 /* 1. AURORA                                                           */
@@ -40,6 +41,9 @@ uniform float uTime;
 uniform vec3  uAccent;
 uniform vec2  uPointer;
 uniform float uPulse;
+uniform float uScroll;   // rolagem da página, em telas
+uniform int   uOct;      // oitavas do ruído — cai em aparelho mais fraco
+uniform float uWarp;     // 0..1 — quanto o campo se dobra sobre si mesmo
 
 // ruído de valor com interpolação suave
 float hash(vec2 p) {
@@ -53,7 +57,8 @@ float noise(vec2 p) {
 }
 float fbm(vec2 p) {
   float v = 0.0, a = 0.5;
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 6; i++) {
+    if (i >= uOct) break;
     v += a * noise(p);
     p = p * 2.03 + vec2(1.7, 9.2);
     a *= 0.5;
@@ -65,32 +70,49 @@ void main() {
   vec2 uv = vUv;
   vec2 p = (uv - 0.5) * vec2(uRes.x / uRes.y, 1.0);
 
-  // o ponteiro entorta levemente o campo
-  p += uPointer * 0.06;
+  // o ponteiro entorta o campo; a rolagem desliza a cortina para cima
+  p += uPointer * 0.07;
+  p.y += uScroll * 0.14;
 
-  float t = uTime * 0.045;
+  float t = uTime * 0.055;
 
-  // duas cortinas de luz em alturas diferentes
-  float band1 = fbm(vec2(p.x * 1.6 + t, p.y * 2.4 - t * 0.6));
-  float band2 = fbm(vec2(p.x * 2.3 - t * 0.8, p.y * 1.7 + t * 0.4));
+  /* Deformação do domínio: em vez de duas faixas correndo em linha reta,
+     o campo é dobrado por outro ruído antes de ser lido. É o que faz a
+     luz enrolar e desenrolar em vez de só deslizar. */
+  vec2 w = vec2(
+    fbm(p * 1.35 + vec2(t * 1.2, -t * 0.8)),
+    fbm(p * 1.35 + vec2(5.2 - t * 0.6, 1.3 + t * 0.9)));
+  vec2 q = mix(p, p + (w - 0.5) * 1.5, uWarp);
 
-  float curtain = smoothstep(0.42, 0.92, band1) * 0.7
-                + smoothstep(0.50, 0.95, band2) * 0.5;
+  float band1 = fbm(vec2(q.x * 1.5 + t * 1.5, q.y * 2.2 - t * 0.9));
+  float band2 = fbm(vec2(q.x * 2.4 - t * 1.2, q.y * 1.6 + t * 0.8));
 
-  // concentra a luz na parte de cima e nas laterais, deixando o meio limpo
-  float shape = smoothstep(0.95, 0.05, abs(p.y * 1.25 + 0.28));
-  shape *= 0.35 + 0.65 * smoothstep(0.0, 0.65, abs(p.x));
+  float curtain = smoothstep(0.38, 0.90, band1) * 0.80
+                + smoothstep(0.46, 0.96, band2) * 0.55;
 
-  vec3 cool = mix(uAccent, vec3(0.31, 0.85, 1.0), 0.45);
-  vec3 warm = mix(uAccent, vec3(0.61, 0.48, 1.0), 0.55);
-  vec3 tint = mix(cool, warm, smoothstep(-0.6, 0.6, p.x + sin(t * 3.0) * 0.2));
+  // feixes verticais atravessando devagar, atrás das cortinas
+  float beams = pow(0.5 + 0.5 * sin(q.x * 3.1 - uTime * 0.20 + band1 * 4.5), 8.0) * 0.55;
 
-  float glow = curtain * shape * (0.16 + uPulse * 0.22);
+  // concentra a luz em cima e nas laterais, deixando o meio legível
+  float shape = smoothstep(1.02, 0.04, abs(p.y * 1.2 + 0.26));
+  shape *= 0.32 + 0.68 * smoothstep(0.0, 0.62, abs(p.x));
+
+  vec3 cool = mix(uAccent, vec3(0.31, 0.85, 1.0), 0.50);
+  vec3 warm = mix(uAccent, vec3(0.63, 0.45, 1.0), 0.60);
+
+  // a cor migra de um lado para o outro ao longo de um minuto
+  float drift = sin(uTime * 0.075) * 0.5 + 0.5;
+  vec3 tint = mix(cool, warm, smoothstep(-0.75, 0.75, q.x + drift * 1.1 - 0.55));
+
+  float glow = (curtain + beams) * shape * (0.19 + uPulse * 0.26);
 
   // brilho difuso ao redor do ponteiro
-  float halo = exp(-length(p - uPointer * 0.5) * 2.6) * 0.05;
+  float halo = exp(-length(p - uPointer * 0.5) * 2.4) * 0.055;
 
-  outColor = vec4((tint * glow + uAccent * halo), 1.0);
+  // horizonte respirando na base da tela
+  float horizon = exp(-abs(p.y + 0.66) * 6.5) * (0.045 + 0.025 * sin(uTime * 0.45));
+
+  outColor = vec4(tint * glow + uAccent * halo + tint * horizon, 1.0);
 }`;
 
 /* ------------------------------------------------------------------ */
@@ -372,7 +394,20 @@ export class Scene {
     this.pulse = 0;
     this.ripples = [];
     this.pointer = { x: 0, y: 0, tx: 0, ty: 0 };
+    this.scroll = { v: 0, t: 0 };
+    // Sem cursor não há de onde tirar movimento: a cena passa a se mover
+    // sozinha, num vaivém lento que nunca repete o mesmo caminho.
+    this.selfDrive = device.touch;
     this._t0 = performance.now();
+  }
+
+  /* Quantas peças e partículas cabem no fôlego atual do aparelho. */
+  get activeCards() {
+    return Math.max(8, Math.round(this.count * quality.scale));
+  }
+
+  get activeDust() {
+    return Math.max(40, Math.round(this.dustCount * quality.scale));
   }
 
   init() {
@@ -536,6 +571,11 @@ export class Scene {
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
     gl.disable(gl.DEPTH_TEST);
 
+    /* A cena ocupa uma vaga no orçamento de contextos. Ela é a primeira
+       a nascer, então nunca é recusada — mas precisa ser contada, senão
+       as peças dos ambientes acham que têm mais espaço do que têm. */
+    glBudget.claim(this);
+
     this.ready = true;
     this._bind();
     this.resize();
@@ -546,28 +586,43 @@ export class Scene {
   _bind() {
     this._onResize = () => this.resize();
     window.addEventListener('resize', this._onResize, { passive: true });
+    window.addEventListener('orientationchange', this._onResize, { passive: true });
 
     this._onPointer = (ev) => {
+      this.selfDrive = false;
       this.pointer.tx = (ev.clientX / window.innerWidth - 0.5) * 2;
       this.pointer.ty = (ev.clientY / window.innerHeight - 0.5) * 2;
     };
     window.addEventListener('pointermove', this._onPointer, { passive: true });
 
+    /* A rolagem entra na cena: a cortina de luz sobe e a câmera desce um
+       pouco, então descer a página parece atravessar o espaço. */
+    this._onScroll = () => {
+      const h = Math.max(1, window.innerHeight);
+      this.scroll.t = Math.min(3, (window.scrollY || 0) / h);
+    };
+    window.addEventListener('scroll', this._onScroll, { passive: true });
+
     this._onVis = () => (document.hidden ? this.stop() : this.start());
     document.addEventListener('visibilitychange', this._onVis);
+
+    // Mudou o degrau de qualidade: refaz o tamanho do canvas na hora
+    this._onQuality = () => this.resize();
+    quality.addEventListener('change', this._onQuality);
   }
 
   resize() {
     if (!this.gl) return;
-    const dpr = Math.min(window.devicePixelRatio || 1, 1.75);
-    const w = Math.round(window.innerWidth * dpr);
-    const h = Math.round(window.innerHeight * dpr);
-    if (this.canvas.width !== w || this.canvas.height !== h) {
-      this.canvas.width = w;
-      this.canvas.height = h;
-      this.gl.viewport(0, 0, w, h);
-    }
-    this.dpr = dpr;
+    // A cena de fundo é a superfície mais cara do site: um pixel a menos
+    // aqui vale mais do que qualquer outro corte.
+    const cap = Math.min(quality.dprCap, device.mobile ? 1.25 : 1.75);
+    // Medido pela caixa real do elemento, e não por `innerHeight`: em
+    // iOS a barra do navegador entra e sai ao rolar, e usar a altura da
+    // janela deixaria o desenho esticado enquanto ela se mexe.
+    const { w, h } = sizeCanvas(this.canvas, { cap });
+
+    this.gl.viewport(0, 0, w, h);
+    this.dpr = Math.min(window.devicePixelRatio || 1, cap);
     this.proj = M4.perspective(Math.PI / 4, w / h, 0.1, 120);
   }
 
@@ -616,6 +671,7 @@ export class Scene {
      constelação enxergar as mesmas coordenadas. */
   _step(time, dt) {
     const spread = this.opts.spread;
+    const count = this.activeCards;
 
     // avança as ondas de clique
     for (let i = this.ripples.length - 1; i >= 0; i--) {
@@ -623,7 +679,7 @@ export class Scene {
       if (this.ripples[i].t > 2.6) this.ripples.splice(i, 1);
     }
 
-    for (let i = 0; i < this.count; i++) {
+    for (let i = 0; i < count; i++) {
       const c = this.cards[i];
 
       const z = ((c.home[2] + time * c.speed) % spread) - spread + 2;
@@ -662,15 +718,18 @@ export class Scene {
     }
 
     /* --- constelação: liga placas próximas e à frente da câmera --- */
+    // Custa O(n²) na CPU: no degrau mais baixo os fios simplesmente saem.
+    if (quality.level === 'low') { this.lineCount = 0; return; }
+
     const maxD = this.opts.linkDistance;
     const maxD2 = maxD * maxD;
     let n = 0;
 
-    for (let i = 0; i < this.count && n < this.opts.maxLinks; i++) {
+    for (let i = 0; i < count && n < this.opts.maxLinks; i++) {
       const a = this.cards[i];
       if (a.pos[2] < -34 || a.pos[2] > 0) continue;
 
-      for (let j = i + 1; j < this.count && n < this.opts.maxLinks; j++) {
+      for (let j = i + 1; j < count && n < this.opts.maxLinks; j++) {
         const b = this.cards[j];
         if (b.pos[2] < -34 || b.pos[2] > 0) continue;
 
@@ -704,15 +763,30 @@ export class Scene {
     this._elapsed = now - this._t0;
     const time = this._elapsed / 1000;
 
+    /* Sem cursor, a própria cena passeia. Dois senos de períodos que não
+       se dividem: o caminho leva minutos para se repetir. */
+    if (this.selfDrive) {
+      this.pointer.tx = Math.sin(time * 0.083) * 0.62 + Math.sin(time * 0.031) * 0.28;
+      this.pointer.ty = Math.cos(time * 0.061) * 0.45 + Math.sin(time * 0.017) * 0.2;
+    }
+
     this.pointer.x += (this.pointer.tx - this.pointer.x) * 0.045;
     this.pointer.y += (this.pointer.ty - this.pointer.y) * 0.045;
+    this.scroll.v += (this.scroll.t - this.scroll.v) * 0.06;
     this.pulse *= 0.945;
 
     this._step(time, dt);
 
+    // Deriva contínua da câmera: mesmo com o ponteiro parado, o ponto de
+    // vista nunca é exatamente o mesmo de dez segundos atrás.
+    const driftX = Math.sin(time * 0.069) * 0.55 + Math.sin(time * 0.023) * 0.25;
+    const driftY = Math.cos(time * 0.047) * 0.40;
+    const eyeX = this.pointer.x * 2.4 + driftX;
+    const eyeY = -this.pointer.y * 1.7 + driftY - this.scroll.v * 1.6;
+
     const view = M4.lookAt(
-      [this.pointer.x * 2.4, -this.pointer.y * 1.7, 6],
-      [this.pointer.x * 0.6, -this.pointer.y * 0.4, -12],
+      [eyeX, eyeY, 6],
+      [this.pointer.x * 0.6 + driftX * 0.4, -this.pointer.y * 0.4 - this.scroll.v * 0.5, -12],
       [0, 1, 0],
     );
 
@@ -728,6 +802,9 @@ export class Scene {
     gl.uniform3fv(au.uAccent, this.opts.accent);
     gl.uniform2f(au.uPointer, this.pointer.x, -this.pointer.y);
     gl.uniform1f(au.uPulse, this.pulse);
+    gl.uniform1f(au.uScroll, this.scroll.v);
+    gl.uniform1i(au.uOct, quality.level === 'low' ? 3 : quality.level === 'medium' ? 4 : 5);
+    gl.uniform1f(au.uWarp, quality.level === 'low' ? 0 : 1);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
     /* 2. constelação */
@@ -747,12 +824,13 @@ export class Scene {
     }
 
     /* 3. placas */
+    const drawn = this.activeCards;
     gl.useProgram(this.cardProg.p);
     gl.bindVertexArray(this.cardVao);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.offsetBuf);
-    gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.offsetData);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.offsetData, 0, drawn * 3);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.rotBuf);
-    gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.rotData);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.rotData, 0, drawn * 3);
 
     const u = this.cardProg.u;
     gl.uniformMatrix4fv(u.uProj, false, this.proj);
@@ -762,7 +840,7 @@ export class Scene {
     gl.uniform1f(u.uFogNear, 6);
     gl.uniform1f(u.uFogFar, 42);
     gl.uniform1f(u.uPulse, this.pulse);
-    gl.drawElementsInstanced(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0, this.count);
+    gl.drawElementsInstanced(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0, drawn);
 
     /* 4. poeira */
     gl.useProgram(this.dustProg.p);
@@ -774,15 +852,19 @@ export class Scene {
     gl.uniform1f(du.uSpread, this.opts.spread);
     gl.uniform1f(du.uDpr, this.dpr);
     gl.uniform3fv(du.uAccent, this.opts.accent);
-    gl.drawArrays(gl.POINTS, 0, this.dustCount);
+    gl.drawArrays(gl.POINTS, 0, this.activeDust);
 
     gl.bindVertexArray(null);
   }
 
   destroy() {
     this.stop();
+    glBudget.release(this);
     window.removeEventListener('resize', this._onResize);
+    window.removeEventListener('orientationchange', this._onResize);
     window.removeEventListener('pointermove', this._onPointer);
+    window.removeEventListener('scroll', this._onScroll);
     document.removeEventListener('visibilitychange', this._onVis);
+    quality.removeEventListener('change', this._onQuality);
   }
 }

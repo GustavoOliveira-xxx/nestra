@@ -15,7 +15,13 @@ const K = {
   session: 'nestra:session',
   data: (userId) => `nestra:data:${userId}`,
   lastEnv: 'nestra:last-env',
+  // Quem entrou por último pelo servidor. Serve para abrir o app já com
+  // conteúdo quando o celular está sem rede no momento da abertura.
+  remoteUser: 'nestra:remote-user',
 };
+
+/* Intervalo entre buscas automáticas enquanto a aba está à vista. */
+const PULL_EVERY = 45000;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Math.random().toString(36).slice(2));
 
@@ -155,16 +161,16 @@ class Store extends EventTarget {
       try {
         const me = await api.get('/auth/me');
         if (me && me.user) {
-          this.state.user = me.user;
-          this.state.prefs = { ...DEFAULT_PREFS, ...(me.preferences || {}) };
-          this.state.environments = me.environments || [];
-          this.state.items = me.items || [];
-          this.setSync('synced');
-          this.emit('auth', this.state.user);
+          this.adoptRemote(me);
+          // O aparelho pode ter ficado offline com alterações na fila.
+          this.flush();
           return true;
         }
-      } catch {
-        /* sem sessão remota — segue para a sessão local */
+      } catch (err) {
+        // 401 é resposta legítima: não há sessão neste aparelho.
+        // Falha de rede é outra história — vale abrir com o que ficou
+        // guardado da última vez, em vez de fingir que a conta sumiu.
+        if (!err.status && this.restoreCachedRemote()) return true;
       }
     }
 
@@ -178,25 +184,171 @@ class Store extends EventTarget {
     const account = accounts.find((a) => a.id === session.userId);
     if (!account) return false;
 
+    /* Sessão local, mesmo com servidor disponível.
+       Acontece com quem criou a conta antes de a API existir: a conta
+       vive só neste navegador e o servidor não a conhece. Enfileirar as
+       alterações dela seria mandar dados que voltariam recusados, então
+       o modo volta a ser local — e a barra lateral diz exatamente isso.
+       Para sincronizar entre aparelhos, basta criar a conta de novo
+       agora que existe servidor. */
+    this.state.mode = 'local';
     this.state.user = { id: account.id, email: account.email, displayName: account.displayName };
     this.load(account.id);
-    this.setSync(api.online ? 'syncing' : 'local');
+    this.setSync('local');
     this.emit('auth', this.state.user);
     return true;
+  }
+
+  /**
+   * Assume o que o servidor mandou como verdade e guarda uma cópia local.
+   *
+   * A cópia não é um segundo banco: é só a memória do último estado
+   * conhecido, para o app abrir com conteúdo mesmo sem rede. Na primeira
+   * resposta do servidor ela é substituída inteira.
+   */
+  adoptRemote(payload) {
+    this.state.mode = 'remote';
+    this.state.user = payload.user;
+    this.state.prefs = { ...DEFAULT_PREFS, ...(payload.preferences || {}) };
+    this.state.environments = payload.environments || [];
+    this.state.items = payload.items || [];
+
+    write(K.remoteUser, payload.user);
+    this.persist();
+
+    this.setSync('synced');
+    this.emit('auth', this.state.user);
+    return this.state.user;
+  }
+
+  /** Abre com o último estado conhecido quando o servidor não responde. */
+  restoreCachedRemote() {
+    const cached = read(K.remoteUser, null);
+    if (!cached || !cached.id) return false;
+
+    this.state.mode = 'remote';
+    this.state.user = cached;
+    this.load(cached.id);
+    this.setSync(navigator.onLine ? 'error' : 'offline');
+    this.emit('auth', this.state.user);
+    return true;
+  }
+
+  /**
+   * Traz do servidor o estado atual da conta.
+   *
+   * É isto que faz o mesmo login mostrar o mesmo progresso no computador
+   * e no celular: o que foi criado num aparelho aparece no outro assim
+   * que ele volta a ficar em primeiro plano.
+   *
+   * A ordem importa. Primeiro sobe o que está pendente, depois desce o
+   * que o servidor tem. Se algo da fila não subiu, a busca é adiada —
+   * baixar antes de subir apagaria da tela uma alteração ainda não
+   * enviada.
+   */
+  async pull({ reason = 'auto' } = {}) {
+    if (this.state.mode !== 'remote' || !this.state.user) return false;
+    if (this._pulling) return this._pulling;
+    if (!navigator.onLine) { this.setSync('offline'); return false; }
+
+    this._pulling = (async () => {
+      try {
+        if (syncQueue.size()) {
+          await this.flush();
+          if (syncQueue.size()) return false;
+        }
+
+        const me = await api.get('/auth/me');
+        if (!me || !me.user) return false;
+
+        const before = this.signature();
+
+        this.state.user = me.user;
+        this.state.prefs = { ...DEFAULT_PREFS, ...(me.preferences || {}) };
+        this.state.environments = me.environments || [];
+        this.state.items = me.items || [];
+
+        write(K.remoteUser, me.user);
+        this.persist();
+        this.setSync('synced');
+
+        const changed = before !== this.signature();
+        if (changed) this.emit('pulled', { reason });
+        return changed;
+      } catch (err) {
+        if (err.status === 401) {
+          // A sessão caiu neste aparelho: melhor pedir para entrar de novo
+          // do que continuar mostrando dados que não sincronizam mais.
+          this.state.user = null;
+          this.state.items = [];
+          this.state.environments = [];
+          localStorage.removeItem(K.remoteUser);
+          this.emit('auth', null);
+        } else {
+          this.setSync(navigator.onLine ? 'error' : 'offline');
+        }
+        return false;
+      } finally {
+        this._pulling = null;
+      }
+    })();
+
+    return this._pulling;
+  }
+
+  /** Impressão barata do estado, só para saber se algo mudou de verdade. */
+  signature() {
+    const items = this.state.items
+      .map((i) => i.id + ':' + (i.updatedAt || '') + ':' + i.status)
+      .join('|');
+    const envs = this.state.environments
+      .map((e) => e.id + ':' + (e.updatedAt || e.createdAt || '') + ':' + (e.archivedAt || ''))
+      .join('|');
+    return items + '#' + envs;
+  }
+
+  /**
+   * Mantém os aparelhos alinhados sem ficar batendo no servidor à toa:
+   * busca quando a aba volta ao primeiro plano, quando a conexão volta e,
+   * enquanto a aba está visível, a cada 45 segundos.
+   */
+  startAutoSync() {
+    if (this._autoSync) return;
+    this._autoSync = true;
+
+    const refresh = (reason) => {
+      if (this.state.mode !== 'remote' || !this.state.user) return;
+      if (document.hidden) return;
+      this.pull({ reason });
+    };
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) return;
+      refresh('foreground');
+    });
+
+    window.addEventListener('focus', () => refresh('focus'));
+    window.addEventListener('online', () => refresh('online'));
+    window.addEventListener('pageshow', (ev) => { if (ev.persisted) refresh('restore'); });
+
+    setInterval(() => refresh('interval'), PULL_EVERY);
+
+    // O service worker avisa quando a conexão volta em segundo plano
+    navigator.serviceWorker?.addEventListener?.('message', (ev) => {
+      if (ev.data?.type === 'flush-queue') this.flush();
+    });
   }
 
   async register({ displayName, email, password }) {
     email = String(email).trim().toLowerCase();
 
     if (api.online) {
-      const res = await api.post('/auth/register', { displayName, email, password });
-      this.state.user = res.user;
-      this.state.prefs = { ...DEFAULT_PREFS, ...(res.preferences || {}) };
-      this.state.environments = res.environments || [];
-      this.state.items = [];
-      this.setSync('synced');
-      this.emit('auth', this.state.user);
-      return this.state.user;
+      const res = await api.post('/auth/register', {
+        displayName, email, password,
+        timezone: DEFAULT_PREFS.timezone,
+        locale: DEFAULT_PREFS.locale,
+      });
+      return this.adoptRemote({ ...res, items: res.items || [] });
     }
 
     const accounts = read(K.accounts, []);
@@ -232,13 +384,10 @@ class Store extends EventTarget {
 
     if (api.online) {
       const res = await api.post('/auth/login', { email, password });
-      this.state.user = res.user;
-      this.state.prefs = { ...DEFAULT_PREFS, ...(res.preferences || {}) };
-      this.state.environments = res.environments || [];
-      this.state.items = res.items || [];
-      this.setSync('synced');
-      this.emit('auth', this.state.user);
-      return this.state.user;
+      // A fila pode ter sobras de uma sessão anterior neste aparelho;
+      // enviá-las agora gravaria itens de uma conta na outra.
+      syncQueue.clear();
+      return this.adoptRemote(res);
     }
 
     const accounts = read(K.accounts, []);
@@ -263,9 +412,12 @@ class Store extends EventTarget {
 
   async logout() {
     if (api.online) {
+      // O que ainda não subiu sobe agora: sair não pode perder trabalho.
+      try { await this.flush(); } catch { /* a fila fica para a próxima */ }
       try { await api.post('/auth/logout', {}); } catch { /* segue mesmo assim */ }
     }
     localStorage.removeItem(K.session);
+    localStorage.removeItem(K.remoteUser);
     this.state.user = null;
     this.state.items = [];
     this.state.environments = [];

@@ -240,18 +240,64 @@ export function sweep(container) {
    4. TROCA DE TELA INTEIRA (landing → acesso → aplicação)
    ===================================================================== */
 
+/**
+ * A marca girando, do tamanho de um botão.
+ *
+ * É a mesma linguagem da abertura: anéis em órbita e a marca respirando
+ * no meio. Serve para qualquer espera que valha ser mostrada.
+ */
+export function brandLoader(label) {
+  const box = document.createElement('div');
+  box.className = 'brand-loader';
+  box.setAttribute('role', 'status');
+  box.setAttribute('aria-label', label || 'Carregando');
+
+  const ringA = document.createElement('span');
+  ringA.className = 'brand-loader__ring';
+  const ringB = document.createElement('span');
+  ringB.className = 'brand-loader__ring';
+
+  const mark = document.createElement('img');
+  mark.className = 'brand-loader__mark';
+  mark.src = window.nestraLogoSrc || 'assets/logo/nestra-mark.png';
+  mark.alt = '';
+
+  box.append(ringA, ringB, mark);
+
+  if (label) {
+    const caption = document.createElement('span');
+    caption.className = 'brand-loader__label';
+    caption.textContent = label;
+    box.appendChild(caption);
+  }
+
+  return box;
+}
+
 export function screenTransition() {
   if (reduced()) return () => {};
 
   const veil = document.createElement('div');
   veil.className = 'fx-veil';
   veil.setAttribute('aria-hidden', 'true');
+
+  // A cortina não fica muda: a marca aparece girando enquanto a próxima
+  // tela é montada por baixo.
+  const loader = brandLoader();
+  loader.classList.add('fx-veil__loader');
+  veil.appendChild(loader);
+
   document.body.appendChild(veil);
 
   veil.animate([
     { clipPath: 'inset(0 0 100% 0)', opacity: 1 },
     { clipPath: 'inset(0 0 0 0)', opacity: 1 },
   ], { duration: 260, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'forwards' });
+
+  loader.animate([
+    { opacity: 0, transform: 'scale(.82)' },
+    { opacity: 1, transform: 'scale(1)' },
+  ], { duration: 220, delay: 120, easing: 'cubic-bezier(.16,1,.3,1)', fill: 'backwards' });
 
   return () => {
     const out = veil.animate([

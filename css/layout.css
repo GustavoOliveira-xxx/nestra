@@ -338,7 +338,31 @@ body[data-view='auth'] #scene[data-ready='true'] { opacity: .55; }
   .brand__name   { display: none; }
   .view-title    { font-size: var(--fs-xl); }
   .main          { padding: var(--s-4) var(--s-3) var(--s-12); }
+
+  /* O desfoque da barra é caro e some atrás do conteúdo em tela pequena */
+  .topbar { backdrop-filter: blur(12px); }
+
+  /* Respeita o recorte da tela e a área do gesto de voltar */
+  .topbar { padding-left: max(var(--s-3), env(safe-area-inset-left));
+            padding-right: max(var(--s-3), env(safe-area-inset-right)); }
+  .main   { padding-left: max(var(--s-3), env(safe-area-inset-left));
+            padding-right: max(var(--s-3), env(safe-area-inset-right)); }
 }
+
+/* A cena de fundo é fixa: em iOS a barra do navegador que aparece e
+   some ao rolar redimensiona a viewport e o canvas fica com uma faixa
+   vazia embaixo. Ancorar pela altura grande da janela evita a faixa. */
+@supports (height: 100lvh) {
+  #scene { height: 100lvh; }
+}
+
+/* No degrau mais baixo a decoração continua, mas sem os desfoques de
+   camada, que são o que realmente derruba a taxa de quadros. */
+[data-gfx='low'] .topbar,
+[data-gfx='low'] .sidebar__scrim,
+[data-gfx='low'] .mobile-bar { backdrop-filter: none; }
+[data-gfx='low'] .topbar     { background: color-mix(in srgb, var(--bg) 94%, transparent); }
+[data-gfx='low'] .mobile-bar { background: color-mix(in srgb, var(--bg) 96%, transparent); }
 
 /* Barra inferior de ações no celular — o polegar alcança */
 .mobile-bar {

@@ -10,6 +10,7 @@
    ===================================================================== */
 
 import { program, fullscreenQuad } from '../core/gl.js';
+import { device, quality, sizeCanvas, renderWhenVisible, onResize, glBudget } from '../core/device.js';
 
 const VS = `#version 300 es
 in vec2 aPos;
@@ -155,10 +156,10 @@ void main() {
   outColor = vec4(color * alpha, alpha);
 }`;
 
-/* Quantas peças com WebGL podem existir ao mesmo tempo. Acima disso o
-   navegador começa a descartar contextos, então o resto usa o plano B. */
-const MAX_LIVE = 6;
-let live = 0;
+/* Quantas peças com WebGL podem existir ao mesmo tempo é decidido pelo
+   orçamento compartilhado em core/device.js — ele conhece o aparelho e
+   já conta a cena de fundo e a peça do topo do ambiente. O que não
+   couber usa o plano B em CSS, que continua girando. */
 
 const SHAPE_BY_ICON = {
   briefcase: 0, grid: 0, layers: 5,
@@ -187,7 +188,8 @@ export class EnvOrb {
   }
 
   init() {
-    if (live >= MAX_LIVE) return false;
+    if (device.reducedMotion) return false;
+    if (!glBudget.claim(this)) return false;
 
     const gl = this.canvas.getContext('webgl2', {
       alpha: true,
@@ -196,11 +198,12 @@ export class EnvOrb {
       depth: false,
       powerPreference: 'low-power',
     });
-    if (!gl) return false;
+    if (!gl) { glBudget.release(this); return false; }
 
     try {
       this.prog = program(gl, VS, FS);
     } catch {
+      glBudget.release(this);
       return false;
     }
 
@@ -212,7 +215,6 @@ export class EnvOrb {
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
-    live++;
     this._bindHost();
     this.resize();
     this.start();
@@ -238,19 +240,35 @@ export class EnvOrb {
     host.addEventListener('pointermove', this._onMove, { passive: true });
     host.addEventListener('pointerleave', this._onLeave, { passive: true });
     this._host = host;
+
+    /* Cartão fora da tela não desenha. Numa lista com muitos ambientes é
+       a diferença entre rolar liso e rolar aos trancos no celular. */
+    this._unwatch = renderWhenVisible(host, {
+      onEnter: () => { this.offscreen = false; if (!document.hidden) this.start(); },
+      onLeave: () => { this.offscreen = true; this.stop(); },
+    });
+
+    this._onVis = () => {
+      if (document.hidden) this.stop();
+      else if (!this.offscreen) this.start();
+    };
+    document.addEventListener('visibilitychange', this._onVis);
+
+    // Só remede quando o tamanho realmente muda
+    this._unobserve = onResize(this.canvas, () => { this._dirty = true; });
+    this._onQuality = () => { this._dirty = true; };
+    quality.addEventListener('change', this._onQuality);
   }
 
   resize() {
     if (!this.gl) return;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const r = this.canvas.getBoundingClientRect();
-    const w = Math.max(1, Math.round((r.width || 64) * dpr));
-    const h = Math.max(1, Math.round((r.height || 64) * dpr));
-    if (this.canvas.width !== w || this.canvas.height !== h) {
-      this.canvas.width = w;
-      this.canvas.height = h;
-      this.gl.viewport(0, 0, w, h);
-    }
+    // A peça é pequena: um teto um pouco mais generoso do que o da cena
+    // de fundo mantém a silhueta limpa sem pesar.
+    const { w, h, changed } = sizeCanvas(this.canvas, {
+      cap: Math.min(2, quality.dprCap + 0.4),
+    });
+    if (changed) this.gl.viewport(0, 0, w, h);
+    this._dirty = false;
   }
 
   start() {
@@ -279,7 +297,7 @@ export class EnvOrb {
     this.tilt.y += (this.tilt.ty - this.tilt.y) * 0.09;
     this.hover += (this.targetHover - this.hover) * 0.08;
 
-    this.resize();
+    if (this._dirty) this.resize();
 
     const u = this.prog.u;
     gl.useProgram(this.prog.p);
@@ -304,12 +322,18 @@ export class EnvOrb {
       this._host.removeEventListener('pointermove', this._onMove);
       this._host.removeEventListener('pointerleave', this._onLeave);
     }
+    document.removeEventListener('visibilitychange', this._onVis);
+    quality.removeEventListener('change', this._onQuality);
+    this._unwatch?.();
+    this._unobserve?.();
+
     if (this.gl) {
-      live = Math.max(0, live - 1);
+      glBudget.release(this);
       const lose = this.gl.getExtension('WEBGL_lose_context');
       if (lose) lose.loseContext();
       this.gl = null;
     }
+    active.delete(this);
   }
 }
 
@@ -326,7 +350,7 @@ export function mountOrb(canvas, options) {
   }
   // Sem WebGL disponível: um sólido em CSS mantém a ideia de peça 3D
   const host = canvas.parentElement;
-  if (host) {
+  if (host && !host.querySelector('.orb-css')) {
     canvas.style.display = 'none';
     const cube = document.createElement('div');
     cube.className = 'orb-css';
