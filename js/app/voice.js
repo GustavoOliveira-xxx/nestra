@@ -38,15 +38,67 @@ export class VoiceCapture extends EventTarget {
     this.lang = lang;
     this.continuous = continuous;
     this.running = false;
-    this.finalText = '';
+
+    /* O texto vive em três partes, e a separação é o que impede a
+       repetição em escada:
+
+       • `committed`   — o que veio de sessões já encerradas. O navegador
+                         reinicia o reconhecimento sozinho depois de uma
+                         pausa, e a cada reinício a lista de resultados
+                         volta do zero; sem guardar isto, o começo da
+                         frase se perderia.
+       • `sessionFinal`— o definitivo da sessão atual, SEMPRE reconstruído
+                         a partir da lista completa de resultados.
+       • `interimText` — o provisório, que muda a cada instante.
+
+       O erro anterior era acumular o definitivo (`final += trecho`) em
+       vez de reconstruí-lo. No Android, cada evento reentrega resultados
+       que já haviam sido entregues, então "pegar ração para o Max" ia
+       sendo somado a si mesmo pedaço a pedaço: "pegar", "pegar ração",
+       "pegar ração para"… Reconstruir a partir da lista elimina a
+       classe inteira de problema, em vez de remendar o sintoma. */
+    this.committed = '';
+    this.sessionFinal = '';
     this.interimText = '';
     this._stopping = false;
+    this._vazias = 0;   // sessões seguidas que não produziram nada
   }
 
   get available() { return Boolean(Recognition); }
 
   _emit(type, detail) {
     this.dispatchEvent(new CustomEvent(type, { detail }));
+  }
+
+  /**
+   * Lê o evento de resultado e reescreve o estado da sessão.
+   *
+   * Separado do `start()` para poder ser exercitado sem microfone: as
+   * sequências que quebraram no aparelho real são reproduzíveis aqui.
+   */
+  applyResults(results) {
+    let final = '';
+    let interim = '';
+
+    for (let i = 0; i < results.length; i++) {
+      const alternativa = results[i][0];
+      if (!alternativa) continue;
+      const trecho = alternativa.transcript || '';
+      if (results[i].isFinal) final += trecho + ' ';
+      else interim += trecho + ' ';
+    }
+
+    this.sessionFinal = final.replace(/\s+/g, ' ').trim();
+    this.interimText = interim.replace(/\s+/g, ' ').trim();
+  }
+
+  /** Fecha a sessão atual e guarda o que ela produziu. */
+  _commitSession() {
+    if (this.sessionFinal) {
+      this.committed = (this.committed + ' ' + this.sessionFinal).replace(/\s+/g, ' ').trim();
+    }
+    this.sessionFinal = '';
+    this.interimText = '';
   }
 
   start() {
@@ -65,16 +117,7 @@ export class VoiceCapture extends EventTarget {
     };
 
     rec.onresult = (ev) => {
-      let interim = '';
-      for (let i = ev.resultIndex; i < ev.results.length; i++) {
-        const trecho = ev.results[i][0].transcript;
-        if (ev.results[i].isFinal) {
-          this.finalText = (this.finalText + ' ' + trecho).replace(/\s+/g, ' ').trim();
-        } else {
-          interim += trecho;
-        }
-      }
-      this.interimText = interim.trim();
+      this.applyResults(ev.results);
       this._emit('text', { final: this.finalText, interim: this.interimText });
     };
 
@@ -98,8 +141,22 @@ export class VoiceCapture extends EventTarget {
     rec.onend = () => {
       /* O navegador encerra sozinho depois de um silêncio. Se a pessoa
          não pediu para parar, recomeça — senão o ditado de uma frase mais
-         pensada morre no meio da primeira pausa. */
-      if (this.running && !this._stopping) {
+         pensada morre no meio da primeira pausa.
+
+         Antes de recomeçar, o que a sessão produziu é guardado: a lista
+         de resultados nasce vazia na sessão seguinte, e sem guardar o
+         começo da frase iria embora. */
+      const rendeu = Boolean(this.sessionFinal || this.interimText);
+      this._vazias = rendeu ? 0 : this._vazias + 1;
+      this._commitSession();
+
+      /* Duas sessões seguidas sem nada quer dizer que a pessoa parou de
+         falar. Continuar reabrindo o microfone nesse ponto seria deixá-lo
+         ligado sem motivo — e um microfone aberto que ninguém pediu é o
+         tipo de coisa que não se faz. */
+      const desistiu = this._vazias >= 2;
+
+      if (this.running && !this._stopping && !desistiu) {
         try { rec.start(); return; } catch { /* segue para o encerramento */ }
       }
       this.running = false;
@@ -130,14 +187,21 @@ export class VoiceCapture extends EventTarget {
     try { this._rec.abort(); } catch { /* já estava parando */ }
   }
 
+  /** O definitivo: sessões encerradas mais o que já fechou na atual. */
+  get finalText() {
+    return (this.committed + ' ' + this.sessionFinal).replace(/\s+/g, ' ').trim();
+  }
+
   /** Tudo o que foi dito até agora, incluindo o trecho ainda provisório. */
   get text() {
     return (this.finalText + ' ' + this.interimText).replace(/\s+/g, ' ').trim();
   }
 
   reset() {
-    this.finalText = '';
+    this.committed = '';
+    this.sessionFinal = '';
     this.interimText = '';
+    this._vazias = 0;
   }
 }
 
