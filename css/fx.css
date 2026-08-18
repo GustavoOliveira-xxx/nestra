@@ -37,6 +37,68 @@
   pointer-events: none;
 }
 
+/* ---------------------------------------------------------------------
+   O SELO DE CONCLUÍDO
+
+   Um anel que se fecha e um visto que se desenha, no ponto do clique.
+   Nasce medido pelo alvo, então serve tanto para a caixinha de 18 px da
+   linha quanto para o botão largo da tela de detalhes.
+   --------------------------------------------------------------------- */
+.fx-done {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  overflow: visible;
+  pointer-events: none;
+  filter: drop-shadow(0 0 10px currentColor);
+}
+.fx-done__ring {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 5;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
+.fx-done__tick {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Clarão curto sob o selo */
+.fx-done-flash {
+  position: absolute;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  mix-blend-mode: screen;
+  filter: blur(6px);
+  pointer-events: none;
+}
+
+/* Anel largo que sai do ponto e se abre */
+.fx-done-halo {
+  position: absolute;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* Faíscas da conclusão: saem para cima e caem */
+.fx-sparks {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.fx-sparks i {
+  position: absolute;
+  border-radius: 1px;
+  will-change: transform, opacity;
+}
+
 /* Faíscas */
 .fx-spark {
   position: absolute;
@@ -874,6 +936,16 @@ a[data-loading] { position: relative; }
 }
 .hero3d-css__rings i:nth-child(2) { width: 148px; height: 148px; animation-duration: 6.5s; animation-direction: reverse; }
 .hero3d-css__rings i:nth-child(3) { width: 232px; height: 232px; animation-duration: 13s; opacity: .5; }
+
+/* Sem WebGL o sólido é de CSS, mas a conclusão também chega até ele */
+.hero3d-css[data-charged='true'] .hero3d-css__solid { animation: heroSolidSpin 14s linear infinite, heroCharge .7s var(--ease-out); }
+.hero3d-css[data-charged='true'] .hero3d-css__rings i { animation-duration: 2.2s; }
+
+@keyframes heroCharge {
+  0%   { filter: brightness(1); }
+  22%  { filter: brightness(2.1); }
+  100% { filter: brightness(1); }
+}
 
 @keyframes heroSolidSpin {
   from { transform: rotateX(var(--rx)) rotateY(var(--ry)); }

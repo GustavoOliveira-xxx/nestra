@@ -9,6 +9,107 @@ mensagem e autoria, sem sobrescrever nada à mão.
 
 ---
 
+# Quarta rodada
+
+## 12. Uma peça 3D para cada ambiente, e não seis para doze
+
+O formulário oferece doze ícones. As peças 3D conheciam seis formas, e
+duas delas eram a mesma caixa arredondada: escolher "Trabalho" ou
+escolher "Casa" dava o mesmo sólido pintado de outra cor. A forma, que
+era para ser a identidade do ambiente, não identificava nada.
+
+Agora são **doze sólidos, um por ícone**, e cada um se mexe do jeito que
+combina com o que representa:
+
+    camadas    três placas que se afastam e voltam, com luz entre elas
+    maleta     corpo, banda de metal, fecho aceso e alça que balança
+    livro      duas capas abrindo e fechando sobre a lombada
+    coração    batida dupla, como a de verdade
+    casa       o telhado respira, a chaminé sai do vão e a janela fica acesa
+    carteira   o cartão desliza para fora e volta
+    estrela    gira no próprio eixo, com uma joia acesa no meio
+    lâmpada    o bulbo aceso sobre a rosca, tremeluzindo
+    alvo       três anéis inquietos em volta do centro
+    raio       casca na cor do ambiente e um núcleo que estala por dentro
+    escudo     a cruz acesa nas duas faces
+    grade      oito blocos respirando em volta de um núcleo
+
+Os sólidos moram em um arquivo só, **`js/gfx/shapes.js`**, usado tanto
+pela peça grande do topo da tela quanto pela peça pequena do cartão: são
+o mesmo objeto, visto de perto ou de longe. A grade de ambientes passou a
+ser reconhecível pela forma antes de o nome ser lido.
+
+Três coisas mudaram junto, porque sem elas o trabalho não apareceria:
+
+- **A peça parou de girar sem parar.** Uma maleta em rotação contínua
+  passa metade do tempo de perfil, quando não dá para saber o que é. Ela
+  agora balança em torno de uma pose de frente, vista de um pouco de
+  cima — sempre reconhecível, e ainda assim nunca parada.
+- **Os materiais ficaram três**: o corpo na cor do ambiente, o detalhe em
+  metal claro e o núcleo aceso por dentro, que pisca no ritmo de cada
+  peça — a lâmpada tremeluz, o raio estala, o coração acende na batida.
+- **A prévia do formulário mostra a peça de verdade**, girando, e troca
+  de sólido e de cor sem recriar contexto nenhum. Escolher o ícone
+  passou a ser escolher o objeto, olhando para ele.
+
+Nada disso custou mais contexto WebGL do que antes: o orçamento de
+`core/device.js` continua mandando, e as peças da grade passaram a ser
+montadas **uma por quadro**. Compilar um shader é trabalho síncrono, e
+doze de uma vez travavam o quadro por tempo suficiente para se sentir ao
+rolar — divididas, o custo total é o mesmo e a grade ainda ganha o efeito
+de ir se acendendo peça por peça.
+
+## 13. Concluir virou um gesto, não um sumiço
+
+Marcar como feito é o clique mais repetido do app, e ele respondia com
+dez partículas azuis — sempre azuis, inclusive: a cor do item era
+calculada por uma expressão que devolvia o mesmo valor nos dois lados do
+`?`. A linha ainda tinha uma animação de recuo, mas ela quase nunca
+chegava a aparecer: a tela era redesenhada no mesmo instante e levava o
+nó embora no meio do caminho.
+
+O gesto agora tem começo, meio e fim, na linguagem do resto do site —
+seco e luminoso, sem confete:
+
+1. um **clarão curto** no ponto do clique;
+2. o **selo**: um anel que se fecha e um visto que se desenha dentro
+   dele, medido pelo alvo — serve para a caixinha de 18 px da linha e
+   para o botão largo da tela de detalhes;
+3. um **anel largo** que sai do ponto e se abre;
+4. **faíscas com peso**, na cor real do item, que sobem, perdem força e
+   caem;
+5. a **linha** recebe uma varredura de luz, o título ganha o risco e o
+   conjunto assenta em profundidade;
+6. a **cena de fundo** ondula no ponto exato do clique e a **peça 3D do
+   ambiente** reage: o núcleo acende, os satélites aceleram e uma onda de
+   choque sai dela pelo piso;
+7. o número de **concluídos** do ambiente pulsa, para a conta não subir
+   escondida.
+
+O redesenho da tela agora espera a animação — mas o dado muda na hora, e
+a própria linha já mostra o novo estado antes de qualquer coisa. Quem
+clica vê a resposta no mesmo quadro; o que espera é só a tela se
+reorganizar em volta.
+
+O mesmo gesto vale para os passos de uma checklist (numa medida menor) e
+para o botão *Concluir* da tela de detalhes. Sem WebGL, a peça em CSS
+também acende. Com movimento reduzido, nada disso acontece: o item é
+marcado e pronto.
+
+### Arquivos desta rodada
+
+    js/gfx/shapes.js             os doze sólidos, em GLSL (novo)
+    js/gfx/complete.js           o gesto de concluir (novo)
+    js/gfx/envhero.js            peça do topo: sólidos novos, pose e pulso
+    js/gfx/orb.js                peça do cartão: mesmos sólidos, troca ao vivo
+    js/core/device.js            vaga emprestada de contexto para a prévia
+    js/app/views/items.js        conclusão do item, do passo e dos detalhes
+    js/app/views/today.js        placar de concluídos que pulsa
+    js/app/views/environments.js prévia 3D no formulário, montagem em fila
+    css/{animations,components,fx,views}.css   selo, faíscas, varredura, visto
+
+---
+
 # Terceira rodada
 
 ## 9. Carregamento ao navegar pela barra lateral

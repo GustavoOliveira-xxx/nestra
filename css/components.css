@@ -273,6 +273,12 @@
 }
 .check[aria-checked='true']::after { transform: rotate(45deg) scale(1); }
 
+/* No instante da marcação — e só nele — a caixinha pulsa e o visto é
+   traçado. Nos itens que já estavam concluídos ele apenas está lá: a
+   animação é do gesto, não do estado. */
+.check--just-done { animation: checkPop .44s var(--ease-spring) both; }
+.check--just-done::after { animation: checkDraw .34s var(--ease-out) .06s both; }
+
 /* Controle segmentado */
 .segmented {
   display: inline-flex;

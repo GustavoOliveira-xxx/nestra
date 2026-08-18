@@ -10,7 +10,7 @@
 import { store } from '../store.js';
 import { humanDate, TYPE_LABELS, PRIORITY_LABELS, PERIOD_LABELS, todayIn, toISODate } from '../nlp.js';
 import { el, icon, toast, openModal, openMenu, confirmDialog } from '../ui.js';
-import { burstAt } from '../../gfx/fx.js';
+import { celebrateCompletion, completionEffect, resolveColor } from '../../gfx/complete.js';
 
 const TYPE_COLOR = {
   task: 'var(--type-task)',
@@ -76,17 +76,28 @@ export function renderItem(item, options = {}) {
     ev.stopPropagation();
     const willComplete = item.status !== 'done';
 
-    if (willComplete) {
-      const r = check.getBoundingClientRect();
-      burstAt(r.left + r.width / 2, r.top + r.height / 2, TYPE_COLOR[item.type].includes('var') ? '#2F6BFF' : '#2F6BFF', 10);
-      window.nestraScene?.pulseAt(0.45);
-      if (store.state.prefs.afterComplete !== 'keep') {
-        row.classList.add('item--completing');
-      }
+    // O dado muda na hora; só o redesenho da tela é que espera.
+    store.toggleItem(item.id);
+
+    if (!willComplete) {
+      onChange?.();
+      return;
     }
 
-    store.toggleItem(item.id);
-    setTimeout(() => onChange?.(), willComplete && store.state.prefs.afterComplete === 'hide' ? 420 : 0);
+    /* A própria linha já mostra o novo estado antes de a tela inteira se
+       redesenhar: o visto marca, o título ganha o risco e a trilha do
+       tipo apaga. Sem isso a resposta ao clique chegaria só depois da
+       animação, que é exatamente o que ela não pode custar. */
+    row.dataset.status = 'done';
+    check.setAttribute('aria-checked', 'true');
+    check.setAttribute('aria-label', 'Reabrir item');
+
+    const wait = celebrateCompletion(row, check, {
+      color: resolveColor(row),
+      mode: store.state.prefs.afterComplete,
+    });
+
+    setTimeout(() => onChange?.(), wait);
   });
 
   /* Corpo */
@@ -416,7 +427,16 @@ export function openItemDetail(itemId, onChange = null) {
         'aria-checked': String(entry.completed),
         'aria-label': entry.title,
         onClick: () => {
-          store.updateChecklistItem(item.id, entry.id, { completed: !entry.completed });
+          const willComplete = !entry.completed;
+          store.updateChecklistItem(item.id, entry.id, { completed: willComplete });
+          if (willComplete) {
+            box.setAttribute('aria-checked', 'true');
+            box.classList.add('check--just-done');
+            // Um passo é menor que um item: o selo vem na medida dele.
+            completionEffect(box, { color: resolveColor(null), scale: 0.72 });
+            setTimeout(() => { drawChecklist(); onChange?.(); }, 260);
+            return;
+          }
           drawChecklist();
           onChange?.();
         },
@@ -491,7 +511,14 @@ export function openItemDetail(itemId, onChange = null) {
   });
 
   doneBtn.addEventListener('click', () => {
+    const willComplete = item.status !== 'done';
     store.toggleItem(item.id);
+    if (willComplete) {
+      // Aqui o alvo é um botão largo: o selo cresce junto com ele.
+      completionEffect(doneBtn);
+      setTimeout(() => { onChange?.(); dialog.close(); }, 300);
+      return;
+    }
     onChange?.();
     dialog.close();
   });

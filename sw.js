@@ -26,7 +26,7 @@
    seguem em cache primeiro: elas não mudam, e são as pesadas.
    ===================================================================== */
 
-const VERSION = 'nestra-v5';
+const VERSION = 'nestra-v6';
 const SHELL = VERSION + '-shell';
 const RUNTIME = VERSION + '-runtime';
 
@@ -49,6 +49,8 @@ const SHELL_FILES = [
   './js/gfx/scene.js',
   './js/gfx/fx.js',
   './js/gfx/interactions.js',
+  './js/gfx/shapes.js',
+  './js/gfx/complete.js',
   './js/gfx/orb.js',
   './js/gfx/envhero.js',
   './js/app/api.js',
