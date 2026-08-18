@@ -19,6 +19,59 @@ const Recognition =
     ? (window.SpeechRecognition || window.webkitSpeechRecognition)
     : null;
 
+/* ---------------------------------------------------------------------
+   Juntar o que foi dito
+
+   Esta função é a resposta ao ditado que repetia no celular. O
+   reconhecimento do Android não entrega pedaços novos a cada evento: ele
+   reentrega a frase inteira, um pouco maior a cada vez —
+
+       "pegar"  ·  "pegar ração"  ·  "pegar ração para o Max"
+
+   — e às vezes reentrega a mesma frase de uma sessão anterior quando o
+   navegador reabre o microfone sozinho depois de uma pausa. Somar tudo,
+   que é o que qualquer concatenação faz, produz exatamente a escada que
+   aparecia na tela. No computador isso não acontecia porque ali cada
+   trecho vem uma vez só, e por isso o problema era só do celular.
+
+   A regra aqui não tenta adivinhar duplicata por semelhança: ela olha
+   para uma relação exata. Se o trecho novo **começa com** tudo o que já
+   havia, ele não é uma adição — é a mesma fala, crescida — e substitui o
+   anterior. Se o que já havia começa com o trecho novo, é reentrega pura
+   e não há nada a somar. Fora esses dois casos, o trecho é novo mesmo e
+   entra no fim.
+
+   A comparação ignora maiúsculas, acentos e pontuação (o reconhecedor
+   muda os três entre uma entrega e outra) e só aceita o encaixe em
+   fronteira de palavra, para "sim" nunca casar dentro de "simples".
+   --------------------------------------------------------------------- */
+const chaveFala = (texto) => String(texto)
+  .toLowerCase()
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/[.,;:!?¿¡"'()]/g, '')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+export function mergeSpoken(acumulado, trecho) {
+  const a = String(acumulado || '').replace(/\s+/g, ' ').trim();
+  const t = String(trecho || '').replace(/\s+/g, ' ').trim();
+  if (!t) return a;
+  if (!a) return t;
+
+  const ka = chaveFala(a);
+  const kt = chaveFala(t);
+  if (!ka) return t;
+  if (!kt) return a;
+
+  // O trecho novo contém tudo o que já havia: é a fala crescida.
+  if (kt === ka || kt.startsWith(ka + ' ')) return t;
+
+  // O que já havia contém o trecho novo: reentrega, nada a somar.
+  if (ka.startsWith(kt + ' ')) return a;
+
+  return a + ' ' + t;
+}
+
 /** O navegador sabe transcrever fala? */
 export function voiceSupported() {
   return Boolean(Recognition);
@@ -39,28 +92,26 @@ export class VoiceCapture extends EventTarget {
     this.continuous = continuous;
     this.running = false;
 
-    /* O texto vive em três partes, e a separação é o que impede a
-       repetição em escada:
+    /* O texto vive em três partes:
 
        • `committed`   — o que veio de sessões já encerradas. O navegador
                          reinicia o reconhecimento sozinho depois de uma
-                         pausa, e a cada reinício a lista de resultados
-                         volta do zero; sem guardar isto, o começo da
-                         frase se perderia.
+                         pausa, e sem guardar isto o começo da frase se
+                         perderia.
        • `sessionFinal`— o definitivo da sessão atual, SEMPRE reconstruído
                          a partir da lista completa de resultados.
        • `interimText` — o provisório, que muda a cada instante.
 
-       O erro anterior era acumular o definitivo (`final += trecho`) em
-       vez de reconstruí-lo. No Android, cada evento reentrega resultados
-       que já haviam sido entregues, então "pegar ração para o Max" ia
-       sendo somado a si mesmo pedaço a pedaço: "pegar", "pegar ração",
-       "pegar ração para"… Reconstruir a partir da lista elimina a
-       classe inteira de problema, em vez de remendar o sintoma. */
+       Nenhuma das três é somada às outras por concatenação simples: elas
+       passam por `mergeSpoken`, que sabe distinguir "o trecho novo
+       continua o anterior" de "o trecho novo é o anterior outra vez,
+       maior". É essa distinção que impede a repetição em escada no
+       Android — ver a explicação em `mergeSpoken`. */
     this.committed = '';
     this.sessionFinal = '';
     this.interimText = '';
     this._stopping = false;
+    this._starting = false;
     this._vazias = 0;   // sessões seguidas que não produziram nada
   }
 
@@ -84,26 +135,31 @@ export class VoiceCapture extends EventTarget {
       const alternativa = results[i][0];
       if (!alternativa) continue;
       const trecho = alternativa.transcript || '';
-      if (results[i].isFinal) final += trecho + ' ';
-      else interim += trecho + ' ';
+      if (results[i].isFinal) final = mergeSpoken(final, trecho);
+      else interim = mergeSpoken(interim, trecho);
     }
 
-    this.sessionFinal = final.replace(/\s+/g, ' ').trim();
-    this.interimText = interim.replace(/\s+/g, ' ').trim();
+    this.sessionFinal = final;
+    this.interimText = interim;
   }
 
   /** Fecha a sessão atual e guarda o que ela produziu. */
   _commitSession() {
-    if (this.sessionFinal) {
-      this.committed = (this.committed + ' ' + this.sessionFinal).replace(/\s+/g, ' ').trim();
-    }
+    this.committed = mergeSpoken(this.committed, this.sessionFinal);
     this.sessionFinal = '';
     this.interimText = '';
   }
 
-  start() {
-    if (!Recognition || this.running) return false;
-
+  /**
+   * Prepara um reconhecimento novo, com os ouvintes já ligados.
+   *
+   * Cada volta ganha um objeto novo em vez de reaproveitar o anterior.
+   * A lista de resultados pertence ao objeto, e reiniciar o mesmo objeto
+   * no Android traz a lista da sessão passada junto — o começo da frase
+   * voltava inteiro, somado ao que já estava guardado. Um objeto novo
+   * nasce com a lista vazia, sempre, em qualquer navegador.
+   */
+  _criar() {
     const rec = new Recognition();
     rec.lang = this.lang;
     rec.continuous = this.continuous;
@@ -112,6 +168,7 @@ export class VoiceCapture extends EventTarget {
 
     rec.onstart = () => {
       this.running = true;
+      this._starting = false;
       this._stopping = false;
       this._emit('start');
     };
@@ -139,13 +196,16 @@ export class VoiceCapture extends EventTarget {
     };
 
     rec.onend = () => {
+      /* Este reconhecimento acabou o trabalho dele. Desligar os ouvintes
+         evita que um evento atrasado do objeto velho mexa no estado da
+         sessão que está começando. */
+      rec.onstart = rec.onresult = rec.onerror = rec.onend = null;
+
       /* O navegador encerra sozinho depois de um silêncio. Se a pessoa
          não pediu para parar, recomeça — senão o ditado de uma frase mais
          pensada morre no meio da primeira pausa.
 
-         Antes de recomeçar, o que a sessão produziu é guardado: a lista
-         de resultados nasce vazia na sessão seguinte, e sem guardar o
-         começo da frase iria embora. */
+         Antes de recomeçar, o que a sessão produziu é guardado. */
       const rendeu = Boolean(this.sessionFinal || this.interimText);
       this._vazias = rendeu ? 0 : this._vazias + 1;
       this._commitSession();
@@ -156,26 +216,49 @@ export class VoiceCapture extends EventTarget {
          tipo de coisa que não se faz. */
       const desistiu = this._vazias >= 2;
 
-      if (this.running && !this._stopping && !desistiu) {
-        try { rec.start(); return; } catch { /* segue para o encerramento */ }
-      }
+      if (this.running && !this._stopping && !desistiu && this._abrir()) return;
+
       this.running = false;
+      this._starting = false;
       this._emit('end', { text: this.text });
     };
 
-    this._rec = rec;
+    return rec;
+  }
+
+  /** Abre um reconhecimento novo. Devolve se conseguiu. */
+  _abrir() {
     try {
-      rec.start();
+      this._rec = this._criar();
+      this._rec.start();
+      return true;
     } catch {
-      this._emit('error', { code: 'start', message: 'Não consegui abrir o microfone.' });
       return false;
     }
-    return true;
+  }
+
+  start() {
+    /* `running` só fica verdadeiro quando o navegador confirma a abertura,
+       e isso é assíncrono. Sem o `_starting`, dois toques seguidos no
+       microfone — coisa comum em tela de toque — abriam dois
+       reconhecimentos ao mesmo tempo, cada um transcrevendo a mesma fala
+       para dentro da mesma caixa. */
+    if (!Recognition || this.running || this._starting) return false;
+
+    this._stopping = false;
+    this._starting = true;
+
+    if (this._abrir()) return true;
+
+    this._starting = false;
+    this._emit('error', { code: 'start', message: 'Não consegui abrir o microfone.' });
+    return false;
   }
 
   stop() {
     if (!this._rec) return;
     this._stopping = true;
+    this._starting = false;
     this.running = false;
     try { this._rec.stop(); } catch { /* já estava parando */ }
   }
@@ -183,18 +266,19 @@ export class VoiceCapture extends EventTarget {
   abort() {
     if (!this._rec) return;
     this._stopping = true;
+    this._starting = false;
     this.running = false;
     try { this._rec.abort(); } catch { /* já estava parando */ }
   }
 
   /** O definitivo: sessões encerradas mais o que já fechou na atual. */
   get finalText() {
-    return (this.committed + ' ' + this.sessionFinal).replace(/\s+/g, ' ').trim();
+    return mergeSpoken(this.committed, this.sessionFinal);
   }
 
   /** Tudo o que foi dito até agora, incluindo o trecho ainda provisório. */
   get text() {
-    return (this.finalText + ' ' + this.interimText).replace(/\s+/g, ' ').trim();
+    return mergeSpoken(this.finalText, this.interimText);
   }
 
   reset() {

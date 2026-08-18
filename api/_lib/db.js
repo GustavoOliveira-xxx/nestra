@@ -43,6 +43,42 @@ export async function oneAsUser(userId, build) {
    Conversão entre o formato do banco (snake_case) e o do front (camelCase)
    -------------------------------------------------------------------- */
 
+/**
+ * Uma coluna `date` do Postgres em 'AAAA-MM-DD'.
+ *
+ * O driver do Neon aplica os mesmos conversores do node-postgres, e o
+ * conversor de `date` devolve um **Date do JavaScript**, não texto. O
+ * código daqui fazia `String(valor).slice(0, 10)` — e `String` de um Date
+ * não dá ISO, dá "Wed Aug 19 2026 00:00:00 GMT+0000 (…)", cujos dez
+ * primeiros caracteres são "Wed Aug 19". Era esse pedaço que chegava ao
+ * navegador como se fosse a data: ao recarregar a página, a tela lia
+ * "Wed Aug 19" onde esperava um dia, e escrevia NaN.
+ *
+ * O Date é montado pelo conversor no fuso do servidor, então o dia certo
+ * se lê pelos getters locais. `toISOString()` aqui erraria o dia inteiro
+ * em qualquer servidor a leste de Greenwich.
+ */
+function dateOnly(value) {
+  if (value == null || value === '') return null;
+
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+  }
+
+  // Se um dia o driver passar a devolver texto, os dois formatos servem.
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(value));
+  return m ? m[1] : null;
+}
+
+/** Uma coluna `time` do Postgres em 'HH:MM'. */
+function timeOnly(value) {
+  if (value == null || value === '') return null;
+  const m = /^(\d{2}:\d{2})/.exec(String(value));
+  return m ? m[1] : null;
+}
+
 export function itemToClient(row) {
   return {
     id: row.id,
@@ -52,15 +88,15 @@ export function itemToClient(row) {
     description: row.description,
     status: row.status,
     priority: row.priority,
-    dueDate: row.due_date ? String(row.due_date).slice(0, 10) : null,
-    dueTime: row.due_time ? String(row.due_time).slice(0, 5) : null,
+    dueDate: dateOnly(row.due_date),
+    dueTime: timeOnly(row.due_time),
     timePeriod: row.time_period,
     pinned: row.pinned,
     source: row.source,
     rawInput: row.raw_input,
     parseConfidence: row.parse_confidence == null ? null : Number(row.parse_confidence),
     needsReview: row.needs_review,
-    snoozedUntil: row.snoozed_until ? String(row.snoozed_until).slice(0, 10) : null,
+    snoozedUntil: dateOnly(row.snoozed_until),
     completedAt: row.completed_at,
     deletedAt: row.deleted_at,
     createdAt: row.created_at,

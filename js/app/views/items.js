@@ -111,17 +111,21 @@ export function renderItem(item, options = {}) {
     html: icon(TYPE_ICON[item.type], 12) + `<span>${TYPE_LABELS[item.type]}</span>`,
   }));
 
-  if (item.dueDate) {
-    const label = humanDate(item.dueDate, store.state.prefs.timezone);
+  /* Uma data que não dá para ler não vira ficha nenhuma — nem a de data,
+     nem a de "sem prazo", que seria mentira. Some em silêncio até o dado
+     bom chegar. */
+  const dateLabel = humanDate(item.dueDate, store.state.prefs.timezone);
+
+  if (dateLabel) {
     const today = toISODate(todayIn(store.state.prefs.timezone));
     const cls = overdue ? ' item__date--overdue' : item.dueDate === today ? ' item__date--today' : '';
     meta.appendChild(el('span', {
       class: 'item__date' + cls,
       html: icon(overdue ? 'alert' : 'calendar', 12) +
-        `<span>${label}${item.dueTime ? ' · ' + item.dueTime : ''}</span>`,
+        `<span>${dateLabel}${item.dueTime ? ' · ' + item.dueTime : ''}</span>`,
       title: item.dueDate,
     }));
-  } else if (item.status === 'pending') {
+  } else if (!item.dueDate && item.status === 'pending') {
     meta.appendChild(el('span', { class: 'text-dim', text: 'sem prazo' }));
   }
 

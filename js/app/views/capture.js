@@ -126,12 +126,8 @@ export function createCapture({ environmentId = null, onCreated = null } = {}) {
     if (current.type !== 'task') {
       chips.push({ kind: 'type', label: TYPE_LABELS[current.type] });
     }
-    if (current.dueDate) {
-      chips.push({
-        kind: 'date',
-        label: humanDate(current.dueDate, store.state.prefs.timezone),
-      });
-    }
+    const dateLabel = humanDate(current.dueDate, store.state.prefs.timezone);
+    if (dateLabel) chips.push({ kind: 'date', label: dateLabel });
     if (current.dueTime) chips.push({ kind: 'time', label: current.dueTime });
     if (current.timePeriod !== 'any' && !current.dueTime) {
       chips.push({ kind: 'period', label: PERIOD_LABELS[current.timePeriod] });
