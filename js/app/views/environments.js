@@ -9,6 +9,7 @@ import { store } from '../store.js';
 import { el, icon, toast, openModal, confirmDialog, ICON_CHOICES, COLOR_CHOICES } from '../ui.js';
 import { bindTilt } from '../../gfx/fx.js';
 import { mountOrb } from '../../gfx/orb.js';
+import { glBudget } from '../../core/device.js';
 
 export function renderEnvironments(root, { onNavigate }) {
   const rerender = () => renderEnvironments(root, { onNavigate });
@@ -32,6 +33,19 @@ export function renderEnvironments(root, { onNavigate }) {
   ]));
 
   const grid = el('div', { class: 'env-grid stagger' });
+
+  /* Cada peça 3D compila o próprio programa de shader, e compilar é
+     trabalho síncrono: montar as doze de uma vez trava o quadro por um
+     tempo que se sente ao rolar. A fila abaixo monta uma por quadro —
+     o custo total é o mesmo, mas dividido, e a grade ainda ganha o
+     efeito de ir se acendendo peça por peça. */
+  const pending = [];
+  const drainOrbs = () => {
+    const next = pending.shift();
+    if (!next) return;
+    if (next.canvas.isConnected) mountOrb(next.canvas, next.options);
+    requestAnimationFrame(drainOrbs);
+  };
 
   envs.forEach((env) => {
     const stats = store.environmentStats(env.id);
@@ -91,14 +105,17 @@ export function renderEnvironments(root, { onNavigate }) {
     grid.appendChild(card);
 
     // Precisa estar no documento para o canvas ter tamanho medido
-    requestAnimationFrame(() => {
-      mountOrb(orbCanvas, {
+    pending.push({
+      canvas: orbCanvas,
+      options: {
         color: env.color,
         icon: env.icon,
         energy: Math.min(1, stats.pending / 12),
-      });
+      },
     });
   });
+
+  requestAnimationFrame(drainOrbs);
 
   /* Cartão de criação */
   grid.appendChild(el('button', {
@@ -195,10 +212,6 @@ export function openEnvironmentForm(env, onDone) {
 
   /* Cor */
   const colorRow = el('div', { class: 'color-picker' });
-  const paintPreview = () => {
-    preview.style.setProperty('--env-color', draft.color);
-    previewIcon.innerHTML = icon(draft.icon, 19);
-  };
   COLOR_CHOICES.forEach((c) => {
     const dot = el('button', {
       class: 'color-dot',
@@ -241,14 +254,20 @@ export function openEnvironmentForm(env, onDone) {
     iconRow,
   ]));
 
-  /* Pré-visualização */
-  const previewIcon = el('div', { class: 'env-card__icon', html: icon(draft.icon, 19) });
+  /* Pré-visualização
+
+     O ícone não escolhe só um desenho de 15 px: ele escolhe o sólido que
+     vai abrir a tela deste ambiente. A prévia mostra a peça de verdade,
+     girando na cor escolhida, então dá para decidir olhando o resultado
+     em vez de imaginar. */
+  const previewCanvas = el('canvas', { 'aria-hidden': 'true' });
+  const previewOrb = el('div', { class: 'env-orb' }, [previewCanvas]);
   const previewName = el('h3', { class: 'env-card__name', text: draft.name || 'Nome do ambiente' });
   const preview = el('div', {
     class: 'env-card',
     style: { '--env-color': draft.color, cursor: 'default', pointerEvents: 'none' },
   }, [
-    el('div', { class: 'env-card__top' }, [previewIcon]),
+    el('div', { class: 'env-card__top' }, [previewOrb]),
     el('div', {}, [previewName]),
   ]);
   nameInput.addEventListener('input', () => {
@@ -258,6 +277,12 @@ export function openEnvironmentForm(env, onDone) {
     el('span', { class: 'field__label', text: 'Prévia' }),
     preview,
   ]));
+
+  let orb = null;
+  const paintPreview = () => {
+    preview.style.setProperty('--env-color', draft.color);
+    orb?.setLook({ color: draft.color, icon: draft.icon });
+  };
 
   /* Padrão para novas capturas */
   const defaultSwitch = el('label', { class: 'switch' }, [
@@ -299,6 +324,17 @@ export function openEnvironmentForm(env, onDone) {
     title: isNew ? 'Novo ambiente' : 'Editar ambiente',
     body,
     footer,
+    onClose: () => { orb?.destroy(); orb = null; giveBackSlot(); },
+  });
+
+  // A grade atrás já gastou o orçamento de contextos; a prévia pega uma
+  // vaga emprestada enquanto o formulário está aberto.
+  const giveBackSlot = glBudget.lend();
+
+  // O canvas precisa estar no documento para ter tamanho medido
+  requestAnimationFrame(() => {
+    if (!previewCanvas.isConnected) { giveBackSlot(); return; }
+    orb = mountOrb(previewCanvas, { color: draft.color, icon: draft.icon, energy: 0.5 });
   });
 
   cancelBtn.addEventListener('click', () => dialog.close());

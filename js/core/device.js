@@ -253,11 +253,37 @@ export function renderWhenVisible(element, { onEnter, onLeave }) {
 class ContextBudget {
   constructor() {
     this.taken = new Set();
+    this.extra = 0;
   }
 
   get limit() {
-    if (device.mobile) return quality.level === 'low' ? 2 : 3;
-    return quality.level === 'low' ? 3 : 8;
+    const base = device.mobile
+      ? (quality.level === 'low' ? 2 : 3)
+      : (quality.level === 'low' ? 3 : 8);
+    return base + this.extra;
+  }
+
+  /**
+   * Uma vaga emprestada, por pouco tempo.
+   *
+   * A prévia do formulário de ambiente é justamente o lugar onde a peça
+   * 3D mais importa — é ali que se escolhe qual sólido o ambiente vai
+   * ter. Só que ela abre por cima de uma tela que já gastou o orçamento
+   * todo, e cairia sempre no plano B. Enquanto o formulário está aberto,
+   * o teto sobe em um; ao fechar, volta ao que era. O empréstimo é
+   * pequeno de propósito: o limite real do navegador é bem maior do que
+   * o daqui, que existe para poupar bateria, não para evitar um erro.
+   *
+   * @returns {() => void} devolve a vaga.
+   */
+  lend() {
+    this.extra++;
+    let returned = false;
+    return () => {
+      if (returned) return;
+      returned = true;
+      this.extra = Math.max(0, this.extra - 1);
+    };
   }
 
   /** @returns {boolean} verdadeiro se couber mais um. */

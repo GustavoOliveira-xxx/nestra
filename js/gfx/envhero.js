@@ -1,11 +1,13 @@
 /* =====================================================================
    NESTRA — Peça 3D do topo do ambiente
 
-   Cada ambiente abre com um sólido próprio flutuando sobre um piso
+   Cada ambiente abre com o sólido dele flutuando sobre um piso
    refletivo, com satélites em órbita e a luz vindo de onde está o
-   ponteiro. A forma nasce do ícone escolhido e a cor é a do ambiente:
-   entrar em "Trabalho" e entrar em "Estudos" são experiências visuais
-   diferentes sem ninguém precisar configurar nada.
+   ponteiro. A forma vem do ícone escolhido — maleta, livro, coração,
+   casa, lâmpada — e a cor vem do ambiente: entrar em "Trabalho" e entrar
+   em "Estudos" são experiências visuais diferentes sem ninguém precisar
+   configurar nada. Os sólidos moram em gfx/shapes.js, compartilhados com
+   os cartões da grade de ambientes.
 
    Traçado por ray marching em um único passe de fragment shader — sem
    biblioteca externa, porque o app precisa abrir offline.
@@ -18,6 +20,7 @@
 
 import { program, fullscreenQuad } from '../core/gl.js';
 import { device, quality, sizeCanvas, renderWhenVisible, onResize, glBudget } from '../core/device.js';
+import { SHAPES_GLSL, shapeOf } from './shapes.js';
 
 const VS = `#version 300 es
 in vec2 aPos;
@@ -45,6 +48,9 @@ uniform float uEnergy;    // 0..1 — quanto o ambiente está carregado
 uniform int   uQuality;   // 0 baixo · 1 médio · 2 alto
 uniform float uAppear;    // 0..1 — a peça se montando ao abrir a tela
 uniform float uZoom;      // compensa painéis largos e baixos
+uniform float uOrbit;     // fase acumulada dos satélites
+uniform float uCharge;    // 0..1 — acabou de receber uma conclusão
+uniform float uWave;      // segundos desde a conclusão, para a onda
 
 const float FLOOR_Y = -0.86;
 
@@ -54,98 +60,40 @@ mat3 rotX(float a) { float c = cos(a), s = sin(a); return mat3(1.0,0.0,0.0, 0.0,
 mat3 gRot;      // orientação do corpo, montada no main
 vec3 gBase;     // cor do ambiente já em espaço linear
 
-/* --- sólidos --- */
-float sdRoundBox(vec3 p, vec3 b, float r) {
-  vec3 q = abs(p) - b;
-  return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r;
-}
-float sdTorus(vec3 p, vec2 t) {
-  vec2 q = vec2(length(p.xz) - t.x, p.y);
-  return length(q) - t.y;
-}
-float sdOctahedron(vec3 p, float s, float r) {
-  p = abs(p);
-  return (p.x + p.y + p.z - s) * 0.57735027 - r;
-}
-float sdCapsule(vec3 p, float h, float r) {
-  p.y -= clamp(p.y, -h, h);
-  return length(p) - r;
-}
-float sdHexPrism(vec3 p, vec2 h, float r) {
-  const vec3 k = vec3(-0.8660254, 0.5, 0.57735);
-  p = abs(p);
-  p.xy -= 2.0 * min(dot(k.xy, p.xy), 0.0) * k.xy;
-  vec2 d = vec2(
-    length(p.xy - vec2(clamp(p.x, -k.z * h.x, k.z * h.x), h.x)) * sign(p.y - h.x),
-    p.z - h.y);
-  return min(max(d.x, d.y), 0.0) + length(max(d, 0.0)) - r;
-}
-float sdPyramid(vec3 p, float h, float r) {
-  p.y += 0.28;
-  float m2 = h * h + 0.25;
-  p.xz = abs(p.xz);
-  p.xz = (p.z > p.x) ? p.zx : p.xz;
-  p.xz -= 0.5;
-  vec3 q = vec3(p.z, h * p.y - 0.5 * p.x, h * p.x + 0.5 * p.y);
-  float s = max(-q.x, 0.0);
-  float t = clamp((q.y - 0.5 * p.z) / (m2 + 0.25), 0.0, 1.0);
-  float a = m2 * (q.x + s) * (q.x + s) + q.y * q.y;
-  float b = m2 * (q.x + 0.5 * t) * (q.x + 0.5 * t) + (q.y - m2 * t) * (q.y - m2 * t);
-  float d2 = min(q.y, -q.x * m2 - q.y * 0.5) > 0.0 ? 0.0 : min(a, b);
-  return (sqrt((d2 + q.z * q.z) / m2) * sign(max(q.z, -p.y)) - r) * 0.62;
-}
+${SHAPES_GLSL}
 
-float smin(float a, float b, float k) {
-  float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
-  return mix(b, a, h) - k * h * (1.0 - h);
-}
+/* O corpo do ambiente, já com a respiração lenta, o recuo do clique e o
+   susto da conclusão. */
+vec2 bodySDF(vec3 p) {
+  float breathe = 1.0
+    + sin(uTime * 0.85) * 0.026
+    + uHover * 0.05
+    - uPress * 0.055
+    + uCharge * 0.07;
 
-/* O corpo principal, já com a respiração lenta e o recuo do clique. */
-float bodySDF(vec3 p) {
-  float breathe = 1.0 + sin(uTime * 0.85) * 0.026 + uHover * 0.05 - uPress * 0.055;
-  vec3 q = p / breathe;
-
-  float d;
-  if (uShape == 0) {
-    d = sdRoundBox(q, vec3(0.42, 0.33, 0.29), 0.12);
-  } else if (uShape == 1) {
-    d = sdTorus(q, vec2(0.43, 0.155));
-    // um eixo atravessando o anel: lê melhor como objeto, não como aro
-    d = smin(d, sdCapsule(q.yzx, 0.30, 0.075), 0.10);
-  } else if (uShape == 2) {
-    d = sdOctahedron(q, 0.60, 0.085);
-  } else if (uShape == 3) {
-    d = sdCapsule(q, 0.24, 0.33);
-  } else if (uShape == 4) {
-    float wob = sin(q.x * 5.0 + uTime * 0.7)
-              * sin(q.y * 5.0 - uTime * 0.55)
-              * sin(q.z * 5.0 + uTime * 0.3) * 0.055;
-    d = length(q) - 0.55 + wob;
-  } else if (uShape == 6) {
-    d = sdPyramid(q * 1.15, 1.05, 0.05) / 1.15;
-  } else {
-    d = sdHexPrism(q, vec2(0.41, 0.20), 0.085);
-  }
+  vec2 s = envShape(p / breathe, uShape, uTime, uEnergy);
 
   // Enquanto a tela entra, a peça vem de dentro para fora.
-  return d - (1.0 - uAppear) * 0.22;
+  s.x = s.x * breathe - (1.0 - uAppear) * 0.22;
+  return s;
 }
 
-/* x = distância · y = material (0 corpo · 1 satélite) */
+/* x = distância · y = material (0 corpo · 1 detalhe · 2 núcleo · 3 satélite) */
 vec2 mapScene(vec3 p) {
-  vec2 res = vec2(bodySDF(gRot * p), 0.0);
+  vec2 res = bodySDF(gRot * p);
 
   // Satélites: órbita própria, independente do giro do corpo — é o que
   // dá a leitura de espaço em volta do objeto, e não só de um objeto.
+  // Ao concluir alguma coisa eles aceleram e se abrem por um instante.
   for (int i = 0; i < 3; i++) {
     float fi = float(i);
-    float a = uTime * (0.42 + fi * 0.15) + fi * 2.0944;
-    float radius = (0.86 + fi * 0.13) * mix(0.6, 1.0, uAppear);
+    float a = uOrbit * (1.0 + fi * 0.36) + fi * 2.0944;
+    float radius = (1.02 + fi * 0.14 + uCharge * 0.20) * mix(0.6, 1.0, uAppear);
     vec3 c = vec3(cos(a) * radius,
                   sin(a * 0.8 + fi * 1.7) * 0.26,
                   sin(a) * radius);
-    float s = length(p - c) - (0.078 - fi * 0.012);
-    if (s < res.x) res = vec2(s, 1.0);
+    float s = length(p - c) - (0.068 - fi * 0.011) * (1.0 + uCharge * 0.40);
+    if (s < res.x) res = vec2(s, 3.0);
   }
   return res;
 }
@@ -192,7 +140,7 @@ void main() {
   vec3 ro = vec3(uPointer.x * 0.20, 0.10 - uPointer.y * 0.14, 2.55);
   // Mira um pouco abaixo do centro: a peça sobe no quadro e sobra
   // espaço para o reflexo no piso, que senão morre cortado na borda.
-  vec3 ta = vec3(0.0, -0.17, 0.0);
+  vec3 ta = vec3(0.0, -0.10, 0.0);
   vec3 fw = normalize(ta - ro);
   vec3 rt = normalize(cross(fw, vec3(0.0, 1.0, 0.0)));
   vec3 up = cross(rt, fw);
@@ -217,7 +165,7 @@ void main() {
     vec2 h = mapScene(p);
     glow += exp(-max(h.x, 0.0) * 15.0) * 0.013;
     if (h.x < 0.0013 * t) { hit = true; mat = h.y; break; }
-    t += h.x * 0.88;
+    t += h.x * 0.82;
     if (t > 7.0) break;
   }
 
@@ -230,11 +178,26 @@ void main() {
     float ao = occlusion(p, n);
     float sh = uQuality > 0 ? softShadow(p + n * 0.02, light, 0.03, 3.2, 9.0) : 1.0;
 
-    vec3 base = mat > 0.5 ? mix(gBase, vec3(0.62, 0.85, 1.0), 0.62) : gBase;
+    /* Cada material tem seu jeito de receber a luz: o corpo é a cor do
+       ambiente, o detalhe é metal claro, o núcleo é aceso por dentro. */
+    vec3 base = gBase;
+    float lit = 0.0;
+
+    if (mat > 2.5) {
+      base = mix(gBase, vec3(0.62, 0.85, 1.0), 0.42);
+      lit = 0.55 + uCharge * 0.85;
+    } else if (mat > 1.5) {
+      base = mix(gBase, vec3(1.0), 0.20);
+      lit = envGlow(uShape, uTime, uEnergy) * (1.0 + uCharge * 1.3);
+    } else if (mat > 0.5) {
+      base = mix(gBase, vec3(0.86, 0.91, 1.0), 0.55);
+    }
 
     col  = base * (0.13 + diff * 1.02 * sh) * ao;
     col += base * fres * (1.35 + uHover * 0.8);
     col += vec3(1.0) * spec * (0.70 + uPress * 0.5) * sh;
+    col += base * lit * (0.80 + (1.0 - fres) * 0.85);
+    if (mat > 1.5 && mat < 2.5) col += vec3(1.0) * lit * (1.0 - fres) * 0.20;
 
     if (mat < 0.5) {
       // faixas percorrendo o corpo, como um núcleo em funcionamento
@@ -242,11 +205,13 @@ void main() {
       float rings = sin(q.y * 13.0 - uTime * 1.9) * 0.5 + 0.5;
       col += base * smoothstep(0.72, 1.0, rings) * (0.32 + uEnergy * 0.6);
 
+      // a conclusão sobe pelo corpo como um pulso de energia
+      float sweep = exp(-abs((q.y + 0.62) - uWave * 1.9) * 5.5) * exp(-uWave * 1.3);
+      col += mix(base, vec3(1.0), 0.55) * sweep * 1.7;
+
       // céu falso refletido: dá peso de material sem custar um segundo passe
       vec3 refl = reflect(rd, n);
       col += mix(vec3(0.015, 0.025, 0.06), base * 0.55, refl.y * 0.5 + 0.5) * 0.34;
-    } else {
-      col += base * 0.55;   // satélites acesos por dentro
     }
 
     alpha = 1.0;
@@ -266,6 +231,9 @@ void main() {
           ? softShadow(fp + vec3(0.0, 0.012, 0.0), light, 0.03, 3.0, 7.0)
           : 1.0;
 
+        // onda de choque da conclusão, abrindo a partir da peça
+        float shock = exp(-abs(length(fp.xz) - uWave * 2.2) * 5.5) * exp(-uWave * 1.25);
+
         vec3 fcol = gBase * (line * 0.42 + band * 0.20) * fade;
         float refl = 0.0;
 
@@ -284,36 +252,21 @@ void main() {
         }
 
         fcol *= 0.30 + 0.70 * sh;
+        fcol += mix(gBase, vec3(1.0), 0.4) * shock * 1.5 * fade;
         col = fcol;
-        alpha = clamp(fade * (line * 0.34 + refl * 0.55 + band * 0.12 + 0.05), 0.0, 0.72);
+        alpha = clamp(fade * (line * 0.34 + refl * 0.55 + band * 0.12 + shock * 0.75 + 0.05), 0.0, 0.82);
       }
     }
   }
 
   // halo geral em volta da peça
-  col += gBase * glow * (0.65 + uHover * 0.85);
+  col += gBase * glow * (0.65 + uHover * 0.85 + uCharge * 1.1);
   alpha = clamp(alpha + glow * 0.55, 0.0, 1.0);
   alpha *= uAppear;
 
   col = pow(max(col, 0.0), vec3(0.4545));
   outColor = vec4(col * alpha, alpha);
 }`;
-
-/* Forma por ícone — os doze ícones oferecidos no formulário de ambiente. */
-const SHAPE_BY_ICON = {
-  layers: 5,      // prisma hexagonal
-  briefcase: 0,   // caixa
-  book: 0,
-  heart: 4,       // esfera ondulada
-  home: 6,        // pirâmide
-  wallet: 0,
-  star: 2,        // octaedro
-  bulb: 4,
-  target: 1,      // anel com eixo
-  bolt: 2,
-  shield: 3,      // cápsula
-  grid: 5,
-};
 
 function hexToRgb(hex) {
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || '#2F6BFF');
@@ -329,11 +282,14 @@ export class EnvHero {
     this.host = canvas.closest('.env-hero') || canvas.parentElement;
     this.hexColor = color;
     this.color = hexToRgb(color);
-    this.shape = SHAPE_BY_ICON[icon] ?? 0;
+    this.shape = shapeOf(icon);
     this.energy = Math.max(0, Math.min(1, energy));
 
-    this.spin = { x: 0.6, y: -0.12 };
-    this.target = { x: 0.6, y: -0.12 };
+    /* De frente e um pouco de cima. A peça é um objeto reconhecível —
+       maleta, livro, casa —, então ela nunca vira de costas: balança em
+       torno desta pose em vez de girar sem parar. */
+    this.spin = { x: 0, y: -0.18 };
+    this.target = { x: 0, y: -0.18 };
     this.pointer = { x: 0, y: 0, tx: 0, ty: 0 };
     this.hover = 0;
     this.targetHover = 0;
@@ -342,9 +298,18 @@ export class EnvHero {
     this.appear = 0;
     this.zoom = 1;
 
+    /* Órbita, susto e onda: a peça responde quando alguma coisa é
+       concluída no ambiente (ver celebrate/pulseEnvHeroes). A fase da
+       órbita é acumulada aqui, e não calculada do tempo, para que
+       acelerar não faça o satélite saltar de lugar. */
+    this.orbit = 0;
+    this.charge = 0;
+    this.wave = 60;
+
     this.running = false;
     this.visible = true;
     this._t0 = performance.now();
+    this._lastFrame = this._t0;
   }
 
   init() {
@@ -407,8 +372,8 @@ export class EnvHero {
       if (this.dragging) return;
 
       const weight = inside ? 1 : 0.28;
-      this.target.x = 0.6 + nx * 2.4 * weight;
-      this.target.y = -0.12 + ny * 1.15 * weight;
+      this.target.x = nx * 1.9 * weight;
+      this.target.y = -0.18 + ny * 0.95 * weight;
       this.pointer.tx = Math.max(-1, Math.min(1, nx * 2)) * weight;
       this.pointer.ty = Math.max(-1, Math.min(1, ny * 2)) * weight;
       this.targetHover = inside ? 1 : 0;
@@ -497,14 +462,28 @@ export class EnvHero {
        peça pequena no meio de muito vazio. O enquadramento fecha na
        mesma proporção em que o painel se alarga. */
     const aspect = w / Math.max(1, h);
-    this.zoom = aspect > 1.5 ? Math.min(1.45, 0.75 + aspect * 0.28) : 1;
+    this.zoom = aspect > 1.5 ? Math.min(1.28, 0.72 + aspect * 0.26) : 1;
 
     this._dirty = false;
+  }
+
+  /**
+   * Uma conclusão aconteceu neste ambiente.
+   *
+   * A peça leva o susto: cresce um instante, os satélites aceleram e se
+   * abrem, o núcleo acende e uma onda sai dela pelo piso. É o mesmo
+   * gesto do resto da interface, só que em três dimensões.
+   */
+  celebrate(strength = 1) {
+    this.charge = Math.min(1.2, this.charge + strength);
+    this.wave = 0;
+    if (!this.running && this.visible && !document.hidden) this.start();
   }
 
   start() {
     if (this.running || !this.gl) return;
     this.running = true;
+    this._lastFrame = performance.now();
     const loop = () => {
       if (!this.running) return;
       this._raf = requestAnimationFrame(loop);
@@ -522,19 +501,29 @@ export class EnvHero {
     const gl = this.gl;
     if (!this.canvas.isConnected) { this.destroy(); return; }
 
-    const time = (performance.now() - this._t0) / 1000;
+    const now = performance.now();
+    const time = (now - this._t0) / 1000;
+    // Quadro perdido (aba parada, janela arrastada) não pode empurrar a
+    // órbita meio giro de uma vez.
+    const dt = Math.min(0.05, Math.max(0, (now - this._lastFrame) / 1000));
+    this._lastFrame = now;
 
-    // Rotação própria contínua somada ao que o ponteiro pede: a peça
-    // nunca fica parada, mesmo sem ninguém mexendo.
-    const drift = time * 0.22;
+    /* Balanço próprio somado ao que o ponteiro pede: a peça nunca fica
+       parada, e também nunca gira até ficar de costas — quem chega na
+       tela precisa reconhecer a maleta, o livro ou a casa de imediato. */
+    const drift = Math.sin(time * 0.23) * 0.46 + Math.sin(time * 0.11) * 0.14;
     this.spin.x += ((this.target.x + drift) - this.spin.x) * 0.075;
-    this.spin.y += (this.target.y + Math.sin(time * 0.5) * 0.07 - this.spin.y) * 0.075;
+    this.spin.y += (this.target.y + Math.sin(time * 0.5) * 0.055 - this.spin.y) * 0.075;
 
     this.pointer.x += (this.pointer.tx - this.pointer.x) * 0.07;
     this.pointer.y += (this.pointer.ty - this.pointer.y) * 0.07;
     this.hover += (this.targetHover - this.hover) * 0.08;
     this.press += (this.targetPress - this.press) * 0.16;
     this.appear += (1 - this.appear) * 0.045;
+
+    this.orbit += dt * (0.42 + this.charge * 2.1);
+    this.charge = Math.max(0, this.charge - dt * 1.35);
+    if (this.wave < 60) this.wave += dt;
 
     if (this._dirty) this.resize();
 
@@ -552,6 +541,9 @@ export class EnvHero {
     gl.uniform1i(u.uQuality, QUALITY_CODE[quality.level] ?? 2);
     gl.uniform1f(u.uAppear, Math.min(1, this.appear * 1.02));
     gl.uniform1f(u.uZoom, this.zoom || 1);
+    gl.uniform1f(u.uOrbit, this.orbit);
+    gl.uniform1f(u.uCharge, Math.min(1, this.charge));
+    gl.uniform1f(u.uWave, this.wave);
 
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
@@ -599,8 +591,10 @@ export class EnvHero {
 
    Sem WebGL — ou com o orçamento de contextos esgotado — a página não
    pode ficar com um buraco no topo. Um sólido em CSS 3D mantém a ideia,
-   inclusive reagindo ao ponteiro.
+   inclusive reagindo ao ponteiro e à conclusão de um item.
    --------------------------------------------------------------------- */
+const fallbacks = new Set();
+
 function mountCssFallback(canvas, { color = '#2F6BFF' } = {}) {
   const host = canvas.closest('.env-hero') || canvas.parentElement;
   if (!host || host.querySelector('.hero3d-css')) return null;
@@ -622,6 +616,7 @@ function mountCssFallback(canvas, { color = '#2F6BFF' } = {}) {
 
   stage.append(rings, solid);
   host.appendChild(stage);
+  fallbacks.add(stage);
 
   if (!device.reducedMotion) {
     const move = (ev) => {
@@ -662,7 +657,25 @@ export function mountEnvHero(canvas, options) {
   return null;
 }
 
+/**
+ * A peça do ambiente reage a uma conclusão.
+ *
+ * Quem marca um item como concluído não precisa saber se a peça é WebGL
+ * ou o plano B em CSS: chama daqui e cada uma responde do jeito dela.
+ */
+export function pulseEnvHeroes(strength = 1) {
+  active.forEach((hero) => hero.celebrate(strength));
+
+  fallbacks.forEach((stage) => {
+    if (!stage.isConnected) { fallbacks.delete(stage); return; }
+    stage.dataset.charged = 'true';
+    clearTimeout(stage.__chargeTimer);
+    stage.__chargeTimer = setTimeout(() => delete stage.dataset.charged, 760);
+  });
+}
+
 export function clearEnvHeroes() {
   active.forEach((hero) => hero.destroy());
   active.clear();
+  fallbacks.forEach((stage) => { if (!stage.isConnected) fallbacks.delete(stage); });
 }

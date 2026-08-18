@@ -681,6 +681,32 @@
 .item--completing { animation: completeAway .5s var(--ease-out) forwards; }
 .item--removing   { animation: dropOut .34s var(--ease-in-out) forwards; overflow: hidden; }
 
+/* Concluir sem sumir da lista: a linha assenta no lugar, em vez de
+   recuar para fora dele. É o mesmo gesto, na medida do que fica. */
+.item--settled { animation: completeSettle .42s var(--ease-out) both; }
+
+/* Varredura de luz percorrendo a linha recém-concluída */
+.item__sweep {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  overflow: hidden;
+}
+.item__sweep::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg,
+    transparent 36%,
+    color-mix(in srgb, var(--done-color, var(--accent)) 14%, transparent) 46%,
+    color-mix(in srgb, var(--done-color, var(--accent)) 42%, transparent) 50%,
+    color-mix(in srgb, var(--done-color, var(--accent)) 14%, transparent) 54%,
+    transparent 64%);
+  transform: translateX(-100%);
+  animation: doneSweep .62s var(--ease-out) forwards;
+}
+
 /* Progresso do checklist embutido na linha */
 .item__checkline {
   display: flex;

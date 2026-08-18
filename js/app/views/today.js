@@ -13,7 +13,7 @@ import { el, icon } from '../ui.js';
 import { renderItem } from './items.js';
 import { createCapture } from './capture.js';
 import { humanDate, todayIn, toISODate } from '../nlp.js';
-import { celebrate } from '../../gfx/interactions.js';
+import { celebrate, bumpBadge } from '../../gfx/interactions.js';
 import { mountEnvHero, clearEnvHeroes } from '../../gfx/envhero.js';
 import { Logo3D } from '../../gfx/logo3d.js';
 import { device, glBudget } from '../../core/device.js';
@@ -374,12 +374,20 @@ function environmentHero(env, stats, { onNavigate }) {
 
   const statsRow = el('div', { class: 'env-hero__stats' });
 
+  /* O número de concluídos é o placar do ambiente. Quando ele sobe, o
+     número pulsa: quem acabou de marcar um item vê onde a conta foi
+     parar, em vez de ter que procurar a diferença na tela. */
+  let lastDone = stats.done;
+
   const paintStats = (s) => {
+    const doneCell = number(s.done, 'concluídos');
     statsRow.replaceChildren(
       number(s.pending, 'pendentes'),
       s.overdue ? number(s.overdue, 'atrasados', 'overdue') : number(s.today, 'para hoje'),
-      number(s.done, 'concluídos'),
+      doneCell,
     );
+    if (s.done > lastDone) bumpBadge(doneCell.firstChild);
+    lastDone = s.done;
   };
   paintStats(stats);
 

@@ -95,6 +95,34 @@
   to   { width: 100%; }
 }
 
+/* Conclusão que fica na lista: a linha afunda um instante e assenta */
+@keyframes completeSettle {
+  0%   { transform: perspective(900px) translateZ(0) scale(1); }
+  32%  { transform: perspective(900px) translateZ(-16px) scale(.985); }
+  100% { transform: perspective(900px) translateZ(0) scale(1); }
+}
+
+/* A luz atravessando a linha, uma vez só */
+@keyframes doneSweep {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+
+/* O visto sendo traçado dentro da caixinha, em vez de simplesmente
+   aparecer: primeiro a perna curta, depois a longa. */
+@keyframes checkDraw {
+  0%   { clip-path: inset(76% 100% 0 0); }
+  42%  { clip-path: inset(76% 0 0 0); }
+  100% { clip-path: inset(0 0 0 0); }
+}
+
+/* Pulso curto em volta da caixinha no instante em que ela é marcada */
+@keyframes checkPop {
+  0%   { transform: scale(1); box-shadow: 0 0 0 0 var(--accent-glow); }
+  38%  { transform: scale(1.28); box-shadow: 0 0 0 5px transparent; }
+  100% { transform: scale(1); box-shadow: 0 0 14px -2px var(--accent-glow); }
+}
+
 /* Um item removido cai para dentro da lixeira */
 @keyframes dropOut {
   to { opacity: 0; transform: translateY(26px) scale(.94); max-height: 0; margin: 0; padding-top: 0; padding-bottom: 0; }
