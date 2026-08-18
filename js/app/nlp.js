@@ -434,10 +434,25 @@ export function parse(rawInput, context = {}) {
 const DAY_NAMES = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
 const MONTH_NAMES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
+/** É uma data no formato que o app guarda, 'AAAA-MM-DD'? */
+export function isISODate(valor) {
+  return typeof valor === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(valor);
+}
+
 export function humanDate(iso, timezone) {
   if (!iso) return null;
+
+  /* Data que não está no formato guardado não vira texto nenhum.
+     Escrever "NaN undefined NaN" na linha do item — que foi o que a API
+     produziu enquanto convertia mal a coluna do banco — é pior do que
+     não escrever data alguma: o item continua legível e o defeito fica
+     onde tem de ser corrigido, em vez de aparecer na cara de quem usa. */
+  if (!isISODate(iso)) return null;
+
   const today = todayIn(timezone);
   const date = new Date(iso + 'T00:00:00Z');
+  if (Number.isNaN(date.getTime())) return null;
+
   const diff = Math.round((date - today) / 86400000);
 
   if (diff === 0) return 'hoje';

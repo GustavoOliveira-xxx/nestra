@@ -9,7 +9,8 @@
   },
   "scripts": {
     "dev": "npx http-server -p 8080 -c-1 .",
-    "db:schema": "node scripts/apply-schema.js db/schema.sql"
+    "db:schema": "node scripts/apply-schema.js db/schema.sql",
+    "test": "node scripts/testes.js"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4"

@@ -472,7 +472,8 @@ function initLanding() {
 
         const chips = [];
         chips.push(['sparkle', TYPE_LABELS[parsed.type]]);
-        if (parsed.dueDate) chips.push(['calendar', humanDate(parsed.dueDate, store.state.prefs.timezone)]);
+        const quando = humanDate(parsed.dueDate, store.state.prefs.timezone);
+        if (quando) chips.push(['calendar', quando]);
         if (parsed.dueTime) chips.push(['clock', parsed.dueTime]);
         if (parsed.timePeriod !== 'any' && !parsed.dueTime) chips.push(['moon', parsed.timePeriod === 'morning' ? 'manhã' : parsed.timePeriod === 'afternoon' ? 'tarde' : 'noite']);
         if (parsed.priority !== 'normal') chips.push(['flag', 'prioridade ' + parsed.priority]);
@@ -1041,7 +1042,10 @@ function openPalette() {
     entries = [
       ...found.map((item) => ({
         label: item.title,
-        hint: TYPE_LABELS[item.type] + (item.dueDate ? ' · ' + humanDate(item.dueDate, store.state.prefs.timezone) : ''),
+        hint: TYPE_LABELS[item.type] +
+          (humanDate(item.dueDate, store.state.prefs.timezone)
+            ? ' · ' + humanDate(item.dueDate, store.state.prefs.timezone)
+            : ''),
         run: () => openItemDetail(item.id, renderCurrentView),
       })),
       ...cmds,

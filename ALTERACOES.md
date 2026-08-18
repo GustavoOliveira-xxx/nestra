@@ -9,6 +9,97 @@ mensagem e autoria, sem sobrescrever nada à mão.
 
 ---
 
+# Quinta rodada
+
+## 14. O ditado que repetia no celular
+
+No computador o ditado saía limpo; no celular, a mesma frase voltava
+empilhada. A causa não estava no microfone nem na conexão: está em como
+o reconhecimento do Android entrega o texto.
+
+Ele não manda pedaços novos. Manda a **frase inteira outra vez, um pouco
+maior**, a cada entrega:
+
+    "pegar"  ·  "pegar ração"  ·  "pegar ração para o Max"
+
+Somar isso — que é o que qualquer concatenação faz — produz exatamente
+a escada que aparecia na tela: *"pegar pegar ração pegar ração para o
+Max"*. No computador cada trecho vem uma vez só, e por isso o defeito
+era só do celular.
+
+Havia ainda duas fontes de repetição, ambas também exclusivas do celular:
+
+- **O microfone reabria com a memória cheia.** O navegador encerra o
+  reconhecimento sozinho depois de cada pausa, e o código reiniciava o
+  *mesmo* objeto. A lista de resultados pertence ao objeto, e no Android
+  ela vinha junto: a frase anterior voltava inteira e era somada ao que
+  já estava guardado. Agora cada volta abre um objeto novo, que nasce com
+  a lista vazia em qualquer navegador.
+- **Dois toques abriam dois microfones.** O aviso de "estou ouvindo" só
+  chega depois que o navegador confirma a abertura, e nesse intervalo um
+  segundo toque — coisa comum em tela de toque — abria um segundo
+  reconhecimento, transcrevendo a mesma fala em dobro na mesma caixa.
+
+A correção central é uma regra só, aplicada em todos os pontos onde o
+texto é juntado: **se o trecho novo começa com tudo o que já havia, ele
+não é uma adição — é a mesma fala, crescida — e substitui o anterior.**
+Se o que já havia contém o trecho novo, é reentrega e não há o que somar.
+A comparação ignora maiúsculas, acentos e pontuação (o reconhecedor muda
+os três entre uma entrega e outra) e só aceita o encaixe em fronteira de
+palavra, para "sim" nunca casar dentro de "simples".
+
+## 15. A data que virava NaN ao recarregar
+
+Registrar "levar o carro na revisão amanhã às 14h" mostrava a data certa
+na hora. Um Ctrl+R depois, no lugar dela: **NaN**.
+
+O item nunca esteve errado — nem no navegador, nem no banco. O que
+estava errado era a tradução entre os dois. A coluna `due_date` é do tipo
+`date`, e o driver do Neon aplica os mesmos conversores do node-postgres:
+uma coluna `date` chega ao código como **Date do JavaScript**, não como
+texto. A conversão fazia `String(valor).slice(0, 10)`, e `String` de um
+Date não dá ISO — dá:
+
+    "Wed Aug 19 2026 00:00:00 GMT+0000 (Coordinated Universal Time)"
+
+cujos dez primeiros caracteres são **"Wed Aug 19"**. Era esse pedaço que
+o navegador recebia como se fosse a data. Antes de recarregar, o item na
+tela ainda era a cópia criada localmente, com a data boa — por isso só
+aparecia depois do Ctrl+R, e por isso parecia bug de recarregamento.
+
+A conversão passou a ler o dia pelos campos do próprio Date. O detalhe
+que faltava era o fuso: o conversor monta o Date no fuso do servidor, e
+`toISOString()` erraria o dia inteiro em qualquer servidor a leste de
+Greenwich — está verificado em quatro fusos. `due_time` e `snoozed_until`
+passaram pelo mesmo cuidado.
+
+E a tela ganhou uma recusa: **data que não dá para ler não vira texto
+nenhum.** Escrever "NaN undefined NaN" na linha do item é pior do que não
+escrever data alguma — o item continua legível e o defeito fica onde tem
+de ser consertado, em vez de aparecer na cara de quem usa.
+
+## 16. `npm test`
+
+O ditado já tinha sido corrigido duas vezes antes desta. Agora existe
+`scripts/testes.js`, que roda sem microfone e sem banco: reproduz as
+sequências que o Android entrega de verdade e passa as datas pelo
+conversor real do driver, em vários fusos de servidor. São 18
+verificações — e todas falham no código de antes desta rodada.
+
+### Arquivos desta rodada
+
+    js/app/voice.js              a regra de junção, sessão nova a cada volta
+    api/_lib/db.js               colunas date e time convertidas direito
+    js/app/nlp.js                humanDate recusa data ilegível
+    js/app/views/items.js        linha sem ficha de data quando não dá para ler
+    js/app/views/capture.js      mesma recusa nas fichas da captura
+    js/main.js                   mesma recusa na busca e na prévia
+    scripts/testes.js            os testes das duas correções (novo)
+    package.json                 npm test
+    sw.js                        versão do cache
+
+---
+
 # Quarta rodada
 
 ## 12. Uma peça 3D para cada ambiente, e não seis para doze
