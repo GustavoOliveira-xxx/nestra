@@ -788,10 +788,6 @@ function renderShell() {
   paintSidebar();
 
   window.addEventListener('nestra:palette', openPalette);
-  window.addEventListener('nestra:edit-env', (ev) => {
-    const env = store.environmentById(ev.detail);
-    if (env) openEnvironmentForm(env, () => renderCurrentView());
-  });
 }
 
 function paintSidebar() {
@@ -850,18 +846,23 @@ function paintSidebar() {
     }));
   }
 
-  envs.forEach((env) => {
+  envs.forEach((env, envIndex) => {
     const stats = store.environmentStats(env.id);
     const node = el('button', {
       class: 'side-link',
-      style: { '--env-color': env.color },
+      style: { '--env-color': env.color, '--env-symbol-delay': `${envIndex * -0.47}s` },
       'aria-current': r.name === 'environment' && r.param === env.id ? 'page' : null,
       onClick: () => {
         navigate('environment', env.id);
         document.body.dataset.sidebar = 'closed';
       },
     }, [
-      el('span', { class: 'env-link__swatch' }),
+      el('span', { class: 'env-link__symbol', 'aria-hidden': 'true' }, [
+        el('span', { class: 'env-link__symbol-body' }, [
+          el('span', { class: 'env-link__symbol-depth', html: icon(env.icon, 13) }),
+          el('span', { class: 'env-link__symbol-face', html: icon(env.icon, 13) }),
+        ]),
+      ]),
       el('span', { class: 'grow', style: { overflow: 'hidden', textOverflow: 'ellipsis' }, text: env.name }),
       stats.overdue
         ? el('span', { class: 'badge badge--overdue', text: String(stats.overdue) })
@@ -944,7 +945,13 @@ function renderCurrentView({ animate = false } = {}) {
   const draw = (container) => {
     if (r.name === 'today') renderToday(container, { onNavigate: navigate });
     else if (r.name === 'environments') renderEnvironments(container, { onNavigate: navigate });
-    else if (r.name === 'environment') renderEnvironment(container, r.param, { onNavigate: navigate });
+    else if (r.name === 'environment') renderEnvironment(container, r.param, {
+      onNavigate: navigate,
+      onEditEnvironment: (env) => openEnvironmentForm(env, () => {
+        paintSidebar();
+        renderCurrentView();
+      }),
+    });
     else if (r.name === 'inbox') renderInbox(container, { onNavigate: navigate });
     else if (r.name === 'settings') renderSettings(container, { onNavigate: navigate, applyPrefs });
 

@@ -9,6 +9,57 @@ mensagem e autoria, sem sobrescrever nada à mão.
 
 ---
 
+# Sexta rodada
+
+## 17. A captura virou uma ação, não uma transcrição crua
+
+O Nestra agora trata a frase falada como um secretário local. Chamadas e
+molduras conversacionais — “Nestra”, “por favor”, “preciso lembrar de”,
+“anota aí que eu tenho que”, “você poderia adicionar uma tarefa para” —
+servem para entender a intenção, mas não aparecem no título do item.
+
+Assim, **“Preciso lembrar de limpar o quintal”** vira **“Limpar o quintal”**,
+e **“Nestra, preciso fazer uma atividade de português valendo nota até
+sexta”** vira **“Fazer uma atividade de português valendo nota”**, com o
+prazo e o ambiente Estudos guardados nos campos próprios.
+
+O tratamento continua inteiramente no navegador, sem serviço de IA pago e
+sem enviar a fala a terceiros. A frase original permanece em `rawInput`,
+para que nenhuma informação se perca mesmo quando o título é enxugado.
+Entraram também novas formas de prazo e fala: “até sexta”, “pra segunda”,
+“antes de quinta”, “daqui a 3 dias”, “depois de amanhã”, pedidos no começo
+ou no fim e vocabulário comum de escola e faculdade.
+
+## 18. Os dois botões da página de ambiente
+
+“Editar ambiente” dependia de um evento global indireto. Agora recebe a
+ação de edição diretamente da aplicação e abre o formulário do ambiente
+certo. “Todos os ambientes” virou um link real para `#/ambientes`: além do
+roteador do Nestra, ele tem a navegação nativa como plano B.
+
+## 19. O símbolo dos ambientes na dashboard
+
+O quadradinho de cor da barra lateral foi substituído pelo ícone escolhido
+para cada ambiente, extrudado em duas camadas por CSS e em movimento 3D
+constante. Ele usa a cor do ambiente, reage ao item ativo e não abre um
+contexto WebGL por linha — importante para continuar leve no celular. A
+preferência de movimento reduzido continua sendo respeitada.
+
+Os testes passaram de 18 para **39 verificações**, cobrindo pedidos falados,
+ações implícitas, prazos em posições diferentes, colisões entre data e
+horário e preservação da frase original.
+
+### Arquivos desta rodada
+
+    js/app/nlp.js              secretário local, novos prazos e correções de sobreposição
+    js/app/views/today.js      ações diretas e link nativo no cabeçalho do ambiente
+    js/main.js                 edição ligada ao formulário e símbolo 3D na barra lateral
+    css/layout.css             profundidade e movimento do novo símbolo
+    scripts/testes.js          regressões do secretário local
+    sw.js                      nova versão da casca offline
+
+---
+
 # Quinta rodada
 
 ## 14. O ditado que repetia no celular

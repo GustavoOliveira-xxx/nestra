@@ -13,7 +13,10 @@
         microfone sozinho depois de cada pausa. As sequências reais estão
         reproduzidas abaixo — nenhuma delas precisa de microfone.
 
-     2. A data que virava NaN depois de recarregar a página. A coluna
+     2. A camada de “secretário”: pedidos falados viram ações curtas sem
+        perder data, horário, ambiente nem a frase original.
+
+     3. A data que virava NaN depois de recarregar a página. A coluna
         `date` do Postgres chega como Date do JavaScript, e convertê-la
         com `String(...).slice(0, 10)` produzia "Wed Aug 19". O teste passa
         pelo conversor de verdade do driver, em vários fusos de servidor.
@@ -68,6 +71,7 @@ class FakeRecognition {
 
 globalThis.window = { SpeechRecognition: FakeRecognition };
 const { VoiceCapture, mergeSpoken } = await import('../js/app/voice.js');
+const { parse, humanDate, todayIn, toISODate } = await import('../js/app/nlp.js');
 
 const proximoQuadro = () => new Promise((r) => setTimeout(r, 0));
 
@@ -161,14 +165,95 @@ eq('reentrega menor não apaga o que já havia',
 }
 
 /* =====================================================================
-   2. DATAS VINDAS DO BANCO
+   2. SECRETÁRIO LOCAL
+   ===================================================================== */
+
+console.log('\nSecretário local');
+
+const secretarioContexto = {
+  timezone: 'America/Sao_Paulo',
+  environments: [
+    { id: 'env-estudos', name: 'Estudos' },
+    { id: 'env-pessoal', name: 'Pessoal' },
+  ],
+};
+
+const interpretar = (frase) => parse(frase, secretarioContexto);
+
+eq('pedido de lembrança vira somente a ação',
+  interpretar('Preciso lembrar de limpar o quintal').title,
+  'Limpar o quintal');
+eq('pedido de lembrança mantém o tipo',
+  interpretar('Preciso lembrar de limpar o quintal').type,
+  'reminder');
+
+const atividade = interpretar('Nestra, preciso fazer uma atividade de português valendo nota até sexta');
+eq('chamada e moldura saem da atividade',
+  atividade.title, 'Fazer uma atividade de português valendo nota');
+eq('vocabulário escolar encontra Estudos', atividade.environmentId, 'env-estudos');
+
+eq('pedido educado e chamada também saem',
+  interpretar('Ei Nestra, por favor me lembra de comprar ração amanhã').title,
+  'Comprar ração');
+eq('comando e obrigação empilhados saem',
+  interpretar('Anota aí que eu tenho que ligar para o João quinta às 19h').title,
+  'Ligar para o João');
+eq('pergunta de cadastro não deixa interrogação',
+  interpretar('Você poderia adicionar uma tarefa para revisar o relatório até amanhã?').title,
+  'Revisar o relatório');
+eq('cortesia no fim da frase sai',
+  interpretar('Comprar pão amanhã, por favor').title,
+  'Comprar pão');
+eq('comando no fim da frase sai',
+  interpretar('Comprar pão amanhã, coloca isso na minha lista').title,
+  'Comprar pão');
+eq('pedido para não esquecer pode vir em camadas',
+  interpretar('Nestra, coloca aí pra eu não esquecer de limpar o quintal').title,
+  'Limpar o quintal');
+eq('pedido indireto também vira ação',
+  interpretar('Queria pedir pra você anotar que eu tenho que pagar a conta até sexta').title,
+  'Pagar a conta');
+eq('data e período antes da ação não atrapalham',
+  interpretar('Amanhã de manhã eu tenho que levar o carro na revisão').title,
+  'Levar o carro na revisão');
+eq('prazo longo pode abrir a fala',
+  interpretar('Até o fim de semana eu preciso entregar o projeto').title,
+  'Entregar o projeto');
+eq('ação implícita de atividade ganha verbo',
+  interpretar('Tenho uma atividade de matemática valendo nota até sexta').title,
+  'Fazer uma atividade de matemática valendo nota');
+eq('comando de agenda vai ao infinitivo',
+  interpretar('Nestra, agende uma consulta com o dentista amanhã às 14h').title,
+  'Agendar uma consulta com o dentista');
+eq('nome Nestra dentro da ação não é removido',
+  interpretar('Atualizar o Nestra').title,
+  'Atualizar o Nestra');
+eq('a frase falada inteira continua preservada',
+  atividade.raw,
+  'Nestra, preciso fazer uma atividade de português valendo nota até sexta');
+
+const daquiDuasSemanas = interpretar('Daqui a 2 semanas preciso revisar orçamento');
+eq('daqui a N semanas não vira horário', daquiDuasSemanas.dueTime, null);
+eq('data relativa não corrompe letras da ação', daquiDuasSemanas.title, 'Revisar orçamento');
+
+const base = todayIn(secretarioContexto.timezone);
+const depoisDeAmanha = new Date(base.getTime());
+depoisDeAmanha.setUTCDate(depoisDeAmanha.getUTCDate() + 2);
+eq('depois de amanhã é data exata, não expressão vaga',
+  interpretar('Depois de amanhã preciso buscar a encomenda').dueDate,
+  toISODate(depoisDeAmanha));
+eq('quando der continua sem inventar prazo',
+  interpretar('Quando der preciso limpar a garagem').dueDate,
+  null);
+
+/* =====================================================================
+   3. DATAS VINDAS DO BANCO
    ===================================================================== */
 
 console.log('\nDatas');
 
 const { types } = await import('@neondatabase/serverless');
 const { itemToClient } = await import('../api/_lib/db.js');
-const { humanDate } = await import('../js/app/nlp.js');
 
 const comoOBancoEntrega = (data, hora) => ({
   id: 'x', environment_id: null, type: 'task', title: 'reunião',
