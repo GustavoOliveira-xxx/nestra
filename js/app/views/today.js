@@ -363,7 +363,7 @@ export function renderToday(root, { onNavigate }) {
    ambiente e o brilho interno vem de quanta coisa está pendente ali. Em
    volta dela ficam o nome, a descrição e os números do ambiente.
    --------------------------------------------------------------------- */
-function environmentHero(env, stats, { onNavigate }) {
+function environmentHero(env, stats, { onEditEnvironment }) {
   const canvas = el('canvas', { class: 'env-hero__canvas', 'aria-hidden': 'true' });
 
   const number = (value, label, modifier) =>
@@ -415,12 +415,12 @@ function environmentHero(env, stats, { onNavigate }) {
         el('button', {
           class: 'btn btn--ghost btn--sm',
           html: icon('edit', 15) + 'Editar ambiente',
-          onClick: () => window.dispatchEvent(new CustomEvent('nestra:edit-env', { detail: env.id })),
+          onClick: () => onEditEnvironment?.(env),
         }),
-        el('button', {
+        el('a', {
           class: 'btn btn--ghost btn--sm',
+          href: '#/ambientes',
           html: icon('layers', 15) + 'Todos os ambientes',
-          onClick: () => onNavigate('environments'),
         }),
       ]),
     ]),
@@ -484,8 +484,8 @@ function keepEnvironmentHero(root, env, stats, options) {
 /* ---------------------------------------------------------------------
    Tela de um ambiente (§7.3)
    --------------------------------------------------------------------- */
-export function renderEnvironment(root, envId, { onNavigate }) {
-  const rerender = () => renderEnvironment(root, envId, { onNavigate });
+export function renderEnvironment(root, envId, { onNavigate, onEditEnvironment }) {
+  const rerender = () => renderEnvironment(root, envId, { onNavigate, onEditEnvironment });
   const env = store.environmentById(envId);
 
   root.replaceChildren();
@@ -505,7 +505,7 @@ export function renderEnvironment(root, envId, { onNavigate }) {
 
   const stats = store.environmentStats(envId);
 
-  root.appendChild(keepEnvironmentHero(root, env, stats, { onNavigate }));
+  root.appendChild(keepEnvironmentHero(root, env, stats, { onEditEnvironment }));
 
   root.appendChild(createCapture({ environmentId: envId, onCreated: rerender }));
 

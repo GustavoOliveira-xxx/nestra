@@ -60,7 +60,11 @@ const PRIORITY = [
 
 const TYPES = [
   { re: /^\s*ideia\s*[:\-–—]|\bideia\s+de\b|\bpensei\s+em\b|\bquem\s+sabe\b/, value: 'idea', label: 'ideia' },
-  { re: /^\s*lembrete\s*[:\-–—]|\blembrar\s+(de|que)\b|\bnao\s+esquecer\b|\blembre[- ]me\b/, value: 'reminder', label: 'lembrete' },
+  {
+    re: /^\s*lembrete\s*[:\-–—]|\blembrar\s+(de|que)\b|\bnao\s+esquecer\b|\blembre[- ]me\b|\bme\s+(lembra|lembre|recorda|recorde|avisa|avise)\b/,
+    value: 'reminder',
+    label: 'lembrete',
+  },
   {
     re: /\b(reuniao|consulta|compromisso|encontro|aula|prova|entrevista|apresentacao|call|audiencia|exame|dentista|medico|almoco\s+com|jantar\s+com)\b/,
     value: 'commitment',
@@ -107,6 +111,116 @@ function nextWeekday(base, weekday, forceNext) {
 }
 
 /* --------------------------------------------------------------------
+   Ação limpa — a camada de “secretário”
+
+   O reconhecimento de voz entrega exatamente o que foi dito, inclusive
+   chamadas ("Nestra"), pedidos ("por favor") e molduras de intenção
+   ("preciso lembrar de"). Esses trechos são importantes para entender a
+   frase, mas não são a ação que deve aparecer na lista.
+
+   As regras abaixo são deliberadamente conservadoras: só retiram molduras
+   conversacionais reconhecíveis. A frase completa continua preservada em
+   `rawInput`, portanto nenhuma palavra se perde caso a pessoa queira rever
+   o que falou depois.
+   -------------------------------------------------------------------- */
+const ACTION_PREFIXES = [
+  // Cortesia e hesitação comuns no começo de um ditado.
+  /^(?:por\s+favor|faz\s+favor)(?:\s*[,;:–—-]\s*|\s+)/iu,
+  /^(?:ei|ah|bom|ent[aã]o)\s*[,;:–—-]\s*/iu,
+
+  // “Você poderia me lembrar / adicionar uma tarefa para...”
+  /^(?:ser[aá]\s+que\s+)?(?:(?:voc[eê]|c[eê])\s+)?(?:pode|poderia|consegue|conseguiria|daria\s+para|d[aá]\s+para|d[aá]\s+pra|tem\s+como)\s+(?:por\s+favor\s+)?(?:me\s+)?(?:ajudar\s+a\s+)?(?:lembrar|recordar|avisar|anotar|registrar|adicionar|incluir|colocar|criar|cadastrar|salvar|p[oõ]r)(?:\s+(?:(?:um|uma)\s+)?(?:lembrete|tarefa|item|atividade))?(?:\s+(?:a[ií]|isso|isto|pra\s+mim|para\s+mim))*\s*(?:(?:de|que|para|pra)\s+)?(?:eu\s+)?/iu,
+  /^(?:te\s+)?(?:pedir|solicitar)\s+(?:para|pra)\s+(?:que\s+)?(?:voc[eê]\s+)?(?:me\s+)?(?:lembrar|recordar|avisar|anotar|registrar|adicionar|incluir|colocar|salvar|lembre|anote|registre|adicione|inclua|coloque|salve)(?:\s+(?:(?:um|uma)\s+)?(?:lembrete|tarefa|item))?\s*(?:(?:de|que|para|pra)\s+)?(?:eu\s+)?/iu,
+  /^que\s+(?:voc[eê]\s+)?(?:me\s+)?(?:lembre|recorde|avise|anote|registre|adicione|inclua|coloque|salve)\s*(?:(?:de|que|para|pra)\s+)?(?:eu\s+)?/iu,
+
+  // Pedidos diretos de lembrança.
+  /^(?:(?:eu\s+)?(?:preciso|quero|queria|gostaria|necessito|devo|tenho\s+que|vou\s+precisar|estou\s+precisando|t[oô]\s+precisando)\s+)?(?:me\s+)?(?:lembrar|recordar)(?:-me)?\s+(?:de|que|para|pra)\s+/iu,
+  /^(?:me\s+)?(?:lembra|lembre|recorda|recorde|avisa|avise)(?:-me)?(?:\s+a[ií])?\s+(?:de|que|para|pra)\s+/iu,
+  /^(?:n[aã]o)\s+(?:posso|devo|quero)\s+(?:me\s+)?esquecer(?:-me)?\s+(?:de|que)\s+/iu,
+  /^(?:n[aã]o)\s+(?:me\s+)?(?:deixa|deixe)\s+(?:eu\s+)?esquecer\s+(?:de|que)\s+/iu,
+  /^(?:n[aã]o)\s+esquecer(?:\s+(?:de|que))?\s*[:\-–—]?\s*/iu,
+  /^(?:para|pra)\s+(?:eu\s+)?n[aã]o\s+esquecer\s*(?:(?:de|que)\s+)?/iu,
+
+  // “Crie um lembrete”, “anota aí”, “coloca na lista”.
+  /^(?:(?:um|uma)\s+)?(?:lembrete|tarefa|item)\s+(?:para|pra|de|que)\s+/iu,
+  /^(?:anota|anote|registra|registre|adicione|adiciona|inclua|inclui|coloque|coloca|salve|salva|cadastre|cadastra|p[oõ]e|ponha|bota|bote|guarda|guarde|lan[cç]a|lance)\b(?:\s+(?:a[ií]|isso|isto|pra\s+mim|para\s+mim|na\s+(?:minha\s+)?lista))*\s*[,;:–—-]?\s*(?:(?:que|para|pra)\s+(?:eu\s+)?)?/iu,
+  /^(?:crie|cria|cadastre|cadastra)\s+(?:(?:um|uma)\s+)?(?:novo\s+)?(?:lembrete|tarefa|item|atividade)\s*(?:(?:para|pra|de|que)\s+)?/iu,
+
+  // Obrigação, intenção e desejo. O verbo da ação fica: “preciso fazer”
+  // vira “fazer”, e não apenas “atividade”.
+  /^(?:eu\s+)?(?:preciso|necessito|devo|tenho\s+que|tenho\s+de|tem\s+que|vou\s+precisar|estou\s+precisando|t[oô]\s+precisando|seria\s+bom|seria\s+legal)\s+(?:mesmo\s+)?(?:de\s+)?/iu,
+  /^(?:eu\s+)?(?:quero|queria|gostaria)\s+(?:muito\s+)?(?:de\s+)?/iu,
+  /^(?:[eé])\s+(?:para|pra)\s+(?:eu\s+)?/iu,
+  /^(?:ficou|fica|est[aá])\s+(?:faltando|pendente)\s+(?:eu\s+)?/iu,
+  /^(?:eu\s+)?(?:vou|irei)\s+(?=[\p{L}-]+(?:ar|er|ir)\b)/iu,
+];
+
+const ACTION_SUFFIXES = [
+  /\s*[,;:]?\s*(?:por\s+favor|faz\s+favor|t[aá]\s+bom|beleza|ok|viu)\s*[.!?]*$/iu,
+  /\s*[,;:]?\s*(?:e\s+)?(?:me\s+)?(?:lembra|lembre|avisa|avise)\s+(?:disso|disto)\s*[.!?]*$/iu,
+  /\s*[,;:]?\s*(?:coloca|coloque|adicione|adiciona|registre|registra|anota|anote)(?:\s+(?:isso|isto))?(?:\s+(?:na\s+(?:minha\s+)?lista|como\s+(?:tarefa|lembrete)))?\s*[.!?]*$/iu,
+];
+
+function cleanActionEdges(value) {
+  return value
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^[\s,;:.!?\-–—]+/, '')
+    .replace(/[\s,;:.!?\-–—]+$/, '')
+    .replace(/\s+(?:ate|até|para|pra|antes\s+de)(?:\s+(?:o|a))?$/iu, '')
+    .trim();
+}
+
+/**
+ * Converte a frase conversacional no texto curto que aparece como ação.
+ * Devolve também se alguma moldura foi reconhecida, para a confiança do
+ * parser refletir esse entendimento.
+ */
+function secretaryAction(input) {
+  const source = String(input || '').trim();
+  let title = source;
+
+  // A chamada pode vir no início, entre vírgulas ou no fim da fala.
+  title = title
+    .replace(/^\s*(?:(?:ei|ol[aá])\s+)?nestra\b[\s,;:.!?\-–—]*/iu, '')
+    .replace(/([,;:])\s*(?:ei\s+)?nestra\b\s*[,;:]?/giu, '$1 ')
+    .replace(/\s*[,;:]\s*(?:ei\s+)?nestra\s*[.!?]*$/iu, '');
+
+  // Algumas molduras vêm empilhadas: “Nestra, anota aí que eu tenho que”.
+  // O laço curto permite retirar uma camada por vez sem regras destrutivas.
+  for (let pass = 0; pass < 8; pass++) {
+    const before = title;
+    title = cleanActionEdges(title);
+    for (const re of ACTION_PREFIXES) {
+      if (!re.test(title)) continue;
+      title = title.replace(re, '');
+      break;
+    }
+    for (const re of ACTION_SUFFIXES) title = title.replace(re, '');
+    title = cleanActionEdges(title);
+    if (title === before) break;
+  }
+
+  /* Quando a pessoa diz “tenho uma atividade”, o verbo da ação ficou
+     implícito. Só completamos casos inequivocamente executáveis; “tenho
+     uma consulta”, por exemplo, continua consulta e não vira uma ação
+     inventada. */
+  title = title.replace(
+    /^(?:eu\s+)?tenho\s+((?:um|uma|uns|umas)\s+(?:atividade|tarefa|trabalho|dever|exerc[ií]cio|reda[cç][aã]o|projeto))\b/iu,
+    'Fazer $1',
+  );
+
+  // Comandos de agenda são a própria ação, então vão ao infinitivo.
+  title = title
+    .replace(/^agende\b/iu, 'Agendar')
+    .replace(/^agenda\b/iu, 'Agendar')
+    .replace(/^marque\b/iu, 'Marcar')
+    .replace(/^marca\b/iu, 'Marcar');
+
+  title = cleanActionEdges(title);
+  return { title, changed: title !== source };
+}
+
+/* --------------------------------------------------------------------
    Parser principal
    -------------------------------------------------------------------- */
 export function parse(rawInput, context = {}) {
@@ -140,6 +254,20 @@ export function parse(rawInput, context = {}) {
   /** Trechos consumidos, removidos do título no fim. */
   const consumed = [];
   const eat = (start, end) => consumed.push([start, end]);
+  const overlapsConsumed = (start, end) =>
+    consumed.some(([s, e]) => start < e && end > s);
+
+  /** Primeiro casamento que não esteja dentro de um metadado já lido. */
+  const firstFreeMatch = (patterns, text) => {
+    const candidates = [];
+    for (const re of patterns) {
+      const flags = re.flags.includes('g') ? re.flags : re.flags + 'g';
+      for (const match of text.matchAll(new RegExp(re.source, flags))) {
+        if (!overlapsConsumed(match.index, match.index + match[0].length)) candidates.push(match);
+      }
+    }
+    return candidates.sort((a, b) => a.index - b.index)[0] || null;
+  };
 
   let work = original;
   let flat = fold(work);
@@ -214,7 +342,9 @@ export function parse(rawInput, context = {}) {
   }
 
   /* --- 5. Expressões vagas travam a inferência de data (§24) --- */
-  const vagueHit = VAGUE.find((v) => new RegExp(`\\b${v}\\b`).test(flat));
+  // “depois” é vago sozinho, mas não dentro da data exata “depois de amanhã”.
+  const vagueProbe = flat.replace(/\bdepois\s+de\s+amanha\b/g, ' ');
+  const vagueHit = VAGUE.find((v) => new RegExp(`\\b${v}\\b`).test(vagueProbe));
 
   /* --- 6. Data --- */
   let dateFound = false;
@@ -273,15 +403,15 @@ export function parse(rawInput, context = {}) {
     if (!dateFound && (m = flat.match(/\bhoje\b|\bhj\b/))) {
       setDate(today, 'hoje', m.index, m.index + m[0].length);
     }
-    if (!dateFound && (m = flat.match(/\bem\s+(\d{1,3})\s+(dias?|semanas?|mes(?:es)?)\b/))) {
+    if (!dateFound && (m = flat.match(/\b(?:em|daqui\s+a)\s+(\d{1,3})\s+(dias?|semanas?|mes(?:es)?)\b/))) {
       const n = +m[1];
       const mult = /semana/.test(m[2]) ? 7 : /mes/.test(m[2]) ? 30 : 1;
       setDate(addDays(today, n * mult), m[0], m.index, m.index + m[0].length);
     }
-    if (!dateFound && (m = flat.match(/\b(proxima\s+semana|semana\s+que\s+vem)\b/))) {
+    if (!dateFound && (m = flat.match(/\b(?:na\s+)?(proxima\s+semana|semana\s+que\s+vem)\b/))) {
       setDate(nextWeekday(today, 1, true), 'próxima semana', m.index, m.index + m[0].length);
     }
-    if (!dateFound && (m = flat.match(/\b(fim|final)\s+de\s+semana\b/))) {
+    if (!dateFound && (m = flat.match(/\b(?:(?:ate(?:\s+o)?|no|para\s+o)\s+)?(?:fim|final)\s+de\s+semana\b/))) {
       setDate(nextWeekday(today, 6, false), 'fim de semana', m.index, m.index + m[0].length);
     }
 
@@ -289,7 +419,7 @@ export function parse(rawInput, context = {}) {
     if (!dateFound) {
       const names = Object.keys(WEEKDAYS).sort((a, b) => b.length - a.length);
       for (const name of names) {
-        const re = new RegExp(`\\b(?:na|no|de|da|do|essa|esta|nesse|neste)?\\s*${name}(?:-feira)?\\b(\\s+que\\s+vem|\\s+proxim[ao])?`);
+        const re = new RegExp(`\\b(?:(?:ate|para|pra|antes\\s+de|na|no|de|da|do|essa|esta|nesse|neste)\\s+)?${name}(?:-feira)?\\b(\\s+que\\s+vem|\\s+proxim[ao])?`);
         const mm = flat.match(re);
         if (mm) {
           const forceNext = Boolean(mm[1]);
@@ -305,10 +435,12 @@ export function parse(rawInput, context = {}) {
   }
 
   /* --- 7. Horário --- */
-  let m2;
-  if ((m2 = flat.match(/\b(?:as|às|a)\s*(\d{1,2})(?:[h:](\d{2}))?\s*(?:h|horas?)?\b/)) ||
-      (m2 = flat.match(/\b(\d{1,2})[h:](\d{2})\b/)) ||
-      (m2 = flat.match(/\b(\d{1,2})\s*(?:h|horas)\b/))) {
+  const m2 = firstFreeMatch([
+    /\b(?:as|às|a)\s*(\d{1,2})(?:[h:](\d{2}))?\s*(?:h|horas?)?\b/,
+    /\b(\d{1,2})[h:](\d{2})\b/,
+    /\b(\d{1,2})\s*(?:h|horas)\b/,
+  ], flat);
+  if (m2) {
     const hh = +m2[1];
     const mm = m2[2] ? +m2[2] : 0;
     if (hh >= 0 && hh <= 23 && mm < 60) {
@@ -355,7 +487,14 @@ export function parse(rawInput, context = {}) {
   if (!result.environmentName) {
     const aliases = [
       { words: ['trabalho', 'servico', 'escritorio', 'expediente', 'empresa'], hint: 'trabalho' },
-      { words: ['estudo', 'estudos', 'estudar', 'faculdade', 'escola', 'curso', 'aula', 'prova', 'trabalho\\s+da\\s+facul', 'tcc', 'leitura'], hint: 'estudos' },
+      {
+        words: [
+          'estudo', 'estudos', 'estudar', 'faculdade', 'escola', 'curso', 'aula',
+          'prova', 'atividade', 'dever', 'exercicio', 'redacao', 'portugues',
+          'matematica', 'historia', 'geografia', 'trabalho\\s+da\\s+facul', 'tcc', 'leitura',
+        ],
+        hint: 'estudos',
+      },
       { words: ['casa', 'domestico', 'mercado', 'compras'], hint: 'casa' },
       { words: ['pessoal', 'saude', 'academia'], hint: 'pessoal' },
       { words: ['financas', 'financeiro', 'conta', 'boleto', 'pagar'], hint: 'financas' },
@@ -399,8 +538,20 @@ export function parse(rawInput, context = {}) {
   /* --- 10. Monta o título limpo --- */
   let title = work;
   if (consumed.length) {
-    consumed.sort((a, b) => b[0] - a[0]);
-    for (const [s, e] of consumed) {
+    /* Duas interpretações podem tocar o mesmo trecho (por exemplo, uma
+       data relativa e uma preposição de horário). Unir os intervalos
+       antes de cortar impede que o segundo corte remova letras da ação. */
+    const merged = consumed
+      .filter(([s, e]) => s >= 0 && e > s && e <= title.length)
+      .sort((a, b) => a[0] - b[0])
+      .reduce((ranges, [s, e]) => {
+        const last = ranges[ranges.length - 1];
+        if (last && s <= last[1]) last[1] = Math.max(last[1], e);
+        else ranges.push([s, e]);
+        return ranges;
+      }, []);
+
+    for (const [s, e] of merged.reverse()) {
       if (s >= 0 && e <= title.length) title = title.slice(0, s) + ' ' + title.slice(e);
     }
   }
@@ -414,9 +565,16 @@ export function parse(rawInput, context = {}) {
     .replace(/^[\s,;:.\-–—]+/, '')
     .replace(/[\s,;:]+$/, '')
     // preposição solta no fim: "a prova de" -> "a prova"
-    .replace(/\s+(de|da|do|dos|das|em|na|no|nas|nos|para|com|por|a|o)\s*([.!?])?\s*$/i,
+    .replace(/\s+(de|da|do|dos|das|em|na|no|nas|nos|para|pra|ate|até|com|por|a|o)\s*([.!?])?\s*$/i,
       (_m, _w, punct) => punct || '')
     .trim();
+
+  const action = secretaryAction(title);
+  if (action.changed && action.title.length >= 2) {
+    title = action.title;
+    result.confidence += 0.08;
+    note('action', 'ação', title);
+  }
 
   // Nunca devolve um título vazio: a frase original vale mais que a regra
   result.title = title.length >= 2 ? title : original;

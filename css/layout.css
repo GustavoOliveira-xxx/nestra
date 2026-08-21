@@ -218,14 +218,79 @@ body[data-view='auth'] #scene[data-ready='true'] { opacity: .95; }
 .side-link:hover .side-link__icon { color: var(--blue-300); }
 .side-link__count { margin-left: auto; }
 
-/* Um ambiente na lista lateral carrega sua própria cor */
-.env-link__swatch {
-  width: 10px;
-  height: 10px;
-  flex: 0 0 10px;
-  border-radius: 1px;
-  background: var(--env-color, var(--accent));
-  box-shadow: 0 0 8px color-mix(in srgb, var(--env-color, var(--accent)) 60%, transparent);
+/* O antigo quadradinho de cor virou o símbolo próprio do ambiente em 3D.
+   São duas cópias do mesmo desenho em planos diferentes: a perspectiva,
+   a sombra e o balanço contínuo dão profundidade sem abrir mais um contexto
+   WebGL para cada linha da barra lateral. */
+.env-link__symbol {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  display: grid;
+  place-items: center;
+  color: var(--env-color, var(--accent));
+  perspective: 58px;
+}
+.env-link__symbol-body {
+  position: absolute;
+  inset: 2px;
+  transform-style: preserve-3d;
+  will-change: transform;
+  animation: envLinkSymbol3d 4.8s var(--ease-in-out) infinite;
+  animation-delay: var(--env-symbol-delay, 0s);
+}
+.env-link__symbol-body > span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  backface-visibility: hidden;
+}
+.env-link__symbol-depth {
+  color: color-mix(in srgb, var(--env-color, var(--accent)) 45%, var(--void));
+  opacity: .72;
+  transform: translate3d(1.8px, 2px, -3px);
+}
+.env-link__symbol-face {
+  color: color-mix(in srgb, var(--env-color, var(--accent)) 82%, white);
+  transform: translateZ(3px);
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--env-color, var(--accent)) 72%, transparent));
+}
+.env-link__symbol::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -1px;
+  width: 9px;
+  height: 2px;
+  translate: -50% 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--env-color, var(--accent)) 55%, transparent);
+  filter: blur(2px);
+  animation: envLinkSymbolShadow 4.8s var(--ease-in-out) infinite;
+  animation-delay: var(--env-symbol-delay, 0s);
+}
+.side-link:hover .env-link__symbol-body,
+.side-link[aria-current='page'] .env-link__symbol-body {
+  animation-duration: 3.2s;
+}
+@keyframes envLinkSymbol3d {
+  0%, 100% { transform: translateY(1px) rotateX(-12deg) rotateY(-20deg) rotateZ(-2deg); }
+  35%      { transform: translateY(-2px) rotateX(9deg) rotateY(14deg) rotateZ(2deg); }
+  68%      { transform: translateY(-1px) rotateX(-4deg) rotateY(24deg) rotateZ(-1deg); }
+}
+@keyframes envLinkSymbolShadow {
+  0%, 100% { opacity: .35; transform: scaleX(.78); }
+  35%      { opacity: .68; transform: scaleX(1.12); }
+  68%      { opacity: .48; transform: scaleX(.92); }
+}
+[data-motion='reduced'] .env-link__symbol-body,
+[data-motion='reduced'] .env-link__symbol::after {
+  animation: none;
+}
+[data-motion='reduced'] .env-link__symbol-body {
+  transform: rotateX(-10deg) rotateY(14deg);
 }
 
 .sidebar__foot {
