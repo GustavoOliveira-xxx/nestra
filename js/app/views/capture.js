@@ -210,6 +210,11 @@ export function createCapture({ environmentId = null, onCreated = null } = {}) {
 
     if (!item) return;
 
+    /* Registrar encerra o ditado naquele instante. A fala já está no item
+       e não há motivo para o navegador continuar exibindo o indicador de
+       microfone na aba enquanto a tela é reconstruída. */
+    root.stopVoice?.();
+
     // A cena de fundo reage à captura
     window.nestraScene?.pulseAt(0.9);
     const r = send.getBoundingClientRect();
@@ -297,7 +302,10 @@ export function createCapture({ environmentId = null, onCreated = null } = {}) {
     });
 
     // Sair da tela com o microfone aberto seria péssimo: encerra junto
-    root.stopVoice = () => voz.abort();
+    root.stopVoice = () => {
+      pintar(false);
+      voz.abort();
+    };
   }
 
   input.addEventListener('input', refresh);

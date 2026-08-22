@@ -486,18 +486,30 @@ export function parse(rawInput, context = {}) {
   /* --- 9. Ambiente pelo nome, com apelidos comuns --- */
   if (!result.environmentName) {
     const aliases = [
-      { words: ['trabalho', 'servico', 'escritorio', 'expediente', 'empresa'], hint: 'trabalho' },
+      {
+        words: ['trabalho', 'servico', 'escritorio', 'expediente', 'empresa'],
+        hints: ['trabalho', 'servico', 'escritorio', 'empresa', 'profissional'],
+      },
       {
         words: [
           'estudo', 'estudos', 'estudar', 'faculdade', 'escola', 'curso', 'aula',
           'prova', 'atividade', 'dever', 'exercicio', 'redacao', 'portugues',
           'matematica', 'historia', 'geografia', 'trabalho\\s+da\\s+facul', 'tcc', 'leitura',
         ],
-        hint: 'estudos',
+        hints: ['estudo', 'estudos', 'faculdade', 'facul', 'escola', 'curso', 'academico'],
       },
-      { words: ['casa', 'domestico', 'mercado', 'compras'], hint: 'casa' },
-      { words: ['pessoal', 'saude', 'academia'], hint: 'pessoal' },
-      { words: ['financas', 'financeiro', 'conta', 'boleto', 'pagar'], hint: 'financas' },
+      {
+        words: ['casa', 'domestico', 'mercado', 'compras', 'quintal', 'garagem'],
+        hints: ['casa', 'lar', 'domestico', 'familia'],
+      },
+      {
+        words: ['pessoal', 'saude', 'academia', 'medico', 'dentista'],
+        hints: ['pessoal', 'saude', 'academia', 'bem-estar'],
+      },
+      {
+        words: ['financas', 'financeiro', 'conta', 'boleto', 'pagar', 'orcamento'],
+        hints: ['financas', 'financeiro', 'dinheiro', 'contas'],
+      },
     ];
 
     // 1º: nome exato de um ambiente do usuário
@@ -518,7 +530,10 @@ export function parse(rawInput, context = {}) {
       for (const alias of aliases) {
         const found = alias.words.find((w) => new RegExp(`\\b${w}\\b`).test(flat));
         if (!found) continue;
-        const env = environments.find((e) => fold(e.name).includes(alias.hint) || alias.hint.includes(fold(e.name)));
+        const env = environments.find((e) => {
+          const name = fold(e.name);
+          return alias.hints.some((hint) => name.includes(hint) || hint.includes(name));
+        });
         if (env) {
           hit = { env, match: null };
           break;

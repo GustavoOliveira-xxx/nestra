@@ -150,6 +150,8 @@ export class ApiError extends Error {
 const QUEUE_KEY = 'nestra:sync-queue';
 
 export const syncQueue = {
+  _flushing: null,
+
   read() {
     try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); }
     catch { return []; }
@@ -169,30 +171,66 @@ export const syncQueue = {
 
   clear() { localStorage.removeItem(QUEUE_KEY); },
 
-  /** Envia tudo o que está pendente; devolve quantas operações passaram. */
+  /**
+   * Envia tudo o que está pendente; devolve quantas operações passaram.
+   *
+   * A fila pode receber outra captura enquanto uma requisição está no ar.
+   * Por isso cada conclusão relê o armazenamento e remove somente a
+   * operação que acabou de subir. Reescrever a fotografia antiga da fila
+   * apagava exatamente o cadastro feito nesse intervalo — comportamento
+   * que aparecia mais no celular, onde a rede demora um pouco mais.
+   *
+   * Uma falha temporária também interrompe a rodada. A ordem é parte da
+   * integridade: se criar um ambiente falhou, o item seguinte não pode ser
+   * enviado antes dele e perder a referência ao ambiente.
+   */
   async flush() {
     if (!api.online) return 0;
-    const list = this.read();
-    if (!list.length) return 0;
+    if (this._flushing) return this._flushing;
 
-    const remaining = [];
-    let sent = 0;
+    this._flushing = (async () => {
+      const attempted = new Set();
+      let sent = 0;
 
-    for (const op of list) {
-      try {
-        await api.request(op.path, { method: op.method, body: op.body });
-        sent++;
-      } catch (err) {
-        // 4xx que não seja 408/429 significa operação inválida: descarta
-        const permanent = err.status >= 400 && err.status < 500 &&
-          err.status !== 408 && err.status !== 429;
-        if (!permanent && op.tries < 6) {
-          remaining.push({ ...op, tries: op.tries + 1 });
+      while (true) {
+        const op = this.read().find((entry) => !attempted.has(entry.id));
+        if (!op) break;
+        attempted.add(op.id);
+
+        try {
+          await api.request(op.path, { method: op.method, body: op.body });
+
+          // Preserva tudo o que chegou à fila enquanto a rede respondia.
+          this.write(this.read().filter((entry) => entry.id !== op.id));
+          sent++;
+        } catch (err) {
+          const current = this.read();
+          const index = current.findIndex((entry) => entry.id === op.id);
+          if (index < 0) continue;
+
+          // 4xx que não seja 408/429 significa operação inválida: descarta.
+          const permanent = err.status >= 400 && err.status < 500 &&
+            err.status !== 408 && err.status !== 429;
+
+          if (permanent || (current[index].tries || 0) >= 6) {
+            current.splice(index, 1);
+            this.write(current);
+            continue;
+          }
+
+          current[index] = { ...current[index], tries: (current[index].tries || 0) + 1 };
+          this.write(current);
+          break;
         }
       }
-    }
 
-    this.write(remaining);
-    return sent;
+      return sent;
+    })();
+
+    try {
+      return await this._flushing;
+    } finally {
+      this._flushing = null;
+    }
   },
 };

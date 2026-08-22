@@ -7,7 +7,7 @@
    confere de novo.
    ===================================================================== */
 
-import { asUser, itemToClient } from '../_lib/db.js';
+import { asUser, oneAsUser, itemToClient } from '../_lib/db.js';
 import { handler, json, fail, readBody } from '../_lib/http.js';
 import { requireUser } from '../_lib/auth.js';
 
@@ -55,6 +55,22 @@ export default handler(async (req, res) => {
   const dueDate = /^\d{4}-\d{2}-\d{2}$/.test(body.dueDate || '') ? body.dueDate : null;
   const dueTime = dueDate && /^\d{2}:\d{2}$/.test(body.dueTime || '') ? body.dueTime : null;
 
+  /* A FK garante que o ambiente exista, mas não que ele pertença à mesma
+     conta nem que ainda esteja ativo. Valida os dois antes de gravar para
+     uma captura nunca aparecer no contexto errado ou sumir num arquivado. */
+  let environmentId = body.environmentId || null;
+  if (environmentId) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(environmentId))) {
+      return fail(res, 400, 'invalid_environment', 'Ambiente inválido.');
+    }
+    const environments = await oneAsUser(user.id, (sql) =>
+      sql`select id from environments
+           where id = ${environmentId} and owner_id = ${user.id} and archived_at is null`);
+    if (!environments.length) {
+      return fail(res, 400, 'invalid_environment', 'Este ambiente não está disponível.');
+    }
+  }
+
   const [rows] = await asUser(user.id, (sql) => [
     sql`
       insert into items (
@@ -63,7 +79,7 @@ export default handler(async (req, res) => {
       ) values (
         coalesce(${body.id || null}::uuid, gen_random_uuid()),
         ${user.id},
-        ${body.environmentId || null},
+        ${environmentId},
         ${type}, ${title},
         ${body.description ? String(body.description).slice(0, 4000) : null},
         ${priority}, ${dueDate}, ${dueTime}, ${timePeriod},

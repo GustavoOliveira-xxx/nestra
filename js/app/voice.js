@@ -86,10 +86,12 @@ export function voiceSupported() {
  * texto se formando — sem isso, ditar parece travado até a frase acabar.
  */
 export class VoiceCapture extends EventTarget {
-  constructor({ lang = 'pt-BR', continuous = true } = {}) {
+  constructor({ lang = 'pt-BR', continuous = true, idleMs = 8000, maxMs = 60000 } = {}) {
     super();
     this.lang = lang;
     this.continuous = continuous;
+    this.idleMs = idleMs;
+    this.maxMs = maxMs;
     this.running = false;
 
     /* O texto vive em três partes:
@@ -113,12 +115,41 @@ export class VoiceCapture extends EventTarget {
     this._stopping = false;
     this._starting = false;
     this._vazias = 0;   // sessões seguidas que não produziram nada
+    this._idleTimer = null;
+    this._maxTimer = null;
   }
 
   get available() { return Boolean(Recognition); }
 
   _emit(type, detail) {
     this.dispatchEvent(new CustomEvent(type, { detail }));
+  }
+
+  _clearIdleTimer() {
+    clearTimeout(this._idleTimer);
+    this._idleTimer = null;
+  }
+
+  _clearTimers() {
+    this._clearIdleTimer();
+    clearTimeout(this._maxTimer);
+    this._maxTimer = null;
+  }
+
+  /** Fecha depois de silêncio e impõe um teto para nenhum navegador ficar
+      com o indicador de microfone preso indefinidamente. */
+  _touchIdle() {
+    this._clearIdleTimer();
+    if (!this.idleMs) return;
+    this._idleTimer = setTimeout(() => this.stop(), this.idleMs);
+    this._idleTimer?.unref?.();
+  }
+
+  _armMaximum() {
+    clearTimeout(this._maxTimer);
+    if (!this.maxMs) return;
+    this._maxTimer = setTimeout(() => this.stop(), this.maxMs);
+    this._maxTimer?.unref?.();
   }
 
   /**
@@ -167,14 +198,22 @@ export class VoiceCapture extends EventTarget {
     rec.maxAlternatives = 1;
 
     rec.onstart = () => {
+      /* `abort()` pode acontecer enquanto `start()` ainda aguarda a
+         confirmação do navegador. Um `onstart` atrasado não pode desfazer
+         essa intenção e reabrir o microfone que a tela já encerrou. */
+      if (this._stopping || this._rec !== rec) {
+        try { rec.abort(); } catch { /* já encerrou */ }
+        return;
+      }
       this.running = true;
       this._starting = false;
-      this._stopping = false;
+      this._touchIdle();
       this._emit('start');
     };
 
     rec.onresult = (ev) => {
       this.applyResults(ev.results);
+      this._touchIdle();
       this._emit('text', { final: this.finalText, interim: this.interimText });
     };
 
@@ -182,6 +221,10 @@ export class VoiceCapture extends EventTarget {
       /* `aborted` e `no-speech` são rotina: acontecem quando a pessoa
          para de falar ou encerra o ditado. Não são falhas para relatar. */
       if (ev.error === 'aborted' || ev.error === 'no-speech') return;
+
+      this._stopping = true;
+      this.running = false;
+      this._clearTimers();
 
       const motivos = {
         'not-allowed': 'O navegador bloqueou o microfone. Libere o acesso e tente de novo.',
@@ -200,6 +243,8 @@ export class VoiceCapture extends EventTarget {
          evita que um evento atrasado do objeto velho mexa no estado da
          sessão que está começando. */
       rec.onstart = rec.onresult = rec.onerror = rec.onend = null;
+      if (this._rec === rec) this._rec = null;
+      this._clearIdleTimer();
 
       /* O navegador encerra sozinho depois de um silêncio. Se a pessoa
          não pediu para parar, recomeça — senão o ditado de uma frase mais
@@ -220,6 +265,7 @@ export class VoiceCapture extends EventTarget {
 
       this.running = false;
       this._starting = false;
+      this._clearTimers();
       this._emit('end', { text: this.text });
     };
 
@@ -248,26 +294,32 @@ export class VoiceCapture extends EventTarget {
     this._stopping = false;
     this._starting = true;
 
-    if (this._abrir()) return true;
+    if (this._abrir()) {
+      this._armMaximum();
+      return true;
+    }
 
     this._starting = false;
+    this._clearTimers();
     this._emit('error', { code: 'start', message: 'Não consegui abrir o microfone.' });
     return false;
   }
 
   stop() {
-    if (!this._rec) return;
     this._stopping = true;
     this._starting = false;
     this.running = false;
+    this._clearTimers();
+    if (!this._rec) return;
     try { this._rec.stop(); } catch { /* já estava parando */ }
   }
 
   abort() {
-    if (!this._rec) return;
     this._stopping = true;
     this._starting = false;
     this.running = false;
+    this._clearTimers();
+    if (!this._rec) return;
     try { this._rec.abort(); } catch { /* já estava parando */ }
   }
 

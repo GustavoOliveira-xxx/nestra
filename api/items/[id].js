@@ -4,7 +4,7 @@
    DELETE /api/items/:id?purge=1   — exclui em definitivo
    ===================================================================== */
 
-import { asUser, itemToClient } from '../_lib/db.js';
+import { asUser, oneAsUser, itemToClient } from '../_lib/db.js';
 import { handler, json, fail, readBody } from '../_lib/http.js';
 import { requireUser } from '../_lib/auth.js';
 
@@ -73,6 +73,18 @@ export default handler(async (req, res) => {
 
   if (!Object.keys(patch).length) {
     return fail(res, 400, 'empty_patch', 'Nada para atualizar.');
+  }
+
+  if (patch.environmentId) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(patch.environmentId))) {
+      return fail(res, 400, 'invalid_environment', 'Ambiente inválido.');
+    }
+    const environments = await oneAsUser(user.id, (sql) =>
+      sql`select id from environments
+           where id = ${patch.environmentId} and owner_id = ${user.id} and archived_at is null`);
+    if (!environments.length) {
+      return fail(res, 400, 'invalid_environment', 'Este ambiente não está disponível.');
+    }
   }
 
   // O patch viaja como JSONB: assim um campo ausente permanece e um campo
