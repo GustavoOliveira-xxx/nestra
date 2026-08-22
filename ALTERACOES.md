@@ -9,6 +9,58 @@ mensagem e autoria, sem sobrescrever nada à mão.
 
 ---
 
+# Sétima rodada
+
+## 20. Ambientes editam e navegam sem depender de recarga
+
+O formulário já alterava os dados, mas a abertura 3D reaproveitada mantinha
+o nome e a descrição antigos na tela. Agora esse topo atualiza seus textos
+junto dos números, e “Todos os ambientes” chama o roteador diretamente,
+mantendo também o `href` como alternativa nativa.
+
+## 21. Capturas chegam ao ambiente certo e aparecem sozinhas
+
+A fila de sincronização deixou de reescrever uma fotografia antiga. Se uma
+nova captura entrar enquanto a rede responde, ela permanece na fila e sobe
+na mesma rodada. Falhas temporárias preservam a ordem — primeiro o ambiente,
+depois os itens que dependem dele — e o servidor só aceita um ambiente ativo
+da própria conta.
+
+O estado remoto agora leva `updatedAt` dos ambientes e a comparação considera
+também nome, cor e ícone. A busca entre aparelhos ocorre a cada 15 segundos e
+uma caixa vazia focada no celular não bloqueia mais o redesenho. Contadores da
+barra lateral também reagem imediatamente aos cadastros locais.
+
+## 22. O microfone realmente encerra
+
+A captura da página unitária agora participa da limpeza da tela, registrar um
+item encerra o ditado e uma confirmação atrasada de abertura não consegue mais
+religar uma sessão abortada. O reconhecimento fecha após oito segundos sem
+resultado e tem teto de um minuto, eliminando o indicador vermelho preso na
+aba mesmo quando o navegador não entrega o evento de fim esperado.
+
+Os testes automatizados passaram de 39 para **48 verificações**, incluindo a
+corrida da fila, a ordem ambiente/item, ambientes equivalentes cadastrados,
+`updatedAt` remoto e o encerramento do microfone durante a abertura. Os fluxos
+de edição, navegação e cadastro também foram repetidos em navegador nas larguras
+desktop e 390 × 844, sem recarregar a página.
+
+### Arquivos desta rodada
+
+    js/app/api.js              fila concorrente e ordenada
+    js/app/store.js            sincronização mais rápida e ambiente ativo
+    js/app/voice.js            encerramento garantido do microfone
+    js/app/views/capture.js    ditado fecha ao registrar
+    js/app/views/today.js      edição, navegação e captura unitária
+    js/main.js                 repintura remota e contadores imediatos
+    js/app/nlp.js              equivalências de ambientes cadastrados
+    api/items/*                validação do ambiente da própria conta
+    api/_lib/db.js             updatedAt do ambiente no cliente
+    scripts/testes.js          regressões desta rodada
+    sw.js                      nova versão da casca offline
+
+---
+
 # Sexta rodada
 
 ## 17. A captura virou uma ação, não uma transcrição crua

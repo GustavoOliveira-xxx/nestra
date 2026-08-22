@@ -20,6 +20,9 @@
         `date` do Postgres chega como Date do JavaScript, e convertê-la
         com `String(...).slice(0, 10)` produzia "Wed Aug 19". O teste passa
         pelo conversor de verdade do driver, em vários fusos de servidor.
+
+     4. A fila que podia apagar um cadastro novo durante outro envio ou
+        mandar o item antes do ambiente do qual ele dependia.
    ===================================================================== */
 
 /* O cliente do Neon é construído no import de api/_lib/db.js e recusa
@@ -144,6 +147,18 @@ eq('reentrega menor não apaga o que já havia',
 }
 
 {
+  /* A tela pode ser trocada antes de o navegador confirmar `start()`. */
+  criados.length = 0;
+  const v = new VoiceCapture();
+  v.start();
+  v.abort();
+  await proximoQuadro();
+  await proximoQuadro();
+  eq('abortar durante a abertura não reabre o microfone', criados.length, 1);
+  eq('abortar durante a abertura mantém o estado desligado', v.running, false);
+}
+
+{
   /* Um ditado inteiro, com pausas, do jeito que acontece. */
   criados.length = 0;
   const v = new VoiceCapture();
@@ -191,6 +206,14 @@ const atividade = interpretar('Nestra, preciso fazer uma atividade de português
 eq('chamada e moldura saem da atividade',
   atividade.title, 'Fazer uma atividade de português valendo nota');
 eq('vocabulário escolar encontra Estudos', atividade.environmentId, 'env-estudos');
+
+const contextoFaculdade = {
+  ...secretarioContexto,
+  environments: [{ id: 'env-faculdade', name: 'Faculdade' }],
+};
+eq('vocabulário escolar respeita ambiente equivalente cadastrado',
+  parse('Preciso terminar a atividade de português', contextoFaculdade).environmentId,
+  'env-faculdade');
 
 eq('pedido educado e chamada também saem',
   interpretar('Ei Nestra, por favor me lembra de comprar ração amanhã').title,
@@ -253,7 +276,7 @@ eq('quando der continua sem inventar prazo',
 console.log('\nDatas');
 
 const { types } = await import('@neondatabase/serverless');
-const { itemToClient } = await import('../api/_lib/db.js');
+const { itemToClient, environmentToClient } = await import('../api/_lib/db.js');
 
 const comoOBancoEntrega = (data, hora) => ({
   id: 'x', environment_id: null, type: 'task', title: 'reunião',
@@ -276,6 +299,86 @@ eq('data nula continua nula', itemToClient(comoOBancoEntrega(null, null)).dueDat
 eq('data ilegível não vira texto', humanDate('Wed Aug 19', 'America/Sao_Paulo'), null);
 eq('data vazia não vira texto', humanDate(null, 'America/Sao_Paulo'), null);
 eq('data boa vira texto', typeof humanDate('2026-08-19', 'America/Sao_Paulo'), 'string');
+
+const ambienteConvertido = environmentToClient({
+  id: 'env', name: 'Casa', slug: 'casa', description: null, color: '#2F6BFF',
+  icon: 'home', position: 0, is_default: false, archived_at: null,
+  created_at: '2026-08-20T10:00:00.000Z', updated_at: '2026-08-21T11:00:00.000Z',
+});
+eq('alteração remota do ambiente leva updatedAt para o navegador',
+  ambienteConvertido.updatedAt, '2026-08-21T11:00:00.000Z');
+
+/* =====================================================================
+   4. FILA DE SINCRONIZAÇÃO
+   ===================================================================== */
+
+console.log('\nSincronização');
+
+const memoria = new Map();
+globalThis.localStorage = {
+  getItem: (key) => memoria.has(key) ? memoria.get(key) : null,
+  setItem: (key, value) => memoria.set(key, String(value)),
+  removeItem: (key) => memoria.delete(key),
+};
+
+const fetchOriginal = globalThis.fetch;
+const { api, syncQueue } = await import('../js/app/api.js');
+api.base = 'https://nestra.invalid/api';
+api.online = true;
+
+const respostaOk = () => ({
+  ok: true,
+  status: 200,
+  text: async () => '{"ok":true}',
+});
+
+{
+  syncQueue.clear();
+  const chamadas = [];
+  let liberarPrimeira;
+  let primeiraComecou;
+  const comecou = new Promise((resolve) => { primeiraComecou = resolve; });
+  const bloqueio = new Promise((resolve) => { liberarPrimeira = resolve; });
+
+  globalThis.fetch = async (url) => {
+    chamadas.push(url);
+    if (chamadas.length === 1) {
+      primeiraComecou();
+      await bloqueio;
+    }
+    return respostaOk();
+  };
+
+  syncQueue.push({ method: 'POST', path: '/environments', body: { id: 'ambiente' } });
+  const envio = syncQueue.flush();
+  await comecou;
+  syncQueue.push({ method: 'POST', path: '/items', body: { id: 'item' } });
+  liberarPrimeira();
+  await envio;
+
+  eq('cadastro feito durante outro envio também sobe', chamadas.length, 2);
+  eq('fila termina vazia sem apagar operação nova', syncQueue.size(), 0);
+}
+
+{
+  syncQueue.clear();
+  const chamadas = [];
+  globalThis.fetch = async (url) => {
+    chamadas.push(url);
+    throw new TypeError('rede caiu');
+  };
+
+  syncQueue.push({ method: 'POST', path: '/environments', body: { id: 'ambiente' } });
+  syncQueue.push({ method: 'POST', path: '/items', body: { id: 'item', environmentId: 'ambiente' } });
+  await syncQueue.flush();
+
+  eq('falha temporária preserva a ordem ambiente antes do item', chamadas.length, 1);
+  eq('operações dependentes continuam guardadas', syncQueue.size(), 2);
+  eq('tentativa fica registrada para o próximo envio', syncQueue.read()[0].tries, 1);
+}
+
+syncQueue.clear();
+globalThis.fetch = fetchOriginal;
 
 /* =====================================================================
    Fecho

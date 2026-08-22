@@ -230,7 +230,11 @@ function startApp(logged) {
     route();
   });
   store.addEventListener('sync', (ev) => paintSync(ev.detail));
-  store.addEventListener('items', scheduleNotifications);
+  store.addEventListener('items', () => {
+    paintSidebar();
+    scheduleNotifications();
+  });
+  store.addEventListener('environments', paintSidebar);
 
   /* Chegou coisa nova do servidor — provavelmente feita no outro
      aparelho. A tela atual se redesenha sozinha, sem recarregar nada. */
@@ -913,7 +917,7 @@ function paintSync(state) {
 /**
  * Redesenha quando a tela estiver livre.
  *
- * A busca automática roda a cada 45 segundos. Se ela redesenhasse a tela
+ * A busca automática roda a cada 15 segundos. Se ela redesenhasse a tela
  * no meio de uma frase, a frase iria embora — e perder o que a pessoa
  * estava escrevendo é justamente o que este produto existe para evitar.
  * O mesmo vale para um formulário aberto: espera fechar.
@@ -922,11 +926,16 @@ let repaintTimer = 0;
 
 function repaintWhenIdle() {
   const focused = document.activeElement;
-  const typing = focused && (
-    /^(INPUT|TEXTAREA|SELECT)$/.test(focused.tagName) || focused.isContentEditable);
+  /* Foco sozinho não significa que há trabalho em andamento. No celular,
+     a caixa vazia costuma continuar focada depois do cadastro e bloqueava
+     todos os pulls seguintes até um Ctrl+R. Só protege uma captura que
+     realmente tenha texto ou esteja ouvindo. Formulários vivem em modal e
+     já são cobertos por `dialogOpen`. */
+  const captureDraft = focused?.matches?.('.capture__input') && focused.value.trim();
+  const listening = $('#viewRoot')?.captureBox?.dataset.listening === 'true';
   const dialogOpen = document.querySelector('.overlay[data-open="true"], .palette[data-open="true"]');
 
-  if (typing || dialogOpen) {
+  if (captureDraft || listening || dialogOpen) {
     clearTimeout(repaintTimer);
     repaintTimer = setTimeout(repaintWhenIdle, 4000);
     return;

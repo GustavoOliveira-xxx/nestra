@@ -235,6 +235,9 @@ export function renderToday(root, { onNavigate }) {
   const b = store.todayBuckets();
   const tz = store.state.prefs.timezone;
 
+  // Um re-render também é uma saída da captura anterior.
+  root.captureBox?.stopVoice?.();
+  root.captureBox = null;
   root.replaceChildren();
 
   const dayTotal = b.dueToday.length + b.overdue.length;
@@ -363,8 +366,14 @@ export function renderToday(root, { onNavigate }) {
    ambiente e o brilho interno vem de quanta coisa está pendente ali. Em
    volta dela ficam o nome, a descrição e os números do ambiente.
    --------------------------------------------------------------------- */
-function environmentHero(env, stats, { onEditEnvironment }) {
+function environmentHero(env, stats, { onEditEnvironment, onNavigate }) {
   const canvas = el('canvas', { class: 'env-hero__canvas', 'aria-hidden': 'true' });
+  const kickerIcon = el('span', { class: 'env-hero__kicker-icon', html: icon(env.icon, 13) });
+  const title = el('h1', { class: 'env-hero__title', text: env.name });
+  const description = el('p', {
+    class: 'env-hero__desc',
+    text: env.description || 'Tudo o que pertence a este contexto fica reunido aqui.',
+  });
 
   const number = (value, label, modifier) =>
     el('div', { class: 'env-hero__stat' + (modifier ? ' env-hero__stat--' + modifier : '') }, [
@@ -402,14 +411,11 @@ function environmentHero(env, stats, { onEditEnvironment }) {
 
     el('div', { class: 'env-hero__body' }, [
       el('span', { class: 'env-hero__kicker' }, [
-        el('span', { class: 'env-hero__kicker-icon', html: icon(env.icon, 13) }),
+        kickerIcon,
         el('span', { text: 'Ambiente' }),
       ]),
-      el('h1', { class: 'env-hero__title', text: env.name }),
-      el('p', {
-        class: 'env-hero__desc',
-        text: env.description || 'Tudo o que pertence a este contexto fica reunido aqui.',
-      }),
+      title,
+      description,
       statsRow,
       el('div', { class: 'env-hero__actions' }, [
         el('button', {
@@ -421,6 +427,10 @@ function environmentHero(env, stats, { onEditEnvironment }) {
           class: 'btn btn--ghost btn--sm',
           href: '#/ambientes',
           html: icon('layers', 15) + 'Todos os ambientes',
+          onClick: (ev) => {
+            ev.preventDefault();
+            onNavigate?.('environments');
+          },
         }),
       ]),
     ]),
@@ -436,6 +446,12 @@ function environmentHero(env, stats, { onEditEnvironment }) {
   hero.dataset.look = env.color + '·' + env.icon;
   hero.dataset.alive = 'pending';
   hero.updateStats = paintStats;
+  hero.updateEnvironment = (next) => {
+    title.textContent = next.name;
+    description.textContent = next.description || 'Tudo o que pertence a este contexto fica reunido aqui.';
+    kickerIcon.innerHTML = icon(next.icon, 13);
+    hero.style.setProperty('--env-color', next.color);
+  };
 
   // O canvas precisa estar no documento para ter tamanho medido
   requestAnimationFrame(() => {
@@ -468,6 +484,7 @@ function keepEnvironmentHero(root, env, stats, options) {
       cached.dataset.env === env.id &&
       cached.dataset.look === look &&
       cached.dataset.alive) {
+    cached.updateEnvironment?.(env);
     cached.updateStats(stats);
     return cached;
   }
@@ -488,6 +505,8 @@ export function renderEnvironment(root, envId, { onNavigate, onEditEnvironment }
   const rerender = () => renderEnvironment(root, envId, { onNavigate, onEditEnvironment });
   const env = store.environmentById(envId);
 
+  root.captureBox?.stopVoice?.();
+  root.captureBox = null;
   root.replaceChildren();
 
   if (!env) {
@@ -505,9 +524,11 @@ export function renderEnvironment(root, envId, { onNavigate, onEditEnvironment }
 
   const stats = store.environmentStats(envId);
 
-  root.appendChild(keepEnvironmentHero(root, env, stats, { onEditEnvironment }));
+  root.appendChild(keepEnvironmentHero(root, env, stats, { onEditEnvironment, onNavigate }));
 
-  root.appendChild(createCapture({ environmentId: envId, onCreated: rerender }));
+  const capture = createCapture({ environmentId: envId, onCreated: rerender });
+  root.appendChild(capture);
+  root.captureBox = capture;
 
   /* Filtros básicos */
   const state = { filter: root.dataset.filter || 'pending' };

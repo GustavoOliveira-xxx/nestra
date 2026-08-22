@@ -26,7 +26,7 @@
    seguem em cache primeiro: elas não mudam, e são as pesadas.
    ===================================================================== */
 
-const VERSION = 'nestra-v8';
+const VERSION = 'nestra-v9';
 const SHELL = VERSION + '-shell';
 const RUNTIME = VERSION + '-runtime';
 

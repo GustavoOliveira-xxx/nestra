@@ -118,6 +118,7 @@ export function environmentToClient(row) {
     isDefault: row.is_default,
     archivedAt: row.archived_at,
     createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 

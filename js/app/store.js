@@ -21,7 +21,7 @@ const K = {
 };
 
 /* Intervalo entre buscas automáticas enquanto a aba está à vista. */
-const PULL_EVERY = 45000;
+const PULL_EVERY = 15000;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Math.random().toString(36).slice(2));
 
@@ -302,7 +302,14 @@ class Store extends EventTarget {
       .map((i) => i.id + ':' + (i.updatedAt || '') + ':' + i.status)
       .join('|');
     const envs = this.state.environments
-      .map((e) => e.id + ':' + (e.updatedAt || e.createdAt || '') + ':' + (e.archivedAt || ''))
+      .map((e) => [
+        e.id,
+        e.updatedAt || e.createdAt || '',
+        e.archivedAt || '',
+        e.name || '',
+        e.color || '',
+        e.icon || '',
+      ].join(':'))
       .join('|');
     return items + '#' + envs;
   }
@@ -310,7 +317,7 @@ class Store extends EventTarget {
   /**
    * Mantém os aparelhos alinhados sem ficar batendo no servidor à toa:
    * busca quando a aba volta ao primeiro plano, quando a conexão volta e,
-   * enquanto a aba está visível, a cada 45 segundos.
+   * enquanto a aba está visível, a cada 15 segundos.
    */
   startAutoSync() {
     if (this._autoSync) return;
@@ -464,13 +471,23 @@ class Store extends EventTarget {
     const env = this.state.environments.find((e) => e.id === id);
     if (!env) return;
     env.archivedAt = new Date().toISOString();
+    env.isDefault = false;
+
+    /* Um ambiente arquivado não pode continuar recebendo capturas por ser
+       o padrão antigo. Sem esta limpeza, o item existia, mas ficava preso
+       num ambiente que já não aparece na navegação. */
+    const wasDefault = this.state.prefs.defaultEnvironmentId === id;
+    if (wasDefault) this.state.prefs.defaultEnvironmentId = null;
+
     // os itens não somem junto: voltam para a caixa de entrada
     this.state.items.forEach((i) => {
       if (i.environmentId === id) i.environmentId = null;
     });
     this.persist();
-    this.queue('PUT', `/environments/${id}`, { archivedAt: env.archivedAt });
+    this.queue('PUT', `/environments/${id}`, { archivedAt: env.archivedAt, isDefault: false });
+    if (wasDefault) this.queue('PUT', '/preferences', { defaultEnvironmentId: null });
     this.emit('environments');
+    if (wasDefault) this.emit('prefs', this.state.prefs);
   }
 
   seedEnvironments() {
@@ -483,9 +500,14 @@ class Store extends EventTarget {
 
   createItem(data) {
     const now = new Date().toISOString();
+    const requestedEnvironmentId = data.environmentId ?? this.state.prefs.defaultEnvironmentId ?? null;
+    const targetEnvironment = requestedEnvironmentId
+      ? this.state.environments.find((env) => env.id === requestedEnvironmentId && !env.archivedAt)
+      : null;
     const item = {
       id: uid(),
-      environmentId: data.environmentId ?? this.state.prefs.defaultEnvironmentId ?? null,
+      // Nunca deixa uma captura cair num ambiente removido ou desconhecido.
+      environmentId: targetEnvironment?.id || null,
       type: data.type || 'task',
       title: String(data.title || '').trim().slice(0, 280),
       description: data.description || null,
