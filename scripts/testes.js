@@ -28,6 +28,8 @@
 /* O cliente do Neon é construído no import de api/_lib/db.js e recusa
    nascer sem string de conexão. Nenhuma conexão é aberta neste teste —
    só as funções de conversão são exercitadas. */
+import fs from 'node:fs';
+
 process.env.DATABASE_URL ||= 'postgresql://ninguem:nada@localhost/vazio';
 
 let falhas = 0;
@@ -494,6 +496,18 @@ const respostaOk = () => ({
 
 syncQueue.clear();
 globalThis.fetch = fetchOriginal;
+
+/* =====================================================================
+   5. PWA EM PREVIEW PROTEGIDO
+   ===================================================================== */
+
+console.log('\nPWA e publicação');
+
+{
+  const index = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  eq('manifesto envia credenciais no preview protegido do Vercel',
+    /<link\s+rel=["']manifest["'][^>]*crossorigin=["']use-credentials["'][^>]*>/i.test(index), true);
+}
 
 /* =====================================================================
    Fecho
