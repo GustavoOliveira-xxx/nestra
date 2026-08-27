@@ -15,7 +15,10 @@
      local e guarda tudo só neste navegador. -->
 <meta name="nestra-api" content="">
 
-<link rel="manifest" href="manifest.json">
+<!-- Previews protegidos pelo Vercel exigem o cookie de autenticação até
+     para recursos da mesma origem. Sem use-credentials, o manifesto era
+     redirecionado ao SSO e o Chrome registrava um erro de CORS. -->
+<link rel="manifest" href="manifest.json" crossorigin="use-credentials">
 <link rel="icon" type="image/png" href="assets/icons/favicon-64.png">
 <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">

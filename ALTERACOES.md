@@ -31,8 +31,10 @@ mensagem e autoria, sem sobrescrever nada à mão.
   alinhados entre navegador e banco.
 - Trocar de conta não reaproveita mais avatar, saudação ou a abertura visual
   da conta anterior.
+- O manifesto PWA envia a credencial do preview protegido do Vercel, evitando
+  o redirecionamento ao SSO e o erro de CORS exibido pelo Chrome.
 
-São **82 verificações automatizadas**, checagem de sintaxe de todos os módulos,
+São **83 verificações automatizadas**, checagem de sintaxe de todos os módulos,
 auditoria de dependências e jornada manual em desktop e celular. O driver do
 Neon foi atualizado para a versão estável 1.1.0. O relatório completo está em
 `docs/AUDITORIA-2026-08.md`.

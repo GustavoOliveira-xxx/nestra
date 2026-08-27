@@ -78,7 +78,7 @@ mesma origem (Vercel) e aplique `db/schema.sql` no Neon, conforme
 
 ## Testes executados
 
-- 82 verificações automatizadas: ditado móvel, secretário local, datas,
+- 83 verificações automatizadas: ditado móvel, secretário local, datas,
   preferências e concorrência/isolamento/erros da sincronização.
 - Frases temporais variadas: “9 da noite”, “9 da manhã”, “12 da noite”,
   “12 da tarde”, “por volta das nove”, “aproximadamente 9:30”, horário com
