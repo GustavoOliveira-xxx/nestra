@@ -1,7 +1,7 @@
 /* PUT /api/environments/:id — edita ou arquiva um ambiente (§5, §7.3) */
 
 import { asUser, environmentToClient } from '../_lib/db.js';
-import { handler, json, fail, readBody } from '../_lib/http.js';
+import { handler, json, fail, readBody, isUuid, validTimestamp } from '../_lib/http.js';
 import { requireUser } from '../_lib/auth.js';
 
 export default handler(async (req, res) => {
@@ -9,7 +9,7 @@ export default handler(async (req, res) => {
   if (!user) return;
 
   const id = req.query?.id;
-  if (!/^[0-9a-f-]{36}$/i.test(String(id || ''))) {
+  if (!isUuid(id)) {
     return fail(res, 400, 'invalid_id', 'Identificador inválido.');
   }
 
@@ -30,9 +30,21 @@ export default handler(async (req, res) => {
     patch.color = body.color;
   }
   if ('icon' in body) patch.icon = String(body.icon).slice(0, 30);
-  if ('position' in body && Number.isInteger(body.position)) patch.position = body.position;
-  if ('isDefault' in body) patch.isDefault = Boolean(body.isDefault);
-  if ('archivedAt' in body) patch.archivedAt = body.archivedAt || null;
+  if ('position' in body && Number.isInteger(body.position) && body.position >= 0 && body.position <= 10000) {
+    patch.position = body.position;
+  }
+  if ('isDefault' in body) {
+    if (typeof body.isDefault !== 'boolean') {
+      return fail(res, 400, 'invalid_default', 'Valor de ambiente padrão inválido.');
+    }
+    patch.isDefault = body.isDefault;
+  }
+  if ('archivedAt' in body) {
+    if (body.archivedAt && !validTimestamp(body.archivedAt)) {
+      return fail(res, 400, 'invalid_archived_at', 'Data de arquivamento inválida.');
+    }
+    patch.archivedAt = body.archivedAt ? validTimestamp(body.archivedAt) : null;
+  }
 
   if (!Object.keys(patch).length) return fail(res, 400, 'empty_patch', 'Nada para atualizar.');
 
@@ -62,6 +74,18 @@ export default handler(async (req, res) => {
     await asUser(user.id, (sql) => [
       sql`update items set environment_id = null
            where environment_id = ${id} and owner_id = ${user.id} and deleted_at is null`,
+      sql`update user_preferences set default_environment_id = null
+           where user_id = ${user.id} and default_environment_id = ${id}`,
+    ]);
+  }
+
+  if ('isDefault' in patch) {
+    await asUser(user.id, (sql) => [
+      patch.isDefault
+        ? sql`update user_preferences set default_environment_id = ${id}
+               where user_id = ${user.id}`
+        : sql`update user_preferences set default_environment_id = null
+               where user_id = ${user.id} and default_environment_id = ${id}`,
     ]);
   }
 

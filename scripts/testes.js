@@ -269,6 +269,35 @@ eq('quando der continua sem inventar prazo',
   interpretar('Quando der preciso limpar a garagem').dueDate,
   null);
 
+const falaRelatada = interpretar(
+  'Nestra preciso lembrar de configurar o Macbook na casa da minha vó à noite mais ou menos umas 9: 00 domingo à noite mais ou menos umas da noite',
+);
+eq('fala real deixa somente a ação', falaRelatada.title,
+  'Configurar o Macbook na casa da minha vó');
+eq('horário com espaço depois dos dois-pontos é lido', falaRelatada.dueTime, '21:00');
+eq('nove da noite vira 21h', falaRelatada.timePeriod, 'evening');
+eq('repetição do período não exige revisão', falaRelatada.needsReview, false);
+eq('referência familiar encontra Pessoal', falaRelatada.environmentId, 'env-pessoal');
+
+const noveDaNoite = interpretar('Me lembra de ligar pra vó domingo umas 9 da noite');
+eq('horário aproximado sem às é lido', noveDaNoite.dueTime, '21:00');
+eq('moldura aproximada não entra na ação', noveDaNoite.title, 'Ligar pra vó');
+
+const noveDaManha = interpretar('Amanhã às 9 da manhã preciso levar o carro');
+eq('nove da manhã permanece 09h', noveDaManha.dueTime, '09:00');
+eq('período antes da obrigação sai do título', noveDaManha.title, 'Levar o carro');
+
+eq('por volta das nove da noite vira 21h',
+  interpretar('Ligar para Ana domingo por volta das 9 da noite').dueTime, '21:00');
+eq('aproximadamente com hora e minuto é lido',
+  interpretar('Amanhã aproximadamente 14: 30 revisar o contrato').dueTime, '14:30');
+eq('horário sem preposição e com espaço é lido',
+  interpretar('Reunião terça 08: 05').dueTime, '08:05');
+eq('meia-noite falada como doze da noite vira zero hora',
+  interpretar('Fechar o caixa às 12 da noite').dueTime, '00:00');
+eq('meio-dia falado como doze da tarde permanece doze horas',
+  interpretar('Almoçar às 12 da tarde').dueTime, '12:00');
+
 /* =====================================================================
    3. DATAS VINDAS DO BANCO
    ===================================================================== */
@@ -276,7 +305,8 @@ eq('quando der continua sem inventar prazo',
 console.log('\nDatas');
 
 const { types } = await import('@neondatabase/serverless');
-const { itemToClient, environmentToClient } = await import('../api/_lib/db.js');
+const { itemToClient, environmentToClient, prefsToClient } = await import('../api/_lib/db.js');
+const { isUuid, isDateOnly, isTimeOnly, validTimestamp } = await import('../api/_lib/http.js');
 
 const comoOBancoEntrega = (data, hora) => ({
   id: 'x', environment_id: null, type: 'task', title: 'reunião',
@@ -299,6 +329,13 @@ eq('data nula continua nula', itemToClient(comoOBancoEntrega(null, null)).dueDat
 eq('data ilegível não vira texto', humanDate('Wed Aug 19', 'America/Sao_Paulo'), null);
 eq('data vazia não vira texto', humanDate(null, 'America/Sao_Paulo'), null);
 eq('data boa vira texto', typeof humanDate('2026-08-19', 'America/Sao_Paulo'), 'string');
+eq('UUID válido é aceito', isUuid('11111111-1111-4111-8111-111111111111'), true);
+eq('UUID com lixo adicional é recusado', isUuid('11111111-1111-4111-8111-111111111111x'), false);
+eq('dia inexistente é recusado pela API', isDateOnly('2026-02-30'), false);
+eq('ano bissexto é aceito pela API', isDateOnly('2028-02-29'), true);
+eq('horário depois de 23:59 é recusado', isTimeOnly('24:00'), false);
+eq('horário válido é aceito', isTimeOnly('21:00'), true);
+eq('timestamp inválido é recusado', validTimestamp('não é data'), null);
 
 const ambienteConvertido = environmentToClient({
   id: 'env', name: 'Casa', slug: 'casa', description: null, color: '#2F6BFF',
@@ -307,6 +344,19 @@ const ambienteConvertido = environmentToClient({
 });
 eq('alteração remota do ambiente leva updatedAt para o navegador',
   ambienteConvertido.updatedAt, '2026-08-21T11:00:00.000Z');
+
+const preferenciasConvertidas = prefsToClient({
+  theme: 'nestra-noturno', accent: '#2F6BFF', density: 'comfortable', motion: 'full',
+  high_contrast: false, glow_intensity: 70, corner_style: 'square', week_start: 0,
+  date_format: 'dd/MM/yyyy', time_format: '24h', start_view: 'today',
+  default_environment_id: null, show_undated_on_today: false,
+  show_high_priority_outside_today: true, confirm_before_delete: true,
+  after_complete: 'fade', nl_parsing_enabled: true, sound_enabled: false,
+}, {
+  enabled: true, due_items: false, commitments: true, overdue_items: false, lead_minutes: 45,
+});
+eq('preferências de notificações vêm do banco', preferenciasConvertidas.notificationsEnabled, true);
+eq('antecedência de notificação vem do banco', preferenciasConvertidas.notifyLeadMinutes, 45);
 
 /* =====================================================================
    4. FILA DE SINCRONIZAÇÃO
@@ -323,8 +373,10 @@ globalThis.localStorage = {
 
 const fetchOriginal = globalThis.fetch;
 const { api, syncQueue } = await import('../js/app/api.js');
+const { store } = await import('../js/app/store.js');
 api.base = 'https://nestra.invalid/api';
 api.online = true;
+syncQueue.setOwner('user-test');
 
 const respostaOk = () => ({
   ok: true,
@@ -362,6 +414,40 @@ const respostaOk = () => ({
 
 {
   syncQueue.clear();
+  store.state.mode = 'remote';
+  store.state.user = { id: 'user-test', displayName: 'Teste', email: 'teste@example.test' };
+  store.state.items = [
+    { id: '11111111-1111-4111-8111-111111111111', deletedAt: '2026-08-20T10:00:00.000Z' },
+    { id: '22222222-2222-4222-8222-222222222222', deletedAt: '2026-08-21T10:00:00.000Z' },
+    { id: '33333333-3333-4333-8333-333333333333', deletedAt: null },
+  ];
+  store.emptyTrash();
+  clearTimeout(store._flushTimer);
+
+  eq('esvaziar lixeira mantém itens ativos', store.state.items.length, 1);
+  eq('esvaziar lixeira enfileira cada exclusão remota', syncQueue.size(), 2);
+  eq('exclusão remota é definitiva',
+    syncQueue.read().every((op) => op.method === 'DELETE' && op.path.endsWith('?purge=1')), true);
+  syncQueue.clear();
+}
+
+{
+  store.state.prefs = { theme: 'nestra-noturno' };
+  store.state.environments = [];
+  store.state.items = [{
+    id: 'item', title: 'Teste', status: 'pending', checklist: [{ id: 'passo', title: 'A', completed: false }],
+  }];
+  const beforeChecklist = store.signature();
+  store.state.items[0].checklist[0].completed = true;
+  eq('mudança remota de checklist provoca redesenho', beforeChecklist !== store.signature(), true);
+
+  const beforePrefs = store.signature();
+  store.state.prefs.theme = 'alto-contraste';
+  eq('mudança remota de preferência provoca redesenho', beforePrefs !== store.signature(), true);
+}
+
+{
+  syncQueue.clear();
   const chamadas = [];
   globalThis.fetch = async (url) => {
     chamadas.push(url);
@@ -375,6 +461,35 @@ const respostaOk = () => ({
   eq('falha temporária preserva a ordem ambiente antes do item', chamadas.length, 1);
   eq('operações dependentes continuam guardadas', syncQueue.size(), 2);
   eq('tentativa fica registrada para o próximo envio', syncQueue.read()[0].tries, 1);
+}
+
+{
+  syncQueue.clear();
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 400,
+    text: async () => '{"code":"invalid","message":"Alteração inválida"}',
+  });
+  syncQueue.push({ method: 'PUT', path: '/items/invalido', body: { title: '' } });
+  await syncQueue.flush();
+  eq('falha permanente não finge que sincronizou', syncQueue.failedSize(), 1);
+  eq('falha permanente sai da fila ativa', syncQueue.size(), 0);
+  eq('falha permanente pode ser tentada de novo', syncQueue.retryFailed(), 1);
+  eq('nova tentativa volta para a fila ativa', syncQueue.size(), 1);
+  syncQueue.clear();
+}
+
+{
+  syncQueue.setOwner('conta-a');
+  syncQueue.clear();
+  syncQueue.push({ method: 'POST', path: '/items', body: { title: 'A' } });
+  syncQueue.setOwner('conta-b');
+  syncQueue.clear();
+  eq('fila de outra conta não é enviada pela sessão atual', syncQueue.size(), 0);
+  syncQueue.setOwner('conta-a');
+  eq('alteração pendente continua vinculada à conta correta', syncQueue.size(), 1);
+  syncQueue.clear();
+  syncQueue.setOwner('user-test');
 }
 
 syncQueue.clear();

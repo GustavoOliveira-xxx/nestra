@@ -31,6 +31,15 @@ export default handler(async (req, res) => {
     });
   }
 
+  if (!process.env.NESTRA_IP_SALT || process.env.NESTRA_IP_SALT.length < 16) {
+    return json(res, 200, {
+      ...base,
+      ok: false,
+      reason: 'sem_salt',
+      message: 'A API está no ar, mas falta um NESTRA_IP_SALT com pelo menos 16 caracteres.',
+    });
+  }
+
   try {
     const rows = await sql`select 1 as ok`;
     return json(res, 200, { ...base, ok: rows[0]?.ok === 1 });

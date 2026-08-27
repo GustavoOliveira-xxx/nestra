@@ -106,8 +106,13 @@ function todayHero({ b, dayTotal, dayDone, onNavigate }) {
 
   const summary = el('p', { class: 'today-hero__line' });
   const counters = el('div', { class: 'today-hero__stats' });
+  const heroTitle = el('h1', {
+    class: 'today-hero__title grad-text',
+    text: greeting(store.state.user?.displayName),
+  });
 
   const paint = (data) => {
+    heroTitle.textContent = greeting(store.state.user?.displayName);
     summary.textContent = dayLine({
       overdue: data.b.overdue.length,
       dueToday: data.b.dueToday.length,
@@ -148,7 +153,7 @@ function todayHero({ b, dayTotal, dayDone, onNavigate }) {
         el('i', { 'aria-hidden': 'true' }),
         el('span', { text: dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1) }),
       ]),
-      el('h1', { class: 'today-hero__title grad-text', text: greeting(store.state.user?.displayName) }),
+      heroTitle,
       summary,
       counters,
       el('div', { class: 'today-hero__actions' }, [
@@ -374,6 +379,10 @@ function environmentHero(env, stats, { onEditEnvironment, onNavigate }) {
     class: 'env-hero__desc',
     text: env.description || 'Tudo o que pertence a este contexto fica reunido aqui.',
   });
+  /* A abertura 3D é reaproveitada entre renderizações. Os callbacks
+     também precisam acompanhar a tela atual; guardar os primeiros fazia
+     os dois botões virarem controles com uma referência envelhecida. */
+  let actions = { onEditEnvironment, onNavigate };
 
   const number = (value, label, modifier) =>
     el('div', { class: 'env-hero__stat' + (modifier ? ' env-hero__stat--' + modifier : '') }, [
@@ -420,17 +429,15 @@ function environmentHero(env, stats, { onEditEnvironment, onNavigate }) {
       el('div', { class: 'env-hero__actions' }, [
         el('button', {
           class: 'btn btn--ghost btn--sm',
+          type: 'button',
           html: icon('edit', 15) + 'Editar ambiente',
-          onClick: () => onEditEnvironment?.(env),
+          onClick: () => actions.onEditEnvironment?.(store.environmentById(env.id) || env),
         }),
-        el('a', {
+        el('button', {
           class: 'btn btn--ghost btn--sm',
-          href: '#/ambientes',
+          type: 'button',
           html: icon('layers', 15) + 'Todos os ambientes',
-          onClick: (ev) => {
-            ev.preventDefault();
-            onNavigate?.('environments');
-          },
+          onClick: () => actions.onNavigate?.('environments'),
         }),
       ]),
     ]),
@@ -446,6 +453,7 @@ function environmentHero(env, stats, { onEditEnvironment, onNavigate }) {
   hero.dataset.look = env.color + '·' + env.icon;
   hero.dataset.alive = 'pending';
   hero.updateStats = paintStats;
+  hero.updateActions = (next) => { actions = next; };
   hero.updateEnvironment = (next) => {
     title.textContent = next.name;
     description.textContent = next.description || 'Tudo o que pertence a este contexto fica reunido aqui.';
@@ -486,6 +494,7 @@ function keepEnvironmentHero(root, env, stats, options) {
       cached.dataset.alive) {
     cached.updateEnvironment?.(env);
     cached.updateStats(stats);
+    cached.updateActions?.(options);
     return cached;
   }
 

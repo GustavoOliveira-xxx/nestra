@@ -23,12 +23,14 @@ O tempo total é de uns dez minutos, quase todos esperando.
 
 ## 1. Criar o banco no Neon
 
-1. Entre no Neon e crie um projeto. Região mais perto de você
+1. Entre no Neon e crie um projeto. A região mais perto de você
    (`South America (São Paulo)` se estiver no Brasil) deixa o app mais
    rápido.
-2. Copie a **connection string** do projeto. Ela se parece com:
+2. Copie a **connection string com pooling** do projeto. No painel do Neon,
+   ative a opção de pooling; o host terá `-pooler`. Essa é a opção recomendada
+   para funções serverless. Ela se parece com:
 
-       postgresql://usuario:senha@ep-algo-123456.sa-east-1.aws.neon.tech/neondb?sslmode=require
+       postgresql://usuario:senha@ep-algo-123456-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require
 
 Guarde essa linha: ela é a `DATABASE_URL` do passo 3.
 
@@ -38,7 +40,15 @@ Guarde essa linha: ela é a `DATABASE_URL` do passo 3.
 
 ## 2. Aplicar o esquema
 
-Na sua máquina, dentro da pasta do projeto:
+Na sua máquina, dentro da pasta do projeto, use um dos comandos abaixo.
+
+PowerShell (Windows):
+
+    npm install
+    $env:DATABASE_URL='cole-a-string-aqui'
+    npm run db:schema
+
+Bash (Linux/macOS):
 
     npm install
     DATABASE_URL='cole-a-string-aqui' npm run db:schema
@@ -48,7 +58,7 @@ linha. O comando pode ser repetido sem problema: ele não apaga nada.
 
 ## 3. Publicar na Vercel
 
-1. Em vercel.com → **Add New… → Project** → importe `nestra2`.
+1. Em vercel.com → **Add New… → Project** → importe `nestra`.
 2. Nas configurações de build, **não mude nada**: o `vercel.json` do
    repositório já diz o que fazer.
 3. Antes de concluir, abra **Environment Variables** e cadastre duas:
@@ -56,7 +66,7 @@ linha. O comando pode ser repetido sem problema: ele não apaga nada.
    | Nome | Valor |
    |---|---|
    | `DATABASE_URL` | a connection string do passo 1 |
-   | `NESTRA_IP_SALT` | um texto secreto qualquer, longo e estável |
+   | `NESTRA_IP_SALT` | um texto secreto, estável e com pelo menos 16 caracteres |
 
    O `NESTRA_IP_SALT` embaralha os endereços de IP usados para limitar
    tentativas de login. Serve para que nem o próprio banco guarde IP em
@@ -64,6 +74,10 @@ linha. O comando pode ser repetido sem problema: ele não apaga nada.
    de tentativas.
 
 4. **Deploy**.
+
+> Ao publicar esta correção, execute o passo 2 novamente. O esquema é
+> idempotente e a reaplicação instala a política de sessão corrigida sem
+> apagar cadastros.
 
 ## 4. Conferir
 
@@ -87,6 +101,7 @@ acontecendo:
 |---|---|---|
 | `{"service":"nestra-api","ok":true}` | API e banco de pé | nada, está certo |
 | `{"ok":false,"reason":"sem_banco"}` | falta a `DATABASE_URL` | cadastre a variável e publique de novo |
+| `{"ok":false,"reason":"sem_salt"}` | falta um `NESTRA_IP_SALT` seguro | cadastre um segredo estável com pelo menos 16 caracteres e publique de novo |
 | `{"ok":false,"reason":"banco_indisponivel"}` | a variável existe mas o banco não respondeu | confira se a string está inteira, se termina com `?sslmode=require` e se o esquema do passo 2 foi aplicado |
 | página 404 | as funções não subiram | confirme que a pasta `api/` está no repositório e que o `vercel.json` não foi alterado |
 

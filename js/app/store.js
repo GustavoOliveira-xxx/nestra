@@ -174,6 +174,11 @@ class Store extends EventTarget {
       }
     }
 
+    /* A API pode estar temporariamente fora do ar antes mesmo de `/me`.
+       Nesse caso ainda abre a última cópia conhecida, em vez de mandar
+       uma conta remota para a tela pública como se não existisse. */
+    if (!api.online && this.restoreCachedRemote()) return true;
+
     const session = read(K.session, null);
     if (!session || session.expiresAt < Date.now()) {
       localStorage.removeItem(K.session);
@@ -209,14 +214,19 @@ class Store extends EventTarget {
   adoptRemote(payload) {
     this.state.mode = 'remote';
     this.state.user = payload.user;
-    this.state.prefs = { ...DEFAULT_PREFS, ...(payload.preferences || {}) };
+    syncQueue.setOwner(payload.user?.id);
+    this.state.prefs = {
+      ...DEFAULT_PREFS,
+      ...(payload.preferences || {}),
+      timezone: payload.user?.timezone || payload.preferences?.timezone || DEFAULT_PREFS.timezone,
+    };
     this.state.environments = payload.environments || [];
     this.state.items = payload.items || [];
 
     write(K.remoteUser, payload.user);
     this.persist();
 
-    this.setSync('synced');
+    this.setSync(syncQueue.failedSize() ? 'error' : 'synced');
     this.emit('auth', this.state.user);
     return this.state.user;
   }
@@ -228,6 +238,7 @@ class Store extends EventTarget {
 
     this.state.mode = 'remote';
     this.state.user = cached;
+    syncQueue.setOwner(cached.id);
     this.load(cached.id);
     this.setSync(navigator.onLine ? 'error' : 'offline');
     this.emit('auth', this.state.user);
@@ -253,6 +264,10 @@ class Store extends EventTarget {
 
     this._pulling = (async () => {
       try {
+        if (!api.online && !(await api.probe())) {
+          this.setSync(navigator.onLine ? 'error' : 'offline');
+          return false;
+        }
         if (syncQueue.size()) {
           await this.flush();
           if (syncQueue.size()) return false;
@@ -264,13 +279,17 @@ class Store extends EventTarget {
         const before = this.signature();
 
         this.state.user = me.user;
-        this.state.prefs = { ...DEFAULT_PREFS, ...(me.preferences || {}) };
+        this.state.prefs = {
+          ...DEFAULT_PREFS,
+          ...(me.preferences || {}),
+          timezone: me.user?.timezone || me.preferences?.timezone || DEFAULT_PREFS.timezone,
+        };
         this.state.environments = me.environments || [];
         this.state.items = me.items || [];
 
         write(K.remoteUser, me.user);
         this.persist();
-        this.setSync('synced');
+        this.setSync(syncQueue.failedSize() ? 'error' : 'synced');
 
         const changed = before !== this.signature();
         if (changed) this.emit('pulled', { reason });
@@ -298,20 +317,28 @@ class Store extends EventTarget {
 
   /** Impressão barata do estado, só para saber se algo mudou de verdade. */
   signature() {
-    const items = this.state.items
-      .map((i) => i.id + ':' + (i.updatedAt || '') + ':' + i.status)
-      .join('|');
-    const envs = this.state.environments
-      .map((e) => [
-        e.id,
-        e.updatedAt || e.createdAt || '',
-        e.archivedAt || '',
-        e.name || '',
-        e.color || '',
-        e.icon || '',
-      ].join(':'))
-      .join('|');
-    return items + '#' + envs;
+    /* O servidor substitui o estado inteiro a cada pull. A assinatura
+       precisa observar tudo o que muda a tela, inclusive checklist,
+       preferências e perfil; checklist não altera `items.updated_at` e
+       antes chegava do outro aparelho sem provocar nenhum redesenho. */
+    return JSON.stringify({
+      user: this.state.user && {
+        id: this.state.user.id,
+        displayName: this.state.user.displayName,
+        timezone: this.state.user.timezone,
+      },
+      prefs: this.state.prefs,
+      environments: this.state.environments.map((e) => ({
+        id: e.id, updatedAt: e.updatedAt, archivedAt: e.archivedAt,
+        name: e.name, color: e.color, icon: e.icon, position: e.position,
+      })),
+      items: this.state.items.map((i) => ({
+        id: i.id, updatedAt: i.updatedAt, status: i.status, title: i.title,
+        description: i.description, priority: i.priority, type: i.type,
+        environmentId: i.environmentId, dueDate: i.dueDate, dueTime: i.dueTime,
+        timePeriod: i.timePeriod, checklist: i.checklist,
+      })),
+    });
   }
 
   /**
@@ -391,9 +418,6 @@ class Store extends EventTarget {
 
     if (api.online) {
       const res = await api.post('/auth/login', { email, password });
-      // A fila pode ter sobras de uma sessão anterior neste aparelho;
-      // enviá-las agora gravaria itens de uma conta na outra.
-      syncQueue.clear();
       return this.adoptRemote(res);
     }
 
@@ -492,8 +516,10 @@ class Store extends EventTarget {
 
   seedEnvironments() {
     if (this.state.environments.length) return;
-    SUGGESTED_ENVIRONMENTS.forEach((e, i) =>
-      this.createEnvironment({ ...e, isDefault: i === 0 }));
+    // Sugestões não escolhem contexto pelo usuário. Sem indicação na
+    // frase, uma captura nova começa na caixa de entrada.
+    SUGGESTED_ENVIRONMENTS.forEach((e) =>
+      this.createEnvironment({ ...e, isDefault: false }));
   }
 
   /* ---------------- itens ---------------- */
@@ -621,21 +647,25 @@ class Store extends EventTarget {
   }
 
   emptyTrash() {
+    const removed = this.state.items.filter((i) => i.deletedAt).map((i) => i.id);
     this.state.items = this.state.items.filter((i) => !i.deletedAt);
     this.persist();
+    // Esvaziar também precisa acontecer no banco. Só apagar a cópia local
+    // fazia todos os itens reaparecerem no próximo aparelho ou pull.
+    removed.forEach((id) => this.queue('DELETE', `/items/${id}?purge=1`));
     this.emit('items', { action: 'purge' });
   }
 
   /* ---------------- checklists (§7.4) ---------------- */
 
-  addChecklistItem(itemId, title) {
+  addChecklistItem(itemId, title, options = {}) {
     const item = this.state.items.find((i) => i.id === itemId);
     if (!item || !String(title).trim()) return null;
     const entry = {
-      id: uid(),
+      id: options.id || uid(),
       title: String(title).trim().slice(0, 200),
-      completed: false,
-      position: item.checklist.length,
+      completed: Boolean(options.completed),
+      position: Number.isInteger(options.position) ? options.position : item.checklist.length,
     };
     item.checklist.push(entry);
     item.updatedAt = new Date().toISOString();
@@ -673,9 +703,23 @@ class Store extends EventTarget {
 
   setPrefs(patch) {
     Object.assign(this.state.prefs, patch);
+    if ('timezone' in patch && this.state.user) this.state.user.timezone = patch.timezone;
     this.persist();
-    this.queue('PUT', '/preferences', patch);
+    const preferencePatch = { ...patch };
+    delete preferencePatch.timezone;
+    if (Object.keys(preferencePatch).length) this.queue('PUT', '/preferences', preferencePatch);
+    if ('timezone' in patch) this.queue('PUT', '/account', { timezone: patch.timezone });
     this.emit('prefs', this.state.prefs);
+  }
+
+  updateProfile({ displayName }) {
+    const name = String(displayName || '').trim();
+    if (!this.state.user || name.length < 2 || name.length > 80) return null;
+    this.state.user.displayName = name;
+    this.persist();
+    this.queue('PUT', '/account', { displayName: name });
+    this.emit('auth', this.state.user);
+    return this.state.user;
   }
 
   /* ---------------- histórico ---------------- */
@@ -701,6 +745,7 @@ class Store extends EventTarget {
 
   queue(method, path, body) {
     if (this.state.mode !== 'remote') return;
+    syncQueue.setOwner(this.state.user?.id);
     syncQueue.push({ method, path, body });
     this.setSync('syncing');
     clearTimeout(this._flushTimer);
@@ -711,8 +756,12 @@ class Store extends EventTarget {
     if (this.state.mode !== 'remote') return;
     if (!navigator.onLine) { this.setSync('offline'); return; }
     try {
+      if (!api.online && !(await api.probe())) {
+        this.setSync('error');
+        return;
+      }
       await syncQueue.flush();
-      this.setSync(syncQueue.size() ? 'syncing' : 'synced');
+      this.setSync(syncQueue.failedSize() ? 'error' : syncQueue.size() ? 'syncing' : 'synced');
     } catch {
       this.setSync('error');
     }
@@ -735,6 +784,17 @@ class Store extends EventTarget {
 
   environmentById(id) {
     return this.state.environments.find((e) => e.id === id) || null;
+  }
+
+  rememberEnvironment(id) {
+    if (this.environmentById(id) && !this.environmentById(id).archivedAt) {
+      localStorage.setItem(K.lastEnv, id);
+    }
+  }
+
+  lastEnvironmentId() {
+    const id = localStorage.getItem(K.lastEnv);
+    return id && this.environmentById(id) && !this.environmentById(id).archivedAt ? id : null;
   }
 
   get activeEnvironments() {
@@ -940,7 +1000,16 @@ class Store extends EventTarget {
         rawInput: i.rawInput || null,
         parseConfidence: i.parseConfidence ?? null,
         needsReview: Boolean(i.needsReview),
-        checklist: Array.isArray(i.checklist) ? i.checklist : [],
+        checklist: (Array.isArray(i.checklist) ? i.checklist : [])
+          .map((entry, position) => ({
+            id: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(entry?.id || ''))
+              ? entry.id
+              : uid(),
+            title: String(entry?.title || '').trim().slice(0, 200),
+            completed: Boolean(entry?.completed),
+            position: Number.isInteger(entry?.position) ? entry.position : position,
+          }))
+          .filter((entry) => entry.title),
         tags: Array.isArray(i.tags) ? i.tags : [],
         snoozedUntil: i.snoozedUntil || null,
         completedAt: i.completedAt || null,
@@ -952,6 +1021,9 @@ class Store extends EventTarget {
       this.state.items.push(item);
       itensAqui.add(item.id);
       this.queue('POST', '/items', item);
+      item.checklist.forEach((entry) => {
+        this.queue('POST', '/checklist', { op: 'create', itemId: item.id, entry });
+      });
       itens++;
     });
 
@@ -998,10 +1070,21 @@ class Store extends EventTarget {
     return [cols.join(','), ...rows].join('\n');
   }
 
-  /** §18: exclusão da conta com remoção efetiva dos dados locais. */
-  deleteAccount() {
+  /** §18: exclusão da conta no servidor e remoção efetiva da cópia local. */
+  async deleteAccount() {
     const id = this.state.user?.id;
     if (!id) return;
+
+    if (this.state.mode === 'remote') {
+      await this.flush();
+      if (syncQueue.size() || syncQueue.failedSize()) {
+        throw new Error('Ainda há alterações que não foram sincronizadas. Resolva a sincronização antes de excluir a conta.');
+      }
+      await api.del('/account');
+      syncQueue.clear();
+      localStorage.removeItem(K.remoteUser);
+    }
+
     localStorage.removeItem(K.data(id));
     localStorage.removeItem(K.session);
     const accounts = read(K.accounts, []).filter((a) => a.id !== id);

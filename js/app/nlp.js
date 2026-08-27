@@ -44,11 +44,15 @@ const VAGUE = [
   'um dia desses', 'sem pressa', 'eventualmente', 'em breve',
 ];
 
+/* O ditado costuma cercar o período com aproximações e hesitações:
+   “mais ou menos umas nove da noite”, “por volta da tarde”. Consumir a
+   moldura inteira evita que esse ruído volte para o título da ação. */
+const PERIOD_APPROX = '(?:(?:mais\\s+ou\\s+menos|aproximadamente|por\\s+volta\\s+d(?:e|a|as)|cerca\\s+de)\\s+(?:umas?\\s+)?(?:d[ae]\\s+)?)?';
 const PERIODS = [
-  { re: /\b(de|pela|a|na)\s+manha\b|\bmanha\b|\bcedo\b/, value: 'morning', label: 'manhã' },
-  { re: /\b(de|pela|a|na)\s+tarde\b|\btarde\b/, value: 'afternoon', label: 'tarde' },
-  { re: /\b(de|pela|a|na)\s+noite\b|\bnoite\b|\bnoitinha\b/, value: 'evening', label: 'noite' },
-  { re: /\bmadrugada\b/, value: 'night', label: 'madrugada' },
+  { re: new RegExp(`\\b${PERIOD_APPROX}(?:(?:de|da|do|pela|a|na)\\s+)?(?:manha|cedo)\\b`), value: 'morning', label: 'manhã' },
+  { re: new RegExp(`\\b${PERIOD_APPROX}(?:(?:de|da|do|pela|a|na)\\s+)?tarde\\b`), value: 'afternoon', label: 'tarde' },
+  { re: new RegExp(`\\b${PERIOD_APPROX}(?:(?:de|da|do|pela|a|na)\\s+)?(?:noite|noitinha)\\b`), value: 'evening', label: 'noite' },
+  { re: new RegExp(`\\b${PERIOD_APPROX}(?:(?:de|da|do|pela|a|na)\\s+)?madrugada\\b`), value: 'night', label: 'madrugada' },
 ];
 
 const PRIORITY = [
@@ -436,8 +440,11 @@ export function parse(rawInput, context = {}) {
 
   /* --- 7. Horário --- */
   const m2 = firstFreeMatch([
-    /\b(?:as|às|a)\s*(\d{1,2})(?:[h:](\d{2}))?\s*(?:h|horas?)?\b/,
-    /\b(\d{1,2})[h:](\d{2})\b/,
+    /* “às 9”, “umas 9: 00” e “mais ou menos umas 9h”. O espaço
+       depois dos dois-pontos é frequente na transcrição do celular. */
+    /\b(?:mais\s+ou\s+menos|aproximadamente|por\s+volta\s+d(?:e|a|as)|cerca\s+de)\s+(?:(?:as|a|pelas?|umas?)\s+)?(\d{1,2})(?:\s*(?:h|:)\s*(\d{1,2}))?\s*(?:h|horas?)?\b/,
+    /\b(?:(?:as|a|pelas?)\s+|umas?\s+)(\d{1,2})(?:\s*(?:h|:)\s*(\d{1,2}))?\s*(?:h|horas?)?\b/,
+    /\b(\d{1,2})\s*(?:h|:)\s*(\d{1,2})\b/,
     /\b(\d{1,2})\s*(?:h|horas)\b/,
   ], flat);
   if (m2) {
@@ -469,18 +476,39 @@ export function parse(rawInput, context = {}) {
     note('time', 'horário', '00:00');
   }
 
-  /* --- 8. Período do dia --- */
-  if (result.timePeriod === 'any') {
-    for (const p of PERIODS) {
-      const m = flat.match(p.re);
-      if (m) {
-        result.timePeriod = p.value;
-        result.confidence += 0.06;
-        note('period', 'período', p.label);
-        eat(m.index, m.index + m[0].length);
-        break;
-      }
+  /* --- 8. Período do dia ---
+
+     Lê todas as ocorrências livres. Voz costuma repetir “à noite” e
+     deixar uma aproximação incompleta no fim; retirar só a primeira
+     ocorrência fazia esse pedaço inteiro virar parte da tarefa. */
+  const explicitPeriods = [];
+  for (const p of PERIODS) {
+    const flags = p.re.flags.includes('g') ? p.re.flags : p.re.flags + 'g';
+    for (const m of flat.matchAll(new RegExp(p.re.source, flags))) {
+      if (overlapsConsumed(m.index, m.index + m[0].length)) continue;
+      explicitPeriods.push({ ...p, match: m });
     }
+  }
+  explicitPeriods.sort((a, b) => a.match.index - b.match.index);
+
+  if (explicitPeriods.length) {
+    const first = explicitPeriods[0];
+    result.timePeriod = first.value;
+    result.confidence += 0.06;
+    note('period', 'período', first.label);
+    explicitPeriods.forEach(({ match }) => eat(match.index, match.index + match[0].length));
+
+    /* Em português, “9 da noite” é 21:00. Sem esta regra o horário ficava
+       09:00 ou nem era reconhecido, apesar de o período ser inequívoco. */
+    if (result.dueTime) {
+      let [hh, mm] = result.dueTime.split(':').map(Number);
+      if ((first.value === 'afternoon' || first.value === 'evening') && hh >= 1 && hh <= 11) hh += 12;
+      else if ((first.value === 'evening' || first.value === 'night') && hh === 12) hh = 0;
+      result.dueTime = String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+    }
+
+    const conflicting = new Set(explicitPeriods.map((p) => p.value));
+    if (conflicting.size > 1) result.needsReview = true;
   }
 
   /* --- 9. Ambiente pelo nome, com apelidos comuns --- */
@@ -503,8 +531,11 @@ export function parse(rawInput, context = {}) {
         hints: ['casa', 'lar', 'domestico', 'familia'],
       },
       {
-        words: ['pessoal', 'saude', 'academia', 'medico', 'dentista'],
-        hints: ['pessoal', 'saude', 'academia', 'bem-estar'],
+        words: [
+          'pessoal', 'saude', 'academia', 'medico', 'dentista', 'familia',
+          'mae', 'pai', 'avo', 'avos', 'vovo', 'vo', 'parentes',
+        ],
+        hints: ['pessoal', 'saude', 'academia', 'bem-estar', 'familia'],
       },
       {
         words: ['financas', 'financeiro', 'conta', 'boleto', 'pagar', 'orcamento'],
@@ -596,7 +627,7 @@ export function parse(rawInput, context = {}) {
   result.title = result.title.charAt(0).toUpperCase() + result.title.slice(1);
 
   result.confidence = Math.min(0.99, Math.round(result.confidence * 100) / 100);
-  result.needsReview = result.confidence < 0.58 && !dateFound;
+  result.needsReview = result.needsReview || (result.confidence < 0.58 && !dateFound);
 
   return result;
 }

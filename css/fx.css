@@ -874,7 +874,15 @@ a[data-loading] { position: relative; }
 }
 .env-hero__stat--overdue .env-hero__stat-n { color: var(--overdue); }
 
-.env-hero__actions { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
+.env-hero__actions {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+  pointer-events: auto;
+}
 
 .env-hero__hint {
   position: absolute;

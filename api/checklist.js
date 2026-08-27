@@ -7,10 +7,8 @@
    ===================================================================== */
 
 import { asUser } from './_lib/db.js';
-import { handler, json, fail, readBody } from './_lib/http.js';
+import { handler, json, fail, readBody, isUuid } from './_lib/http.js';
 import { requireUser } from './_lib/auth.js';
-
-const isUuid = (v) => /^[0-9a-f-]{36}$/i.test(String(v || ''));
 
 export default handler(async (req, res) => {
   const user = await requireUser(req, res);
@@ -31,6 +29,12 @@ export default handler(async (req, res) => {
     const title = String(entry?.title || '').trim();
     if (!title || title.length > 200) {
       return fail(res, 400, 'invalid_title', 'O passo precisa ter entre 1 e 200 caracteres.');
+    }
+    if (entry?.id && !isUuid(entry.id)) {
+      return fail(res, 400, 'invalid_id', 'Passo inválido.');
+    }
+    if ('completed' in (entry || {}) && typeof entry.completed !== 'boolean') {
+      return fail(res, 400, 'invalid_completed', 'Estado do passo inválido.');
     }
     const [rows] = await asUser(user.id, (sql) => [
       sql`
@@ -57,7 +61,12 @@ export default handler(async (req, res) => {
       if (!t || t.length > 200) return fail(res, 400, 'invalid_title', 'Passo inválido.');
       clean.title = t;
     }
-    if (patch && 'completed' in patch) clean.completed = Boolean(patch.completed);
+    if (patch && 'completed' in patch) {
+      if (typeof patch.completed !== 'boolean') {
+        return fail(res, 400, 'invalid_completed', 'Estado do passo inválido.');
+      }
+      clean.completed = patch.completed;
+    }
     if (patch && 'position' in patch && Number.isInteger(patch.position)) clean.position = patch.position;
     if (!Object.keys(clean).length) return fail(res, 400, 'empty_patch', 'Nada para atualizar.');
 

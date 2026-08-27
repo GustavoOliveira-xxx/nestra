@@ -5,7 +5,7 @@
 
 import { store, SUGGESTED_ENVIRONMENTS } from './app/store.js';
 import { api } from './app/api.js';
-import { $, el, icon, toast, initials, openMenu, openModal } from './app/ui.js';
+import { $, el, icon, esc, toast, initials, openMenu, openModal } from './app/ui.js';
 import { Logo3D, resolveLogoSource } from './gfx/logo3d.js';
 import { Scene } from './gfx/scene.js';
 import { initFx, bindRipple, bindCursorGlow, bindReveal, typewriter, bindTilt } from './gfx/fx.js';
@@ -250,7 +250,12 @@ function startApp(logged) {
   store.startAutoSync();
 
   if (!location.hash) {
-    location.hash = logged ? '#/hoje' : '#/';
+    const lastEnvironment = logged && store.state.prefs.startView === 'last_environment'
+      ? store.lastEnvironmentId()
+      : null;
+    location.hash = logged
+      ? (lastEnvironment ? '#/ambiente/' + lastEnvironment : '#/hoje')
+      : '#/';
   }
   route();
 
@@ -349,6 +354,7 @@ function route() {
   const previousName = app.route.name;
 
   app.route = { name: def.name, param, mode: def.mode };
+  if (def.name === 'environment' && param) store.rememberEnvironment(param);
 
   const paint = () => {
     document.querySelectorAll('.screen').forEach((s) => (s.dataset.active = 'false'));
@@ -644,7 +650,7 @@ function renderAuth(mode) {
           class: 'auth__note auth__note--warn',
           html: icon('alert', 14) + '<span>' + (api.degraded
             // A API existe: o problema é outro, e dá para nomear
-            ? `<b>O servidor respondeu, mas o banco não.</b> ${api.degraded.message} ` +
+            ? `<b>O servidor respondeu, mas o banco não.</b> ${esc(api.degraded.message)} ` +
               'Enquanto isso, a conta criada aqui fica só neste navegador.'
             : '<b>Este endereço guarda os dados só neste navegador.</b> ' +
               'A conta criada aqui não vai existir no celular — e entrar com ela lá abriria um espaço vazio. ' +
@@ -669,7 +675,7 @@ function showWelcome() {
         el('span', {
           class: 'chip',
           style: { borderColor: e.color, color: e.color },
-          html: icon(e.icon, 13) + `<span>${e.name}</span>`,
+          html: icon(e.icon, 13) + `<span>${esc(e.name)}</span>`,
         }))),
     el('p', { class: 'text-body', text: 'Agora escreva uma frase natural na caixa de captura — por exemplo, "lavar o tênis no sábado" — e o Nestra descobre o tipo, a data e o ambiente.' }),
   ]);
@@ -685,13 +691,31 @@ function showWelcome() {
 
 function renderShell() {
   const host = $('#screen-app');
-  if (!store.state.user) return;
+  if (!store.state.user) {
+    /* O mesmo documento continua vivo depois de sair. Se a estrutura da
+       conta anterior ficar marcada como pronta, a próxima conta herda
+       avatar, saudação e caches visuais daquela pessoa. */
+    clearTodayBrand();
+    clearEnvHeroes();
+    host.replaceChildren();
+    host.dataset.built = 'false';
+    delete host.dataset.userId;
+    return;
+  }
 
-  if (host.dataset.built === 'true') {
+  if (host.dataset.built === 'true' && host.dataset.userId === store.state.user.id) {
+    const avatar = host.querySelector('.avatar');
+    if (avatar) avatar.textContent = initials(store.state.user.displayName);
     paintSidebar();
     return;
   }
+
+  if (host.dataset.built === 'true') {
+    clearTodayBrand();
+    clearEnvHeroes();
+  }
   host.dataset.built = 'true';
+  host.dataset.userId = store.state.user.id;
   host.classList.add('app-screen');
   host.replaceChildren();
 
@@ -1011,6 +1035,7 @@ let palette = null;
 function openPalette() {
   if (palette) {
     palette.dataset.open = 'true';
+    palette.setAttribute('aria-hidden', 'false');
     palette.querySelector('input').focus();
     return;
   }
@@ -1022,7 +1047,14 @@ function openPalette() {
   });
   const results = el('div', { class: 'palette__results' });
 
-  palette = el('div', { class: 'palette', dataset: { open: 'true' } }, [
+  palette = el('div', {
+    class: 'palette',
+    dataset: { open: 'true' },
+    role: 'dialog',
+    'aria-modal': 'true',
+    'aria-label': 'Busca global',
+    'aria-hidden': 'false',
+  }, [
     el('div', { class: 'palette__box' }, [
       input,
       results,
@@ -1107,12 +1139,16 @@ function openPalette() {
   });
 
   function close() {
+    input.blur();
     palette.dataset.open = 'false';
+    palette.setAttribute('aria-hidden', 'true');
     /* A paleta só some da vista: o nó continua no documento. Sem soltar
        o foco, o campo de busca invisível continuava recebendo o que era
        digitado — e todos os atalhos de teclado paravam de funcionar,
        porque a interface entendia que a pessoa estava escrevendo. */
-    input.blur();
+    input.value = '';
+    selected = 0;
+    draw();
   }
 
   draw();

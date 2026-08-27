@@ -5,7 +5,7 @@
    ===================================================================== */
 
 import { store, DEFAULT_PREFS } from '../store.js';
-import { api } from '../api.js';
+import { api, syncQueue } from '../api.js';
 import { el, icon, toast, confirmDialog, downloadFile, COLOR_CHOICES } from '../ui.js';
 import { setLogoFromFile, clearLogoOverride, getLogoOverride } from '../../gfx/logo3d.js';
 import { renderItem } from './items.js';
@@ -193,7 +193,11 @@ export function renderSettings(root, { onNavigate, applyPrefs }) {
   ]));
 
   /* Abas */
-  const nav = el('div', { class: 'settings-nav', role: 'tablist' });
+  const nav = el('div', {
+    class: 'settings-nav',
+    role: 'tablist',
+    'aria-label': 'Seções das configurações',
+  });
   TABS.forEach((tab) => {
     nav.appendChild(el('button', {
       class: 'settings-nav__tab',
@@ -209,14 +213,25 @@ export function renderSettings(root, { onNavigate, applyPrefs }) {
   const panel = el('div', { class: 'panel', style: { padding: 'var(--s-5) var(--s-6)' } });
   root.appendChild(panel);
 
-  const row = (name, desc, control) =>
-    el('div', { class: 'setting-row' }, [
+  const row = (name, desc, control) => {
+    const labelId = `setting-${crypto.randomUUID()}`;
+    const targets = control.matches?.('input,select,textarea,[role="tablist"]')
+      ? [control]
+      : Array.from(control.querySelectorAll?.('input,select,textarea,[role="tablist"]') || []);
+    targets.forEach((target) => {
+      if (!target.hasAttribute('aria-label') && !target.hasAttribute('aria-labelledby')) {
+        target.setAttribute('aria-labelledby', labelId);
+      }
+    });
+
+    return el('div', { class: 'setting-row' }, [
       el('div', { class: 'setting-row__info' }, [
-        el('div', { class: 'setting-row__name', text: name }),
+        el('div', { class: 'setting-row__name', id: labelId, text: name }),
         desc ? el('div', { class: 'setting-row__desc', text: desc }) : null,
       ]),
       el('div', { class: 'setting-row__control' }, [control]),
     ]);
+  };
 
   const toggle = (key, onChange) => {
     const input = el('input', { type: 'checkbox', checked: Boolean(p[key]) });
@@ -503,6 +518,7 @@ export function renderSettings(root, { onNavigate, applyPrefs }) {
 
     /* --- Sincronização entre aparelhos --- */
     const remote = store.state.mode === 'remote';
+    const failedSync = remote ? syncQueue.failedSize() : 0;
 
     panel.appendChild(el('div', { class: 'divider-label', style: { marginTop: 'var(--s-6)' }, text: 'Seus aparelhos' }));
 
@@ -527,6 +543,31 @@ export function renderSettings(root, { onNavigate, applyPrefs }) {
       style: { marginTop: 'var(--s-3)' },
       text: syncNote,
     }));
+
+    if (failedSync) {
+      panel.appendChild(el('div', { class: 'danger-zone', style: { marginTop: 'var(--s-4)' } }, [
+        el('h4', { text: `${failedSync} alteração${failedSync === 1 ? '' : 'ões'} não sincronizada${failedSync === 1 ? '' : 's'}` }),
+        el('p', {
+          class: 'setting-row__desc',
+          text: 'A cópia deste aparelho foi preservada. Tente novamente depois de conferir a conexão e a versão publicada da API.',
+        }),
+        el('button', {
+          class: 'btn btn--outline btn--sm',
+          style: { marginTop: 'var(--s-3)' },
+          html: icon('refresh', 15) + 'Tentar alterações novamente',
+          onClick: async () => {
+            syncQueue.retryFailed();
+            await store.flush();
+            rerender();
+            toast(syncQueue.failedSize()
+              ? 'Algumas alterações ainda foram recusadas pela API.'
+              : 'Nova tentativa concluída.', {
+              kind: syncQueue.failedSize() ? 'warn' : 'success',
+            });
+          },
+        }),
+      ]));
+    }
 
     if (remote) {
       panel.appendChild(el('div', { class: 'row gap-3', style: { marginTop: 'var(--s-4)' } }, [
@@ -599,18 +640,37 @@ export function renderSettings(root, { onNavigate, applyPrefs }) {
   if (active === 'account') {
     const user = store.state.user || {};
 
-    const nameInput = el('input', { class: 'input', value: user.displayName || '' });
-    nameInput.addEventListener('change', () => {
+    const nameInput = el('input', {
+      class: 'input',
+      value: user.displayName || '',
+      style: { minWidth: '0', flex: '1 1 180px' },
+    });
+    const saveName = () => {
       const v = nameInput.value.trim();
-      if (!v) return;
-      store.state.user.displayName = v;
-      store.persist();
-      store.emit('auth', store.state.user);
+      if (v.length < 2) {
+        nameInput.setAttribute('aria-invalid', 'true');
+        toast('Escreva um nome com pelo menos 2 letras.', { kind: 'warn' });
+        return false;
+      }
+      nameInput.removeAttribute('aria-invalid');
+      store.updateProfile({ displayName: v });
       toast('Nome atualizado.', { kind: 'success' });
+      return true;
+    };
+    nameInput.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      saveName();
+    });
+    const saveNameButton = el('button', {
+      class: 'btn btn--outline btn--sm',
+      text: 'Salvar nome',
+      onClick: saveName,
     });
 
     panel.append(
-      row('Nome de exibição', 'Como o Nestra te chama.', nameInput),
+      row('Nome de exibição', 'Como o Nestra te chama.',
+        el('div', { class: 'row gap-2', style: { flexWrap: 'wrap' } }, [nameInput, saveNameButton])),
       row('E-mail', 'Usado para entrar na conta.',
         el('span', { class: 'mono', style: { color: 'var(--text-3)' }, text: user.email || '—' })),
     );
@@ -637,8 +697,12 @@ export function renderSettings(root, { onNavigate, applyPrefs }) {
               confirmLabel: 'Excluir a conta',
             });
             if (!ok) return;
-            store.deleteAccount();
-            location.reload();
+            try {
+              await store.deleteAccount();
+              location.reload();
+            } catch (err) {
+              toast(err.message || 'Não foi possível excluir a conta agora.', { kind: 'error' });
+            }
           },
         }),
       ]),

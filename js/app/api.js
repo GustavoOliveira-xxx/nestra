@@ -148,17 +148,30 @@ export class ApiError extends Error {
    que aconteceu."
    --------------------------------------------------------------------- */
 const QUEUE_KEY = 'nestra:sync-queue';
+const FAILED_KEY = 'nestra:sync-failed';
 
 export const syncQueue = {
   _flushing: null,
+  _ownerId: null,
+
+  setOwner(ownerId) {
+    this._ownerId = ownerId ? String(ownerId) : null;
+  },
+
+  key(prefix) {
+    return this._ownerId ? `${prefix}:${this._ownerId}` : null;
+  },
 
   read() {
-    try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); }
+    const key = this.key(QUEUE_KEY);
+    if (!key) return [];
+    try { return JSON.parse(localStorage.getItem(key) || '[]'); }
     catch { return []; }
   },
 
   write(list) {
-    localStorage.setItem(QUEUE_KEY, JSON.stringify(list.slice(-500)));
+    const key = this.key(QUEUE_KEY);
+    if (key) localStorage.setItem(key, JSON.stringify(list.slice(-500)));
   },
 
   push(op) {
@@ -169,7 +182,48 @@ export const syncQueue = {
 
   size() { return this.read().length; },
 
-  clear() { localStorage.removeItem(QUEUE_KEY); },
+  failed() {
+    const key = this.key(FAILED_KEY);
+    if (!key) return [];
+    try { return JSON.parse(localStorage.getItem(key) || '[]'); }
+    catch { return []; }
+  },
+
+  failedSize() { return this.failed().length; },
+
+  rememberFailure(op, err) {
+    const key = this.key(FAILED_KEY);
+    if (!key) return;
+    const list = this.failed();
+    list.push({
+      ...op,
+      failedAt: Date.now(),
+      error: {
+        code: err?.code || 'sync_error',
+        status: err?.status || null,
+        message: err?.message || 'Não foi possível sincronizar esta alteração.',
+      },
+    });
+    localStorage.setItem(key, JSON.stringify(list.slice(-500)));
+  },
+
+  retryFailed() {
+    const failedKey = this.key(FAILED_KEY);
+    if (!failedKey) return 0;
+    const list = this.failed();
+    if (!list.length) return 0;
+    const retry = list.map(({ failedAt, error, ...op }) => ({ ...op, tries: 0 }));
+    this.write([...retry, ...this.read()]);
+    localStorage.removeItem(failedKey);
+    return retry.length;
+  },
+
+  clear() {
+    const queueKey = this.key(QUEUE_KEY);
+    const failedKey = this.key(FAILED_KEY);
+    if (queueKey) localStorage.removeItem(queueKey);
+    if (failedKey) localStorage.removeItem(failedKey);
+  },
 
   /**
    * Envia tudo o que está pendente; devolve quantas operações passaram.
@@ -213,6 +267,10 @@ export const syncQueue = {
             err.status !== 408 && err.status !== 429;
 
           if (permanent || (current[index].tries || 0) >= 6) {
+            /* Nunca finge que uma alteração rejeitada foi sincronizada.
+               Ela sai da fila ativa para não bloquear o restante, mas
+               permanece visível e pode ser tentada após a correção. */
+            this.rememberFailure(current[index], err);
             current.splice(index, 1);
             this.write(current);
             continue;
