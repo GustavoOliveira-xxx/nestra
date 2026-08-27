@@ -752,6 +752,7 @@
   border-radius: 50%;
   background: radial-gradient(circle, color-mix(in srgb, var(--env-color, var(--accent)) 20%, transparent), transparent 68%);
   opacity: 0;
+  pointer-events: none;
   transition: opacity var(--t-slow) var(--ease-out);
 }
 .env-card:hover {
@@ -760,6 +761,24 @@
   box-shadow: var(--shadow-3);
 }
 .env-card:hover::after { opacity: 1; }
+
+/* Alvo de abertura separado do botão de editar. Evita controles
+   interativos aninhados (inválidos em HTML e inconsistentes no toque) e
+   deixa o cartão inteiro clicável sem cobrir a engrenagem. */
+.env-card__open {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+.env-card__open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+.env-card__edit { position: relative; z-index: 3; }
 
 .env-card__top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s-3); }
 .env-card__icon {
@@ -828,6 +847,13 @@
    ===================================================================== */
 .detail { display: flex; flex-direction: column; gap: var(--s-5); }
 
+.detail__raw-input {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
 .detail__title-input {
   width: 100%;
   padding: var(--s-2) 0;
@@ -857,6 +883,7 @@
 .checklist__row:hover { background: var(--surface-2); }
 .checklist__text {
   flex: 1;
+  min-width: 0;
   background: none;
   border: none;
   color: var(--text);
@@ -952,10 +979,11 @@
   background: color-mix(in srgb, var(--void) 70%, transparent);
   backdrop-filter: blur(8px);
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
   transition: opacity var(--t-base) var(--ease-out);
 }
-.palette[data-open='true'] { opacity: 1; pointer-events: auto; }
+.palette[data-open='true'] { opacity: 1; visibility: visible; pointer-events: auto; }
 
 .palette__box {
   width: min(620px, 100%);
@@ -1022,5 +1050,7 @@
   .hero__logo   { width: min(280px, 64vw); }
   .capture__parse { padding-left: var(--s-4); }
   .footer__grid { grid-template-columns: 1fr 1fr; }
-  .detail__meta-grid { grid-template-columns: 1fr 1fr; }
+  .detail__meta-grid { grid-template-columns: minmax(0, 1fr); }
+  .detail__meta-grid .input,
+  .detail__meta-grid .select { width: 100%; min-width: 0; }
 }

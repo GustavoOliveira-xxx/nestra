@@ -9,6 +9,36 @@ mensagem e autoria, sem sobrescrever nada à mão.
 
 ---
 
+# Oitava rodada — v1.0.1
+
+## Ambientes, modal, secretário e sincronização
+
+- Os controles “Editar ambiente” e “Todos os ambientes” deixaram de depender
+  de uma área clicável sobreposta. Cartão, edição e navegação agora são
+  controles independentes e acessíveis.
+- O modal de item ganhou Salvar e Cancelar de verdade. Título, tipo,
+  prioridade, ambiente, prazo, descrição e checklist entram no mesmo ciclo;
+  cancelar não deixa metade do cadastro gravada.
+- O modal foi corrigido para 390 × 844: a frase original quebra linha, os
+  campos ficam em uma coluna e nenhuma ação sai da tela.
+- A frase real “Nestra preciso lembrar de configurar o Macbook…” vira apenas
+  “Configurar o Macbook na casa da minha vó”, domingo às 21:00, em Pessoal.
+- A fila de sincronização passou a ser isolada por conta, preserva cadastros
+  feitos durante outro envio e torna falhas definitivas visíveis e
+  recuperáveis.
+- Cadastro e login passaram a respeitar a RLS também na criação e leitura da
+  sessão. Lixeira, preferências, conta, ambientes arquivados e checklist foram
+  alinhados entre navegador e banco.
+- Trocar de conta não reaproveita mais avatar, saudação ou a abertura visual
+  da conta anterior.
+
+São **82 verificações automatizadas**, checagem de sintaxe de todos os módulos,
+auditoria de dependências e jornada manual em desktop e celular. O driver do
+Neon foi atualizado para a versão estável 1.1.0. O relatório completo está em
+`docs/AUDITORIA-2026-08.md`.
+
+---
+
 # Sétima rodada
 
 ## 20. Ambientes editam e navegam sem depender de recarga

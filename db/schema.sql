@@ -74,6 +74,15 @@ language sql stable as $$
   select nullif(current_setting('app.user_id', true), '')::uuid
 $$;
 
+/* O login ainda não conhece o usuário; ele conhece somente o hash
+   irreversível do cookie. Esta variável transacional permite que a RLS
+   exponha exatamente essa sessão para autenticar e revogar, sem liberar
+   a tabela inteira para a conexão da API. */
+create or replace function nestra_current_session_hash() returns text
+language sql stable as $$
+  select nullif(current_setting('app.session_hash', true), '')
+$$;
+
 create or replace function nestra_touch_updated_at() returns trigger
 language plpgsql as $$
 begin
@@ -601,7 +610,7 @@ begin
       ('environments','owner_id'), ('items','owner_id'), ('tags','owner_id'),
       ('user_preferences','user_id'), ('notification_preferences','user_id'),
       ('push_subscriptions','user_id'), ('export_requests','user_id'),
-      ('user_consents','user_id'), ('sessions','user_id'),
+      ('user_consents','user_id'),
       ('item_events','user_id'), ('environment_members','user_id')
     ) as v(tbl, col)
   loop
@@ -611,6 +620,20 @@ begin
        with check (%I = nestra_current_user_id())', r.tbl, r.col, r.col);
   end loop;
 end $$;
+
+-- Sessão pode ser criada pelo dono ou consultada/revogada pelo próprio
+-- hash do cookie, sempre dentro da transação curta aberta pela API.
+drop policy if exists p_owner on sessions;
+drop policy if exists p_session on sessions;
+create policy p_session on sessions
+  using (
+    user_id = nestra_current_user_id()
+    or token_hash = nestra_current_session_hash()
+  )
+  with check (
+    user_id = nestra_current_user_id()
+    or token_hash = nestra_current_session_hash()
+  );
 
 -- Políticas indiretas (a posse vem do item pai)
 drop policy if exists p_owner on checklist_items;

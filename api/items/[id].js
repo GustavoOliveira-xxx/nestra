@@ -5,7 +5,9 @@
    ===================================================================== */
 
 import { asUser, oneAsUser, itemToClient } from '../_lib/db.js';
-import { handler, json, fail, readBody } from '../_lib/http.js';
+import {
+  handler, json, fail, readBody, isUuid, isDateOnly, isTimeOnly, validTimestamp,
+} from '../_lib/http.js';
 import { requireUser } from '../_lib/auth.js';
 
 const TYPES = ['task', 'reminder', 'commitment', 'idea'];
@@ -18,7 +20,7 @@ export default handler(async (req, res) => {
   if (!user) return;
 
   const id = req.query?.id;
-  if (!/^[0-9a-f-]{36}$/i.test(String(id || ''))) {
+  if (!isUuid(id)) {
     return fail(res, 400, 'invalid_id', 'Identificador inválido.');
   }
 
@@ -60,23 +62,41 @@ export default handler(async (req, res) => {
   if ('priority' in body && PRIORITIES.includes(body.priority)) patch.priority = body.priority;
   if ('timePeriod' in body && PERIODS.includes(body.timePeriod)) patch.timePeriod = body.timePeriod;
   if ('environmentId' in body) patch.environmentId = body.environmentId || null;
-  if ('pinned' in body) patch.pinned = Boolean(body.pinned);
-  if ('needsReview' in body) patch.needsReview = Boolean(body.needsReview);
-  if ('deletedAt' in body) patch.deletedAt = body.deletedAt || null;
+  if ('pinned' in body) {
+    if (typeof body.pinned !== 'boolean') return fail(res, 400, 'invalid_pinned', 'Valor de fixação inválido.');
+    patch.pinned = body.pinned;
+  }
+  if ('needsReview' in body) {
+    if (typeof body.needsReview !== 'boolean') return fail(res, 400, 'invalid_review', 'Valor de revisão inválido.');
+    patch.needsReview = body.needsReview;
+  }
+  if ('deletedAt' in body) {
+    if (body.deletedAt && !validTimestamp(body.deletedAt)) {
+      return fail(res, 400, 'invalid_deleted_at', 'Data de exclusão inválida.');
+    }
+    patch.deletedAt = body.deletedAt ? validTimestamp(body.deletedAt) : null;
+  }
 
   if ('dueDate' in body) {
-    patch.dueDate = /^\d{4}-\d{2}-\d{2}$/.test(body.dueDate || '') ? body.dueDate : null;
+    if (body.dueDate && !isDateOnly(body.dueDate)) {
+      return fail(res, 400, 'invalid_date', 'Data inválida.');
+    }
+    patch.dueDate = body.dueDate || null;
   }
   if ('dueTime' in body) {
-    patch.dueTime = /^\d{2}:\d{2}$/.test(body.dueTime || '') ? body.dueTime : null;
+    if (body.dueTime && !isTimeOnly(body.dueTime)) {
+      return fail(res, 400, 'invalid_time', 'Horário inválido.');
+    }
+    patch.dueTime = body.dueTime || null;
   }
+  if ('dueDate' in patch && !patch.dueDate) patch.dueTime = null;
 
   if (!Object.keys(patch).length) {
     return fail(res, 400, 'empty_patch', 'Nada para atualizar.');
   }
 
   if (patch.environmentId) {
-    if (!/^[0-9a-f-]{36}$/i.test(String(patch.environmentId))) {
+    if (!isUuid(patch.environmentId)) {
       return fail(res, 400, 'invalid_environment', 'Ambiente inválido.');
     }
     const environments = await oneAsUser(user.id, (sql) =>
@@ -105,7 +125,13 @@ export default handler(async (req, res) => {
         needs_review   = case when x.p ? 'needsReview'   then (x.p->>'needsReview')::boolean   else i.needs_review end,
         due_date       = case when x.p ? 'dueDate'       then (x.p->>'dueDate')::date          else i.due_date end,
         due_time       = case when x.p ? 'dueTime'       then (x.p->>'dueTime')::time          else i.due_time end,
-        deleted_at     = case when x.p ? 'deletedAt'     then (x.p->>'deletedAt')::timestamptz else i.deleted_at end
+        deleted_at     = case when x.p ? 'deletedAt'     then (x.p->>'deletedAt')::timestamptz else i.deleted_at end,
+        purge_after    = case when x.p ? 'deletedAt'
+                              then case when x.p->>'deletedAt' is null
+                                        then null
+                                        else (x.p->>'deletedAt')::timestamptz + interval '30 days'
+                                   end
+                              else i.purge_after end
       from (select ${p}::jsonb as p) x
       where i.id = ${id} and i.owner_id = ${user.id}
       returning i.*

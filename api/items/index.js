@@ -8,10 +8,13 @@
    ===================================================================== */
 
 import { asUser, oneAsUser, itemToClient } from '../_lib/db.js';
-import { handler, json, fail, readBody } from '../_lib/http.js';
+import {
+  handler, json, fail, readBody, isUuid, isDateOnly, isTimeOnly, validTimestamp,
+} from '../_lib/http.js';
 import { requireUser } from '../_lib/auth.js';
 
 const TYPES = ['task', 'reminder', 'commitment', 'idea'];
+const STATUSES = ['pending', 'done', 'snoozed', 'archived'];
 const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
 const PERIODS = ['any', 'morning', 'afternoon', 'evening', 'night'];
 
@@ -48,19 +51,48 @@ export default handler(async (req, res) => {
   if (!title || title.length > 280) {
     return fail(res, 400, 'invalid_title', 'O título precisa ter entre 1 e 280 caracteres.');
   }
+  if (body.id && !isUuid(body.id)) {
+    return fail(res, 400, 'invalid_id', 'Identificador inválido.');
+  }
   const type = TYPES.includes(body.type) ? body.type : 'task';
+  const status = STATUSES.includes(body.status) ? body.status : 'pending';
   const priority = PRIORITIES.includes(body.priority) ? body.priority : 'normal';
   const timePeriod = PERIODS.includes(body.timePeriod) ? body.timePeriod : 'any';
+  const source = ['manual', 'quick_capture', 'recurrence', 'import'].includes(body.source)
+    ? body.source
+    : 'manual';
 
-  const dueDate = /^\d{4}-\d{2}-\d{2}$/.test(body.dueDate || '') ? body.dueDate : null;
-  const dueTime = dueDate && /^\d{2}:\d{2}$/.test(body.dueTime || '') ? body.dueTime : null;
+  const deletedAt = source === 'import' ? validTimestamp(body.deletedAt) : null;
+  const createdAt = source === 'import' ? validTimestamp(body.createdAt) : null;
+
+  if (body.dueDate && !isDateOnly(body.dueDate)) {
+    return fail(res, 400, 'invalid_date', 'Data inválida.');
+  }
+  if (body.dueTime && !isTimeOnly(body.dueTime)) {
+    return fail(res, 400, 'invalid_time', 'Horário inválido.');
+  }
+  if (body.dueTime && !body.dueDate) {
+    return fail(res, 400, 'time_requires_date', 'Informe uma data junto do horário.');
+  }
+  if ('pinned' in body && typeof body.pinned !== 'boolean') {
+    return fail(res, 400, 'invalid_pinned', 'Valor de fixação inválido.');
+  }
+  if ('needsReview' in body && typeof body.needsReview !== 'boolean') {
+    return fail(res, 400, 'invalid_review', 'Valor de revisão inválido.');
+  }
+  if ('parseConfidence' in body &&
+      (typeof body.parseConfidence !== 'number' || body.parseConfidence < 0 || body.parseConfidence > 1)) {
+    return fail(res, 400, 'invalid_confidence', 'Confiança de interpretação inválida.');
+  }
+  const dueDate = body.dueDate || null;
+  const dueTime = dueDate ? body.dueTime || null : null;
 
   /* A FK garante que o ambiente exista, mas não que ele pertença à mesma
      conta nem que ainda esteja ativo. Valida os dois antes de gravar para
      uma captura nunca aparecer no contexto errado ou sumir num arquivado. */
   let environmentId = body.environmentId || null;
   if (environmentId) {
-    if (!/^[0-9a-f-]{36}$/i.test(String(environmentId))) {
+    if (!isUuid(environmentId)) {
       return fail(res, 400, 'invalid_environment', 'Ambiente inválido.');
     }
     const environments = await oneAsUser(user.id, (sql) =>
@@ -74,19 +106,23 @@ export default handler(async (req, res) => {
   const [rows] = await asUser(user.id, (sql) => [
     sql`
       insert into items (
-        id, owner_id, environment_id, type, title, description, priority,
-        due_date, due_time, time_period, source, raw_input, parse_confidence, needs_review
+        id, owner_id, environment_id, type, title, description, status, priority,
+        due_date, due_time, time_period, pinned, source, raw_input,
+        parse_confidence, needs_review, deleted_at, purge_after, created_at
       ) values (
         coalesce(${body.id || null}::uuid, gen_random_uuid()),
         ${user.id},
         ${environmentId},
         ${type}, ${title},
         ${body.description ? String(body.description).slice(0, 4000) : null},
-        ${priority}, ${dueDate}, ${dueTime}, ${timePeriod},
-        ${['manual', 'quick_capture', 'recurrence', 'import'].includes(body.source) ? body.source : 'manual'},
+        ${status}, ${priority}, ${dueDate}, ${dueTime}, ${timePeriod},
+        ${Boolean(body.pinned)}, ${source},
         ${body.rawInput ? String(body.rawInput).slice(0, 1000) : null},
         ${typeof body.parseConfidence === 'number' ? body.parseConfidence : null},
-        ${Boolean(body.needsReview)}
+        ${Boolean(body.needsReview)},
+        ${deletedAt},
+        ${deletedAt ? new Date(new Date(deletedAt).getTime() + 30 * 864e5).toISOString() : null},
+        coalesce(${createdAt}, now())
       )
       on conflict (id) do nothing
       returning *

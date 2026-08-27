@@ -449,6 +449,7 @@
 .modal {
   position: relative;
   width: min(560px, 100%);
+  min-width: 0;
   max-height: min(86vh, 780px);
   display: flex;
   flex-direction: column;
@@ -481,15 +482,27 @@
   border-bottom: 1px solid var(--line);
 }
 .modal__title { font-family: var(--font-display); font-size: var(--fs-lg); font-weight: 600; }
-.modal__body  { padding: var(--s-6); overflow-y: auto; flex: 1; }
+.modal__body  { min-width: 0; padding: var(--s-6); overflow-y: auto; overflow-x: hidden; flex: 1; }
 .modal__foot  {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: var(--s-3);
   padding: var(--s-4) var(--s-6);
   border-top: 1px solid var(--line);
   background: color-mix(in srgb, var(--void) 30%, transparent);
+}
+
+@media (max-width: 620px) {
+  .overlay { padding: var(--s-2); }
+  .modal { width: calc(100vw - var(--s-4)); max-height: calc(100dvh - var(--s-4)); }
+  .modal__head { padding: var(--s-4); }
+  .modal__body { padding: var(--s-4); }
+  .modal__foot { padding: var(--s-3) var(--s-4); gap: var(--s-2); }
+  .modal__foot .btn { flex: 1 1 auto; }
+  .modal__foot .btn--danger { flex-basis: 100%; margin-right: 0 !important; }
+  .modal__foot .btn--primary { flex-basis: 100%; }
 }
 
 /* ---------------------------------------------------------------------

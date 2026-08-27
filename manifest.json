@@ -5,7 +5,7 @@
   "description": "Organizador pessoal simples e rápido: escreva uma frase natural e o Nestra entende o tipo, a data e o ambiente. Escuro, direto e centrado no hoje.",
   "lang": "pt-BR",
   "dir": "ltr",
-  "start_url": "./index.html#/hoje",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],

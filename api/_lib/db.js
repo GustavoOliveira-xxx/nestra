@@ -10,7 +10,21 @@ if (!process.env.DATABASE_URL) {
   console.error('[nestra] DATABASE_URL não definida — configure a variável de ambiente.');
 }
 
-export const sql = neon(process.env.DATABASE_URL);
+/* A rota `/health` precisa carregar mesmo sem DATABASE_URL para explicar
+   a configuração ausente. A versão estável do driver recusa `neon()` sem
+   string já no import, o que transformaria esse diagnóstico em 500 antes
+   de o handler começar. As demais rotas continuam falhando com segurança
+   se tentarem consultar sem banco. */
+const databaseUnavailable = () => {
+  const error = new Error('DATABASE_URL não definida.');
+  error.code = 'database_unavailable';
+  throw error;
+};
+databaseUnavailable.transaction = databaseUnavailable;
+
+export const sql = process.env.DATABASE_URL
+  ? neon(process.env.DATABASE_URL)
+  : databaseUnavailable;
 
 /**
  * Executa consultas dentro de uma transação com o dono definido.
@@ -99,6 +113,7 @@ export function itemToClient(row) {
     snoozedUntil: dateOnly(row.snoozed_until),
     completedAt: row.completed_at,
     deletedAt: row.deleted_at,
+    purgeAfter: row.purge_after,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     checklist: row.checklist || [],
@@ -122,7 +137,7 @@ export function environmentToClient(row) {
   };
 }
 
-export function prefsToClient(row) {
+export function prefsToClient(row, notifications = null) {
   if (!row) return {};
   return {
     theme: row.theme,
@@ -143,6 +158,11 @@ export function prefsToClient(row) {
     afterComplete: row.after_complete,
     nlParsingEnabled: row.nl_parsing_enabled,
     soundEnabled: row.sound_enabled,
+    notificationsEnabled: notifications?.enabled ?? false,
+    notifyDueItems: notifications?.due_items ?? true,
+    notifyCommitments: notifications?.commitments ?? true,
+    notifyOverdue: notifications?.overdue_items ?? true,
+    notifyLeadMinutes: notifications?.lead_minutes ?? 30,
   };
 }
 

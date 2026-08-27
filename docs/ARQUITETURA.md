@@ -70,9 +70,11 @@ Sem WebGL2, `Logo3D._fallback()` empilha 16 cópias da mesma imagem com
 - **Modo local** (sem API): conta e dados no `localStorage`, senha com PBKDF2
   de 150 mil iterações via `SubtleCrypto`. Serve para o GitHub Pages puro e para
   testar sem infraestrutura.
-- **Modo remoto** (com API): toda mutação entra numa fila
-  (`js/app/api.js` → `syncQueue`) e é reenviada quando a conexão volta. Erros
-  4xx permanentes são descartados; o resto tenta de novo até seis vezes.
+- **Modo remoto** (com API): toda mutação entra numa fila separada por conta
+  (`js/app/api.js` → `syncQueue`) e é reenviada quando a conexão volta. Falhas
+  definitivas não somem: ficam preservadas e visíveis em Configurações, com
+  ação para tentar novamente. Isso impede que a interface diga
+  “sincronizado” depois de o servidor recusar um cadastro.
 
 Os `id` são gerados no cliente com `crypto.randomUUID()` e os endpoints usam
 `on conflict (id) do nothing`. Assim um reenvio da fila é idempotente.
@@ -85,7 +87,9 @@ precisa existir na API e no banco"*. Então:
 1. **API** — todo endpoint chama `requireUser()` e filtra por `owner_id`.
 2. **Banco** — RLS ativada e forçada em 16 tabelas. A API abre a transação com
    `select set_config('app.user_id', $1, true)` e as políticas comparam com
-   `nestra_current_user_id()`.
+   `nestra_current_user_id()`. A autenticação usa ainda
+   `app.session_hash`: a política expõe somente a sessão cujo hash veio do
+   cookie, antes mesmo de o usuário ser conhecido.
 
 Uma consulta sem `WHERE owner_id` continua não devolvendo dados de outra conta.
 

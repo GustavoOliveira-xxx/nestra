@@ -293,19 +293,17 @@ export function openItemDetail(itemId, onChange = null) {
     'aria-label': 'Título',
     maxlength: '280',
   });
-  titleInput.addEventListener('change', () => {
-    const v = titleInput.value.trim();
-    if (v) store.updateItem(item.id, { title: v });
-  });
 
   /* Frase original, quando veio da captura (§24) */
   if (item.rawInput && item.rawInput !== item.title) {
     body.appendChild(el('div', {
-      class: 'chip',
+      class: 'chip detail__raw-input',
       style: { alignSelf: 'flex-start', fontFamily: 'var(--font-mono)' },
       title: 'A frase exatamente como você escreveu',
-      html: icon('bolt', 12) + `<span>“${item.rawInput}”</span>`,
-    }));
+    }, [
+      el('span', { html: icon('bolt', 12) }),
+      el('span', { text: `“${item.rawInput}”` }),
+    ]));
   }
 
   body.appendChild(titleInput);
@@ -322,52 +320,24 @@ export function openItemDetail(itemId, onChange = null) {
   const typeSel = el('select', { class: 'select' },
     Object.entries(TYPE_LABELS).map(([v, l]) =>
       el('option', { value: v, text: l, selected: item.type === v })));
-  typeSel.addEventListener('change', () => {
-    store.updateItem(item.id, { type: typeSel.value });
-    onChange?.();
-  });
 
   const prioSel = el('select', { class: 'select' },
     Object.entries(PRIORITY_LABELS).map(([v, l]) =>
       el('option', { value: v, text: l, selected: item.priority === v })));
-  prioSel.addEventListener('change', () => {
-    store.updateItem(item.id, { priority: prioSel.value });
-    onChange?.();
-  });
 
   const dateInput = el('input', { class: 'input', type: 'date', value: item.dueDate || '' });
-  dateInput.addEventListener('change', () => {
-    store.updateItem(item.id, { dueDate: dateInput.value || null });
-    onChange?.();
-  });
 
   const timeInput = el('input', { class: 'input', type: 'time', value: item.dueTime || '' });
-  timeInput.addEventListener('change', () => {
-    if (timeInput.value && !dateInput.value) {
-      dateInput.value = toISODate(todayIn(store.state.prefs.timezone));
-      store.updateItem(item.id, { dueDate: dateInput.value });
-    }
-    store.updateItem(item.id, { dueTime: timeInput.value || null });
-    onChange?.();
-  });
 
   const periodSel = el('select', { class: 'select' },
     Object.entries(PERIOD_LABELS).map(([v, l]) =>
       el('option', { value: v, text: l, selected: (item.timePeriod || 'any') === v })));
-  periodSel.addEventListener('change', () => {
-    store.updateItem(item.id, { timePeriod: periodSel.value });
-    onChange?.();
-  });
 
   const envSel = el('select', { class: 'select' }, [
     el('option', { value: '', text: 'Caixa de entrada', selected: !item.environmentId }),
     ...store.activeEnvironments.map((e) =>
       el('option', { value: e.id, text: e.name, selected: item.environmentId === e.id })),
   ]);
-  envSel.addEventListener('change', () => {
-    store.updateItem(item.id, { environmentId: envSel.value || null });
-    onChange?.();
-  });
 
   grid.append(
     field('Tipo', typeSel),
@@ -384,9 +354,7 @@ export function openItemDetail(itemId, onChange = null) {
     class: 'textarea',
     placeholder: 'Detalhes, contexto, links…',
     value: item.description || '',
-  });
-  desc.addEventListener('change', () => {
-    store.updateItem(item.id, { description: desc.value.trim() || null });
+    maxlength: '4000',
   });
   body.appendChild(el('label', { class: 'field' }, [
     el('span', { class: 'field__label', text: 'Descrição' }),
@@ -398,6 +366,10 @@ export function openItemDetail(itemId, onChange = null) {
   checkWrap.appendChild(el('span', { class: 'field__label', text: 'Checklist' }));
   const checkList = el('div', { class: 'checklist' });
   checkWrap.appendChild(checkList);
+  let draftChecklist = (item.checklist || []).map((entry, position) => ({
+    ...entry,
+    position: Number.isInteger(entry.position) ? entry.position : position,
+  }));
 
   const newCheck = el('input', {
     class: 'input',
@@ -408,18 +380,21 @@ export function openItemDetail(itemId, onChange = null) {
     ev.preventDefault();
     const v = newCheck.value.trim();
     if (!v) return;
-    store.addChecklistItem(item.id, v);
+    draftChecklist.push({
+      id: crypto.randomUUID(),
+      title: v.slice(0, 200),
+      completed: false,
+      position: draftChecklist.length,
+    });
     newCheck.value = '';
     drawChecklist();
-    onChange?.();
   });
   checkWrap.appendChild(newCheck);
 
   function drawChecklist() {
-    const fresh = store.state.items.find((i) => i.id === itemId);
     checkList.replaceChildren();
 
-    (fresh?.checklist || []).forEach((entry) => {
+    draftChecklist.forEach((entry) => {
       const row = el('div', {
         class: 'checklist__row',
         dataset: { done: String(entry.completed) },
@@ -432,23 +407,26 @@ export function openItemDetail(itemId, onChange = null) {
         'aria-label': entry.title,
         onClick: () => {
           const willComplete = !entry.completed;
-          store.updateChecklistItem(item.id, entry.id, { completed: willComplete });
+          entry.completed = willComplete;
           if (willComplete) {
             box.setAttribute('aria-checked', 'true');
             box.classList.add('check--just-done');
             // Um passo é menor que um item: o selo vem na medida dele.
             completionEffect(box, { color: resolveColor(null), scale: 0.72 });
-            setTimeout(() => { drawChecklist(); onChange?.(); }, 260);
+            setTimeout(drawChecklist, 260);
             return;
           }
           drawChecklist();
-          onChange?.();
         },
       });
 
-      const text = el('input', { class: 'checklist__text', value: entry.title });
-      text.addEventListener('change', () => {
-        store.updateChecklistItem(item.id, entry.id, { title: text.value.trim() || entry.title });
+      const text = el('input', {
+        class: 'checklist__text',
+        value: entry.title,
+        'aria-label': `Editar passo: ${entry.title}`,
+      });
+      text.addEventListener('input', () => {
+        entry.title = text.value.slice(0, 200);
       });
 
       const del = el('button', {
@@ -456,9 +434,10 @@ export function openItemDetail(itemId, onChange = null) {
         'aria-label': 'Remover passo',
         html: icon('x', 14),
         onClick: () => {
-          store.removeChecklistItem(item.id, entry.id);
+          draftChecklist = draftChecklist
+            .filter((candidate) => candidate.id !== entry.id)
+            .map((candidate, position) => ({ ...candidate, position }));
           drawChecklist();
-          onChange?.();
         },
       });
 
@@ -466,7 +445,7 @@ export function openItemDetail(itemId, onChange = null) {
       checkList.appendChild(row);
     });
 
-    if (!(fresh?.checklist || []).length) {
+    if (!draftChecklist.length) {
       checkList.appendChild(el('p', {
         class: 'field__hint',
         text: 'Nenhum passo ainda. Um item pequeno não precisa virar projeto.',
@@ -495,26 +474,144 @@ export function openItemDetail(itemId, onChange = null) {
     body.appendChild(hist);
   }
 
-  /* Rodapé */
+  /* Rodapé. Os campos principais formam um único cadastro: só são
+     aplicados juntos pelo botão Salvar. Antes cada `change` gravava uma
+     parte em um momento diferente, então fechar o modal podia deixar um
+     item pela metade — sobretudo no celular. */
+  const cancelBtn = el('button', {
+    class: 'btn btn--ghost',
+    text: 'Cancelar',
+  });
+
+  const saveBtn = el('button', {
+    class: 'btn btn--primary',
+    html: icon('check', 16) + 'Salvar alterações',
+  });
+
   const doneBtn = el('button', {
-    class: 'btn ' + (item.status === 'done' ? 'btn--outline' : 'btn--primary'),
+    class: 'btn btn--outline',
     html: icon('check', 16) + (item.status === 'done' ? 'Reabrir' : 'Concluir'),
   });
 
   const trashBtn = el('button', {
     class: 'btn btn--danger',
+    style: { marginRight: 'auto' },
     html: icon('trash', 16) + 'Lixeira',
   });
 
   const dialog = openModal({
     title: 'Detalhes do item',
     body,
-    footer: [trashBtn, doneBtn],
+    footer: [trashBtn, cancelBtn, doneBtn, saveBtn],
     wide: true,
     onClose: () => onChange?.(),
   });
 
+  function saveChanges({ close = true, announce = true } = {}) {
+    const title = titleInput.value.trim();
+    if (!title) {
+      titleInput.setAttribute('aria-invalid', 'true');
+      titleInput.focus();
+      toast('O item precisa de um título.', { kind: 'warn' });
+      return false;
+    }
+    titleInput.removeAttribute('aria-invalid');
+
+    let dueDate = dateInput.value || null;
+    const dueTime = timeInput.value || null;
+    if (dueTime && !dueDate) {
+      dueDate = toISODate(todayIn(store.state.prefs.timezone));
+      dateInput.value = dueDate;
+    }
+
+    const values = {
+      title,
+      type: typeSel.value,
+      priority: prioSel.value,
+      environmentId: envSel.value || null,
+      dueDate,
+      dueTime,
+      timePeriod: periodSel.value,
+      description: desc.value.trim() || null,
+      // Abrir, conferir e salvar é a confirmação explícita do cadastro.
+      needsReview: false,
+    };
+
+    const patch = {};
+    for (const [key, value] of Object.entries(values)) {
+      const previous = item[key] ?? null;
+      if (!Object.is(previous, value)) patch[key] = value;
+    }
+
+    if (Object.keys(patch).length) {
+      store.updateItem(item.id, patch);
+    }
+
+    /* Checklist participa do mesmo Salvar/Cancelar do restante do modal.
+       Isso evita que adicionar ou remover um passo seja gravado mesmo
+       quando a pessoa cancela o cadastro. */
+    const originalChecklist = item.checklist || [];
+    const originalSnapshot = originalChecklist.map(({ id, title, completed, position }) => ({
+      id, title, completed: Boolean(completed), position,
+    }));
+    const normalizedDraft = draftChecklist.map(({ id, title, completed }, index) => ({
+      id,
+      title: String(title || '').trim(),
+      completed: Boolean(completed),
+      position: index,
+    })).filter((entry) => entry.title);
+    const checklistChanged = JSON.stringify(originalSnapshot) !== JSON.stringify(normalizedDraft);
+    const originalById = new Map(originalChecklist.map((entry) => [entry.id, entry]));
+    const draftIds = new Set(draftChecklist.map((entry) => entry.id));
+
+    originalChecklist
+      .filter((entry) => !draftIds.has(entry.id))
+      .forEach((entry) => store.removeChecklistItem(item.id, entry.id));
+
+    draftChecklist.forEach((entry, position) => {
+      const cleanTitle = String(entry.title || '').trim().slice(0, 200);
+      const original = originalById.get(entry.id);
+      if (!cleanTitle) {
+        if (original) store.removeChecklistItem(item.id, entry.id);
+        return;
+      }
+      if (!original) {
+        store.addChecklistItem(item.id, cleanTitle, {
+          id: entry.id,
+          completed: entry.completed,
+          position,
+        });
+        return;
+      }
+      const checklistPatch = {};
+      if (original.title !== cleanTitle) checklistPatch.title = cleanTitle;
+      if (Boolean(original.completed) !== Boolean(entry.completed)) checklistPatch.completed = Boolean(entry.completed);
+      if (original.position !== position) checklistPatch.position = position;
+      if (Object.keys(checklistPatch).length) {
+        store.updateChecklistItem(item.id, entry.id, checklistPatch);
+      }
+    });
+
+    if (announce) {
+      if (Object.keys(patch).length || checklistChanged) {
+        toast('Alterações salvas.', { kind: 'success' });
+      } else {
+        toast('Nenhuma alteração para salvar.');
+      }
+    }
+    if (Object.keys(patch).length || checklistChanged) onChange?.();
+
+    if (close) dialog.close();
+    return true;
+  }
+
+  cancelBtn.addEventListener('click', () => dialog.close());
+  saveBtn.addEventListener('click', () => saveChanges());
+
   doneBtn.addEventListener('click', () => {
+    // Se a pessoa editou e concluiu no mesmo gesto, nenhuma edição fica
+    // perdida só porque ela não clicou no botão ao lado primeiro.
+    if (!saveChanges({ close: false, announce: false })) return;
     const willComplete = item.status !== 'done';
     store.toggleItem(item.id);
     if (willComplete) {

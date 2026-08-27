@@ -7,8 +7,8 @@
    ===================================================================== */
 
 import crypto from 'node:crypto';
-import { sql } from './db.js';
-import { parseCookies } from './http.js';
+import { sql, asUser } from './db.js';
+import { parseCookies, serverSalt } from './http.js';
 
 export const SESSION_COOKIE = 'nestra_session';
 const SESSION_DAYS = 30;
@@ -48,11 +48,11 @@ export async function createSession(userId, { userAgent, ipHash, deviceLabel }) 
   const token = newToken();
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 864e5);
 
-  await sql`
-    insert into sessions (user_id, token_hash, device_label, user_agent, ip_hash, expires_at)
-    values (${userId}, ${hashToken(token)}, ${deviceLabel || null},
-            ${(userAgent || '').slice(0, 300)}, ${ipHash || null}, ${expiresAt.toISOString()})
-  `;
+  await asUser(userId, (query) => [query`
+      insert into sessions (user_id, token_hash, device_label, user_agent, ip_hash, expires_at)
+      values (${userId}, ${hashToken(token)}, ${deviceLabel || null},
+              ${(userAgent || '').slice(0, 300)}, ${ipHash || null}, ${expiresAt.toISOString()})
+    `]);
 
   return { token, expiresAt };
 }
@@ -62,24 +62,28 @@ export async function currentUser(req) {
   const token = parseCookies(req)[SESSION_COOKIE];
   if (!token) return null;
 
-  const rows = await sql`
-    select u.id, u.email, u.display_name, u.timezone, u.locale, u.avatar_color, s.id as session_id
-      from sessions s
-      join users u on u.id = s.user_id
-     where s.token_hash = ${hashToken(token)}
-       and s.revoked_at is null
-       and s.expires_at > now()
-       and u.deleted_at is null
-       and u.status = 'active'
-     limit 1
-  `;
+  const tokenHash = hashToken(token);
+  const [, rows] = await sql.transaction([
+    /* A política RLS de `sessions` permite ler apenas a sessão cujo
+       hash veio do cookie. O hash nunca é devolvido ao navegador. */
+    sql`select set_config('app.session_hash', ${tokenHash}, true)`,
+    sql`
+      update sessions s set last_seen_at = now()
+        from users u
+       where s.token_hash = ${tokenHash}
+         and u.id = s.user_id
+         and s.revoked_at is null
+         and s.expires_at > now()
+         and u.deleted_at is null
+         and u.status = 'active'
+       returning u.id, u.email, u.display_name, u.timezone, u.locale,
+                 u.avatar_color, s.id as session_id
+    `,
+  ]);
 
   if (!rows.length) return null;
 
   const row = rows[0];
-  // Atualiza o "visto por último" sem bloquear a resposta
-  sql`update sessions set last_seen_at = now() where id = ${row.session_id}`.catch(() => {});
-
   return {
     id: row.id,
     email: row.email,
@@ -94,10 +98,12 @@ export async function currentUser(req) {
 export async function revokeSession(req) {
   const token = parseCookies(req)[SESSION_COOKIE];
   if (!token) return;
-  await sql`
-    update sessions set revoked_at = now()
-     where token_hash = ${hashToken(token)} and revoked_at is null
-  `;
+  const tokenHash = hashToken(token);
+  await sql.transaction([
+    sql`select set_config('app.session_hash', ${tokenHash}, true)`,
+    sql`update sessions set revoked_at = now()
+         where token_hash = ${tokenHash} and revoked_at is null`,
+  ]);
 }
 
 /* --------------------------------------------------------------------
@@ -105,7 +111,7 @@ export async function revokeSession(req) {
    -------------------------------------------------------------------- */
 export function hashEmail(email) {
   return crypto.createHash('sha256')
-    .update(String(email).toLowerCase() + (process.env.NESTRA_IP_SALT || 'nestra'))
+    .update(String(email).toLowerCase() + serverSalt())
     .digest('hex')
     .slice(0, 32);
 }

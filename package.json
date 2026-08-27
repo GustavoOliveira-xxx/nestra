@@ -1,6 +1,6 @@
 {
   "name": "nestra",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Nestra — organizador pessoal: capture uma frase natural, o resto o sistema organiza.",
   "type": "module",
@@ -10,11 +10,21 @@
   "scripts": {
     "dev": "npx http-server -p 8080 -c-1 .",
     "db:schema": "node scripts/apply-schema.js db/schema.sql",
-    "test": "node scripts/testes.js"
+    "check:syntax": "node scripts/check-syntax.js",
+    "check:health": "node scripts/check-health-import.js",
+    "test": "node scripts/testes.js",
+    "check": "npm run check:syntax && npm run check:health && npm test"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^0.10.4"
+    "@neondatabase/serverless": "^1.1.0"
   },
-  "keywords": ["organizador", "produtividade", "pwa", "webgl", "neon", "postgres"],
+  "keywords": [
+    "organizador",
+    "produtividade",
+    "pwa",
+    "webgl",
+    "neon",
+    "postgres"
+  ],
   "license": "UNLICENSED"
 }

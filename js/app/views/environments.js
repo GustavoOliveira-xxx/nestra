@@ -54,21 +54,28 @@ export function renderEnvironments(root, { onNavigate }) {
     const orbCanvas = el('canvas', { 'aria-hidden': 'true' });
     const orbSlot = el('div', { class: 'env-orb' }, [orbCanvas]);
 
+    const open = () => onNavigate('environment', env.id);
+    const openButton = el('button', {
+      class: 'env-card__open',
+      type: 'button',
+      'aria-label': `Abrir ambiente ${env.name}`,
+      onClick: open,
+    });
+
     const card = el('article', {
       class: 'env-card',
       'data-tilt': '7',
-      tabindex: '0',
-      role: 'button',
-      'aria-label': `Abrir ambiente ${env.name}`,
       style: { '--env-color': env.color },
     }, [
+      openButton,
       el('div', { class: 'env-card__top' }, [
         orbSlot,
         el('button', {
-          class: 'btn btn--ghost btn--icon btn--sm',
+          class: 'btn btn--ghost btn--icon btn--sm env-card__edit',
+          type: 'button',
           'aria-label': `Editar ${env.name}`,
           html: icon('settings', 15),
-          onClick: (ev) => { ev.stopPropagation(); openEnvironmentForm(env, rerender); },
+          onClick: () => openEnvironmentForm(env, rerender),
         }),
       ]),
       el('div', {}, [
@@ -95,12 +102,6 @@ export function renderEnvironments(root, { onNavigate }) {
         ]),
       ]),
     ]);
-
-    const open = () => onNavigate('environment', env.id);
-    card.addEventListener('click', open);
-    card.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(); }
-    });
 
     grid.appendChild(card);
 
@@ -160,14 +161,16 @@ export function renderEnvironments(root, { onNavigate }) {
     archived.forEach((env) => {
       list.appendChild(el('button', {
         class: 'chip chip--interactive',
-        html: icon(env.icon, 13) + `<span>${env.name}</span>`,
         title: 'Restaurar ambiente',
         onClick: () => {
           store.updateEnvironment(env.id, { archivedAt: null });
           toast(`${env.name} restaurado.`);
           rerender();
         },
-      }));
+      }, [
+        el('span', { html: icon(env.icon, 13) }),
+        el('span', { text: env.name }),
+      ]));
     });
     root.appendChild(list);
   }
@@ -183,7 +186,10 @@ export function openEnvironmentForm(env, onDone) {
     description: env?.description || '',
     color: env?.color || COLOR_CHOICES[0],
     icon: env?.icon || 'layers',
-    isDefault: env?.isDefault || false,
+    // A preferência é a fonte da verdade para novas capturas. O campo do
+    // ambiente existe no banco por compatibilidade, mas não pode deixar o
+    // seletor marcado quando a preferência aponta para a caixa de entrada.
+    isDefault: env ? store.state.prefs.defaultEnvironmentId === env.id : false,
   };
 
   const body = el('div', { class: 'stack gap-4' });
@@ -361,8 +367,10 @@ export function openEnvironmentForm(env, onDone) {
       if (payload.isDefault) store.setPrefs({ defaultEnvironmentId: created.id });
       toast(`Ambiente ${name} criado.`, { kind: 'success' });
     } else {
+      const wasDefault = store.state.prefs.defaultEnvironmentId === env.id;
       store.updateEnvironment(env.id, payload);
       if (payload.isDefault) store.setPrefs({ defaultEnvironmentId: env.id });
+      else if (wasDefault) store.setPrefs({ defaultEnvironmentId: null });
       toast('Ambiente atualizado.', { kind: 'success' });
     }
 
