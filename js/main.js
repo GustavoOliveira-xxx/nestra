@@ -1288,19 +1288,25 @@ function registerServiceWorker() {
 let installPrompt = null;
 
 window.addEventListener('beforeinstallprompt', (ev) => {
-  ev.preventDefault();
+  /* Não suprime a instalação nativa do Chrome. O preventDefault usado
+     antes escondia o banner mesmo quando este botão estava dentro da
+     landing page invisível para uma conta autenticada, além de deixar um
+     aviso permanente no console. Guardar o evento ainda permite que o
+     botão da apresentação abra o diálogo por um gesto do usuário. */
   installPrompt = ev;
 
   const btn = $('#installBtn');
   if (!btn) return;
   btn.hidden = false;
-  btn.addEventListener('click', async () => {
+  btn.onclick = async () => {
     btn.hidden = true;
-    installPrompt.prompt();
-    const { outcome } = await installPrompt.userChoice;
+    const prompt = installPrompt;
+    if (!prompt) return;
+    await prompt.prompt();
+    const { outcome } = await prompt.userChoice;
     if (outcome === 'accepted') toast('Nestra instalado. Ele abre como aplicativo agora.', { kind: 'success' });
     installPrompt = null;
-  });
+  };
 });
 
 window.addEventListener('appinstalled', () => {

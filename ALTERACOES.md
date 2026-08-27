@@ -33,8 +33,10 @@ mensagem e autoria, sem sobrescrever nada à mão.
   da conta anterior.
 - O manifesto PWA envia a credencial do preview protegido do Vercel, evitando
   o redirecionamento ao SSO e o erro de CORS exibido pelo Chrome.
+- O compartilhamento declara seu formato de formulário e a instalação nativa
+  deixa de ser suprimida quando o botão personalizado não está visível.
 
-São **83 verificações automatizadas**, checagem de sintaxe de todos os módulos,
+São **85 verificações automatizadas**, checagem de sintaxe de todos os módulos,
 auditoria de dependências e jornada manual em desktop e celular. O driver do
 Neon foi atualizado para a versão estável 1.1.0. O relatório completo está em
 `docs/AUDITORIA-2026-08.md`.
