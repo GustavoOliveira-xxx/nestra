@@ -505,8 +505,14 @@ console.log('\nPWA e publicação');
 
 {
   const index = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const manifest = JSON.parse(fs.readFileSync(new URL('../manifest.json', import.meta.url), 'utf8'));
+  const main = fs.readFileSync(new URL('../js/main.js', import.meta.url), 'utf8');
   eq('manifesto envia credenciais no preview protegido do Vercel',
     /<link\s+rel=["']manifest["'][^>]*crossorigin=["']use-credentials["'][^>]*>/i.test(index), true);
+  eq('destino de compartilhamento declara o enctype aceito pelo Chrome',
+    manifest.share_target?.enctype, 'application/x-www-form-urlencoded');
+  eq('instalação nativa não é suprimida antes de haver gesto do usuário',
+    /beforeinstallprompt[\s\S]{0,500}preventDefault\s*\(/.test(main), false);
 }
 
 /* =====================================================================
