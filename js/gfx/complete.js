@@ -1,21 +1,3 @@
-/* =====================================================================
-   NESTRA — O gesto de concluir
-
-   Marcar uma coisa como feita é o clique mais repetido do app. Ele
-   merece uma resposta à altura, e a resposta precisa ser do tamanho do
-   site: nada de confete colorido caindo na tela — aqui a conclusão é um
-   anel que se fecha, um visto que se desenha, faíscas na cor do item e a
-   linha recuando em profundidade. A mesma linguagem seca e luminosa do
-   resto da interface.
-
-   Tudo o que acontece fora da linha mora na camada de efeitos, em
-   posição fixa: a tela se redesenha logo depois do clique, e a animação
-   não pode morrer junto com o nó que a começou.
-
-   Quem chama daqui não precisa saber de nada disso — recebe de volta
-   quantos milissegundos vale a pena esperar antes de redesenhar.
-   ===================================================================== */
-
 import { quality } from '../core/device.js';
 import { pulseEnvHeroes } from './envhero.js';
 
@@ -35,15 +17,6 @@ function fxLayer() {
   return layer;
 }
 
-/**
- * A cor que o efeito deve usar.
- *
- * As cores do app moram em variáveis CSS encadeadas (`--type-color` vale
- * `var(--type-task)`, que vale `var(--blue-400)`), e ler a variável
- * devolve o encadeamento, não a cor. Ler uma propriedade que o navegador
- * precisou resolver de verdade — a cor de fundo de um elemento — devolve
- * o `rgb()` final, que é o que serve para pintar faísca.
- */
 export function resolveColor(el, fallbackVar = '--accent') {
   const probe = el?.querySelector?.('.item__type');
   if (probe) {
@@ -54,16 +27,7 @@ export function resolveColor(el, fallbackVar = '--accent') {
   return root || '#2F6BFF';
 }
 
-/* ---------------------------------------------------------------------
-   O selo: um anel que se fecha e um visto que se desenha
-
-   É a peça central do gesto. Nasce medida pelo alvo — a caixinha de
-   marcar na linha, o botão largo na tela de detalhes — para nunca ficar
-   grande demais num lugar e pequena demais no outro.
-   --------------------------------------------------------------------- */
 function stamp(layer, x, y, size, color) {
-  /* Clarão curto por baixo de tudo: é o que dá o "estalo" do gesto sem
-     precisar de nenhum elemento a mais na tela depois. */
   const flash = document.createElement('span');
   flash.className = 'fx-done-flash';
   flash.style.left = x + 'px';
@@ -79,7 +43,6 @@ function stamp(layer, x, y, size, color) {
   ], { duration: 520, easing: 'cubic-bezier(.16,1,.3,1)', fill: 'forwards' });
   setTimeout(() => flash.remove(), 560);
 
-  /* Anel de fora: abre largo e fino, como a onda que sai do ponto. */
   const halo = document.createElement('span');
   halo.className = 'fx-done-halo';
   halo.style.left = x + 'px';
@@ -94,7 +57,6 @@ function stamp(layer, x, y, size, color) {
   ], { duration: 700, delay: 80, easing: 'cubic-bezier(.16,1,.3,1)', fill: 'forwards' });
   setTimeout(() => halo.remove(), 800);
 
-  /* O selo: o anel se fecha e o visto é traçado dentro dele. */
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('class', 'fx-done');
   svg.setAttribute('viewBox', '0 0 100 100');
@@ -116,8 +78,8 @@ function stamp(layer, x, y, size, color) {
   svg.append(ring, tick);
   layer.appendChild(svg);
 
-  const CIRC = 2 * Math.PI * 34;   // 213.6
-  const TICK = 51;                 // comprimento aproximado do visto
+  const CIRC = 2 * Math.PI * 34;
+  const TICK = 51;
 
   ring.animate([
     { strokeDasharray: String(CIRC), strokeDashoffset: String(CIRC) },
@@ -129,7 +91,6 @@ function stamp(layer, x, y, size, color) {
     { strokeDasharray: String(TICK), strokeDashoffset: '0', opacity: 1 },
   ], { duration: 220, delay: 170, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'both' });
 
-  // Fechou: o selo abre e some, deixando a linha falar por si
   svg.animate([
     { transform: 'translate(-50%,-50%) scale(.82)', opacity: 0 },
     { transform: 'translate(-50%,-50%) scale(1)', opacity: 1, offset: 0.18 },
@@ -140,13 +101,6 @@ function stamp(layer, x, y, size, color) {
   setTimeout(() => svg.remove(), 820);
 }
 
-/* ---------------------------------------------------------------------
-   Faíscas com peso
-
-   Saem para cima, perdem força e caem — o mesmo movimento de qualquer
-   coisa jogada para o alto. Sem gravidade elas viram uma explosão de
-   desenho animado, que é justamente o que este site não é.
-   --------------------------------------------------------------------- */
 function sparks(layer, x, y, color, count) {
   const host = document.createElement('div');
   host.className = 'fx-sparks';
@@ -156,7 +110,6 @@ function sparks(layer, x, y, color, count) {
 
   for (let i = 0; i < count; i++) {
     const bit = document.createElement('i');
-    // Leque para cima: o gesto é de alívio, de tirar peso de cima
     const angle = -Math.PI / 2 + (i / count - 0.5) * 2.5 + (Math.random() - 0.5) * 0.4;
     const speed = 34 + Math.random() * 74;
     const dx = Math.cos(angle) * speed;
@@ -192,9 +145,6 @@ function sparks(layer, x, y, color, count) {
   setTimeout(() => host.remove(), 1200);
 }
 
-/* ---------------------------------------------------------------------
-   O efeito completo, ancorado num elemento qualquer
-   --------------------------------------------------------------------- */
 export function completionEffect(anchor, { color = '#2F6BFF', scale = 1 } = {}) {
   if (reduced() || !anchor?.getBoundingClientRect) return;
 
@@ -209,8 +159,6 @@ export function completionEffect(anchor, { color = '#2F6BFF', scale = 1 } = {}) 
   const count = Math.max(8, Math.round(18 * scale * quality.scale));
   sparks(layer, x, y, color, count);
 
-  // A cena de fundo sente a conclusão no ponto exato dela, e a peça 3D
-  // do ambiente responde junto: é dela que a tela toda fala.
   window.nestraScene?.ripple(
     x / window.innerWidth,
     y / window.innerHeight,
@@ -219,16 +167,6 @@ export function completionEffect(anchor, { color = '#2F6BFF', scale = 1 } = {}) 
   pulseEnvHeroes(scale);
 }
 
-/* ---------------------------------------------------------------------
-   A linha inteira concluindo
-
-   Além do selo, a própria linha responde: uma luz varre da esquerda para
-   a direita, a trilha do tipo acende e o conjunto recua em profundidade
-   (ou some, conforme a preferência de quem usa).
-
-   Devolve quantos milissegundos vale esperar antes de redesenhar a tela,
-   para a animação não ser cortada no meio pelo próprio redesenho.
-   --------------------------------------------------------------------- */
 export function celebrateCompletion(row, anchor, { color, mode = 'fade' } = {}) {
   const tone = color || resolveColor(row);
 
@@ -239,8 +177,6 @@ export function celebrateCompletion(row, anchor, { color, mode = 'fade' } = {}) 
   if (row) {
     row.style.setProperty('--done-color', tone);
 
-    /* A varredura de luz é um nó próprio: assim ela pode sair sozinha,
-       sem depender de nenhuma regra de estado da linha. */
     const sweep = document.createElement('span');
     sweep.className = 'item__sweep';
     sweep.setAttribute('aria-hidden', 'true');
@@ -255,6 +191,5 @@ export function celebrateCompletion(row, anchor, { color, mode = 'fade' } = {}) 
     setTimeout(() => anchor.classList.remove('check--just-done'), 700);
   }
 
-  // Some da lista precisa de mais tempo em cena; ficar precisa de menos
   return mode === 'hide' ? 520 : 360;
 }

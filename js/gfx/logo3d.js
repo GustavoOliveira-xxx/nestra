@@ -1,16 +1,3 @@
-/* =====================================================================
-   NESTRA — Logo em 3D
-
-   A logo NÃO é redesenhada em vetor. O arquivo PNG original é convertido
-   num campo de distância com sinal e depois extrudado por ray marching,
-   de modo que a silhueta em 3D é exatamente a silhueta dos pixels do
-   arquivo — inclusive contra-formas e detalhes internos. As cores também
-   vêm da própria imagem. Para trocar a logo, basta substituir o PNG.
-
-   Se o navegador não tiver WebGL2, entra um plano B em CSS que empilha
-   cópias da mesma imagem em profundidade — continua sendo a logo original.
-   ===================================================================== */
-
 import {
   program, fullscreenQuad, buildSDF, rasterize, trimAlpha, toHalf,
   dematte, downscaleRGBA,
@@ -35,12 +22,12 @@ uniform vec2  uRes;
 uniform float uTime;
 uniform sampler2D uSdf;
 uniform sampler2D uCol;
-uniform float uAspect;    // proporção do campo de distância
-uniform vec2  uRot;       // guinada e inclinação
-uniform float uDepth;     // metade da espessura
-uniform float uBevel;     // raio do chanfro
-uniform float uErode;     // >0 encolhe a forma (usado na montagem)
-uniform float uReveal;    // 0..1 progresso da montagem
+uniform float uAspect;
+uniform vec2  uRot;
+uniform float uDepth;
+uniform float uBevel;
+uniform float uErode;
+uniform float uReveal;
 uniform vec3  uAccent;
 uniform float uGlow;
 uniform float uZoom;
@@ -48,7 +35,6 @@ uniform float uZoom;
 const int  MAX_STEPS = 128;
 const float MAX_DIST = 9.0;
 
-// --- silhueta lida do arquivo original -------------------------------
 float sdf2d(vec2 q) {
   vec2 ext = vec2(uAspect, 1.0);
   vec2 d = abs(q) - ext;
@@ -58,7 +44,6 @@ float sdf2d(vec2 q) {
   return texture(uSdf, uv).r;
 }
 
-// --- extrusão com chanfro --------------------------------------------
 float map(vec3 p) {
   float d2 = sdf2d(p.xy) + uBevel + uErode;
   vec2 w = vec2(d2, abs(p.z) - max(uDepth - uBevel, 0.001));
@@ -104,7 +89,6 @@ mat3 rotX(float a) {
   return mat3(1.0, 0.0, 0.0, 0.0, c, s, 0.0, -s, c);
 }
 
-// Céu falso: dá ao metal algo para refletir
 vec3 environment(vec3 rd) {
   float up = rd.y * 0.5 + 0.5;
   vec3 sky = mix(vec3(0.016, 0.024, 0.05), vec3(0.05, 0.09, 0.20), up);
@@ -125,7 +109,6 @@ void main() {
   ro = inv * ro;
   rd = inv * rd;
 
-  // Descarta cedo o que passa longe do volume da marca
   float bound = length(vec2(uAspect, 1.0)) + uDepth + 0.25;
   float b = dot(-ro, rd);
   float c2 = dot(ro, ro) - bound * bound;
@@ -144,7 +127,7 @@ void main() {
     p = ro + rd * t;
     float d = map(p);
     lastD = d;
-    // Brilho volumétrico: quanto mais perto a raio passa, mais acende
+
     glowAccum += exp(-d * 26.0) * 0.028;
     if (d < 0.0006) { hit = true; break; }
     t += d * 0.85;
@@ -157,11 +140,9 @@ void main() {
   if (hit) {
     vec3 n = calcNormal(p);
 
-    // Cor vinda da própria imagem da logo
     vec2 cuv = vec2(p.x / uAspect * 0.5 + 0.5, 0.5 - p.y * 0.5);
     vec4 src = texture(uCol, clamp(cuv, 0.001, 0.999));
 
-    // A imagem está em sRGB: linearizar antes de qualquer luz incidir.
     vec3 art = pow(max(src.rgb, 0.0), vec3(2.2));
     if (src.a < 0.02) art = pow(uAccent, vec3(2.2)) * 0.7;
 
@@ -180,74 +161,46 @@ void main() {
     vec3 h = normalize(lightKey - rd);
     float spec = pow(max(dot(n, h), 0.0), 78.0);
 
-    /* A face é a arte — quase intacta.
-       A luz aqui só dá volume; ela não repinta a marca. O que produz a
-       sensação de 3D são a espessura, o chanfro, o giro e o aro, não uma
-       reinterpretação das cores do desenho. */
     vec3 front = art * (0.90 + 0.26 * diff * mix(0.6, 1.0, sh) + 0.08 * fill);
     front += vec3(1.0) * spec * 0.30;
 
-    /* A parede da extrusão é a única superfície inventada: uma versão
-       escurecida da própria arte, para a peça ter lateral crível. */
     vec3 wall = art * 0.30 + pow(uAccent, vec3(2.2)) * 0.09;
     wall *= 0.22 + 0.92 * diff * mix(0.45, 1.0, sh);
     wall += vec3(1.0) * spec * 0.22;
 
     color = mix(wall, front, smoothstep(0.22, 0.72, facing));
 
-    // Aro de luz no contorno: separa a peça do fundo sem manchar a arte
     color += uAccent * rim * 0.62;
 
-    // Reflexo discreto, só o suficiente para a superfície não ficar chapada
     vec3 refl = reflect(rd, n);
     color += environment(refl) * 0.12 * (0.3 + 0.7 * facing);
 
     color *= mix(0.68, 1.0, ao);
 
-    // Brilho que percorre a peça — o sinal de que ela está viva
     float band = sin((p.y * 3.0) - uTime * 1.1);
     color += mix(uAccent, vec3(1.0), 0.4) * smoothstep(0.988, 1.0, band) * 0.30 * facing;
 
-    // Durante a montagem, a borda viva do corte fica incandescente
     float edge = smoothstep(0.055, 0.0, abs(sdf2d(p.xy) + uErode));
     color += mix(uAccent, vec3(0.55, 0.92, 1.0), 0.5) * edge * (1.0 - uReveal) * 3.2;
 
     alpha = 1.0;
   }
 
-  /* Halo: dá corpo ao brilho sem precisar de um passe de bloom.
-
-     Ele é atmosfera EM VOLTA da peça, não um véu POR CIMA dela. Antes o
-     halo era somado igualmente nos dois casos, e como ele é da cor de
-     destaque, acabava lavando a arte: a marca ficava com aspecto
-     desfocado e perdia a cor própria, justamente na peça em que ela
-     deveria aparecer melhor. Onde o raio acertou o desenho, quem manda
-     é o desenho — sobra só um resíduo, para a borda não cortar seco. */
   float halo = clamp(glowAccum, 0.0, 1.0) * uGlow;
   float haloOnArt = hit ? 0.10 : 1.0;
   color += uAccent * halo * 0.85 * haloOnArt;
   alpha = clamp(alpha + halo * 0.65 * (hit ? 0.0 : 1.0), 0.0, 1.0);
 
-  // Correção de gama e realce de contraste
   color = pow(max(color, 0.0), vec3(0.4545));
   color = (color - 0.5) * 1.12 + 0.5;
 
   outColor = vec4(clamp(color, 0.0, 1.0) * alpha, alpha);
 }`;
 
-/* ------------------------------------------------------------------ */
-
 const cache = new Map();
 
-const PAD_FRACTION = 0.06;   // respiro em volta da marca, nos dois mapas
+const PAD_FRACTION = 0.06;
 
-/**
- * Onde a marca pode estar.
- *
- * O primeiro arquivo que carregar é o usado. Assim dá para trocar a logo
- * só soltando o arquivo na pasta, com o nome e a extensão que vierem do
- * seu editor — não precisa converter nem mexer em código.
- */
 export const LOGO_CANDIDATES = [
   'assets/logo/nestra-mark.png',
   'assets/logo/nestra-mark.jpg',
@@ -260,7 +213,6 @@ export const LOGO_CANDIDATES = [
 
 let resolvedSource = null;
 
-/** Marca escolhida pelo usuário dentro do próprio app. */
 const OVERRIDE_KEY = 'nestra:logo';
 
 function canLoad(src) {
@@ -276,14 +228,6 @@ export function getLogoOverride() {
   try { return localStorage.getItem(OVERRIDE_KEY); } catch { return null; }
 }
 
-/**
- * Guarda uma marca enviada pelo usuário.
- *
- * A imagem é reduzida para no máximo 1024px e regravada como PNG antes de
- * ir para o armazenamento local — o suficiente para o 3D e pequeno o
- * bastante para caber. Nada é enviado para lugar nenhum: a marca fica no
- * navegador de quem escolheu.
- */
 export async function setLogoFromFile(file) {
   if (!file || !file.type.startsWith('image/')) {
     throw new Error('Escolha um arquivo de imagem (PNG, JPG ou WEBP).');
@@ -317,21 +261,15 @@ export async function setLogoFromFile(file) {
 }
 
 export function clearLogoOverride() {
-  try { localStorage.removeItem(OVERRIDE_KEY); } catch { /* ignora */ }
+  try { localStorage.removeItem(OVERRIDE_KEY); } catch {  }
   clearLogoCache();
 }
 
-/** Esquece o que foi calculado, para a próxima marca ser processada do zero. */
 export function clearLogoCache() {
   resolvedSource = null;
   cache.clear();
 }
 
-/**
- * Descobre qual marca usar, na ordem:
- *   1. a que o usuário enviou pelo próprio app
- *   2. um arquivo em assets/logo/ (vários nomes e extensões aceitos)
- */
 export async function resolveLogoSource(preferred) {
   if (resolvedSource) return resolvedSource;
 
@@ -343,7 +281,6 @@ export async function resolveLogoSource(preferred) {
 
   const list = preferred ? [preferred, ...LOGO_CANDIDATES] : LOGO_CANDIDATES;
   for (const src of list) {
-    // eslint-disable-next-line no-await-in-loop
     if (await canLoad(src)) {
       resolvedSource = src;
       return src;
@@ -353,18 +290,6 @@ export async function resolveLogoSource(preferred) {
   return resolvedSource;
 }
 
-/**
- * Carrega o arquivo da logo e prepara os dois mapas que o shader usa.
- *
- * A cor sai em alta resolução (a marca pode ter tipografia, hachura e
- * estrelas miúdas que precisam sobreviver de perto) e o campo de
- * distância sai menor, porque ele só descreve a silhueta e é consultado
- * dezenas de vezes por pixel durante o ray marching.
- *
- * Os dois compartilham exatamente o mesmo enquadramento — recorte pela
- * caixa útil mais a mesma fração de respiro —, então as coordenadas de
- * textura de um valem para o outro.
- */
 async function loadSource(src, colorSide, sdfSide) {
   const key = `${src}@${colorSide}/${sdfSide}`;
   if (cache.has(key)) return cache.get(key);
@@ -378,8 +303,6 @@ async function loadSource(src, colorSide, sdfSide) {
 
     const raw = rasterize(img, colorSide);
 
-    // Logo exportada sobre papel branco? o fundo externo vira transparente,
-    // sem tocar nos brancos internos da marca.
     const removed = dematte(raw.data, raw.w, raw.h);
     if (removed) {
       const ctx0 = raw.canvas.getContext('2d');
@@ -389,14 +312,12 @@ async function loadSource(src, colorSide, sdfSide) {
     const box = trimAlpha(raw.data, raw.w, raw.h);
     const pad = Math.round(Math.max(box.w, box.h) * PAD_FRACTION);
 
-    // --- textura de cor, na resolução cheia ---
     const colorCanvas = document.createElement('canvas');
     colorCanvas.width = box.w + pad * 2;
     colorCanvas.height = box.h + pad * 2;
     const cctx = colorCanvas.getContext('2d', { willReadFrequently: true });
     cctx.drawImage(raw.canvas, box.x, box.y, box.w, box.h, pad, pad, box.w, box.h);
 
-    // --- campo de distância, na resolução reduzida ---
     const full = cctx.getImageData(0, 0, colorCanvas.width, colorCanvas.height).data;
     const scale = Math.min(1, sdfSide / Math.max(colorCanvas.width, colorCanvas.height));
     const sw = Math.max(16, Math.round(colorCanvas.width * scale));
@@ -426,8 +347,6 @@ export class Logo3D {
       glow: 0.55,
       zoom: 1.0,
       autoSpin: 0.16,
-      // A cor precisa de resolução (a marca pode ter tipografia e detalhe
-      // fino); a silhueta, não — ela é consultada muitas vezes por pixel.
       colorSide: 900,
       sdfSide: 360,
       reveal: 1,
@@ -445,10 +364,6 @@ export class Logo3D {
   }
 
   async init() {
-    /* Quem chama pode saber, antes de tentar, que não há vaga de contexto
-       WebGL sobrando — ou que a pessoa pediu menos movimento. Nesses
-       casos o plano B em CSS entra direto, empilhando a própria imagem
-       em profundidade: continua sendo a marca, e continua tendo volume. */
     if (this.opts.forceFallback) {
       this._fallback();
       return false;
@@ -488,7 +403,6 @@ export class Logo3D {
     this.quad = fullscreenQuad(gl);
     this.aspect = source.sdf.aspect;
 
-    // --- textura do campo de distância (R16F, filtragem linear) ---
     const { data, w, h } = source.sdf;
     const half = new Uint16Array(data.length);
     for (let i = 0; i < data.length; i++) half[i] = toHalf(data[i]);
@@ -496,9 +410,6 @@ export class Logo3D {
     this.sdfTex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, this.sdfTex);
 
-    // Uma linha do campo de distância tem largura×2 bytes, que quase nunca
-    // é múltiplo de 4. Sem baixar o alinhamento, o WebGL lê cada linha
-    // deslocada e a silhueta sai como um retângulo em vez da marca.
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.R16F, w, h, 0, gl.RED, gl.HALF_FLOAT, half);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
@@ -507,7 +418,6 @@ export class Logo3D {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-    // --- textura de cor: os pixels originais da logo ---
     this.colTex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, this.colTex);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
@@ -531,7 +441,6 @@ export class Logo3D {
     return true;
   }
 
-  /* Plano B sem WebGL: a mesma imagem empilhada em profundidade. */
   _fallback() {
     const host = this.canvas.parentElement;
     if (!host || host.querySelector('.logo-css3d')) return;
@@ -587,9 +496,6 @@ export class Logo3D {
     };
     document.addEventListener('visibilitychange', this._onVisibility);
 
-    /* Se o navegador tomar o contexto de volta, a marca não pode virar um
-       retângulo vazio: o canvas sai de cena e as cópias empilhadas em CSS
-       assumem — continua sendo a marca, e continua tendo volume. */
     this._onLost = (ev) => {
       ev.preventDefault();
       this.stop();
@@ -601,11 +507,6 @@ export class Logo3D {
 
   resize() {
     if (!this.gl) return;
-    /* Teto de resolução. Numa tela de celular com dpr 3, desenhar a marca
-       em tamanho real custa nove vezes mais pixels do que em dpr 1.
-       Peças pequenas não sentem falta; a marca grande da tela Hoje sim,
-       porque o desenho tem hachuras finas e texto — e é ela que pede
-       `sharp`, subindo o teto. */
     const cap = this.opts.sharp
       ? Math.min(2.5, quality.dprCap + 1)
       : Math.min(2, quality.dprCap + 0.5);
@@ -640,7 +541,6 @@ export class Logo3D {
     this._elapsed = now - this._t0;
     const time = this._elapsed / 1000;
 
-    // Balanço lento contínuo + atração suave em direção ao ponteiro
     const idleY = Math.sin(time * 0.42) * 0.19 + time * this.opts.autoSpin * 0.34;
     const idleX = Math.sin(time * 0.31) * 0.11;
 
@@ -695,7 +595,6 @@ export class Logo3D {
       this.gl = null;
     }
 
-    // Canvas sem contexto sai de cena, para nunca sobrar um vazio claro
     this.canvas.style.display = 'none';
   }
 }

@@ -1,5 +1,3 @@
-/* PUT /api/environments/:id — edita ou arquiva um ambiente (§5, §7.3) */
-
 import { asUser, environmentToClient } from '../_lib/db.js';
 import { handler, json, fail, readBody, isUuid, validTimestamp } from '../_lib/http.js';
 import { requireUser } from '../_lib/auth.js';
@@ -69,7 +67,6 @@ export default handler(async (req, res) => {
 
   if (!rows.length) return fail(res, 404, 'not_found', 'Ambiente não encontrado.');
 
-  // Arquivar não apaga itens: eles voltam para a caixa de entrada
   if (patch.archivedAt) {
     await asUser(user.id, (sql) => [
       sql`update items set environment_id = null

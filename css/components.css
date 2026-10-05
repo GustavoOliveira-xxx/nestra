@@ -1,11 +1,3 @@
-/* =====================================================================
-   NESTRA — Componentes
-   Geometria reta: cantos vivos, cantoneiras desenhadas, luz que varre.
-   ===================================================================== */
-
-/* ---------------------------------------------------------------------
-   BOTÕES
-   --------------------------------------------------------------------- */
 .btn {
   --btn-bg:     var(--surface-2);
   --btn-fg:     var(--text);
@@ -39,7 +31,6 @@
     transform var(--t-base) var(--ease-spring);
 }
 
-/* Varredura de luz diagonal no hover */
 .btn::before {
   content: '';
   position: absolute;
@@ -54,7 +45,6 @@
 }
 .btn:hover::before { transform: translateX(120%); }
 
-/* Cantoneiras: dois "colchetes" que se fecham no hover */
 .btn::after {
   content: '';
   position: absolute;
@@ -122,7 +112,6 @@
 .btn--lg { padding: 15px 30px; font-size: var(--fs-md); letter-spacing: .04em; }
 .btn--block { width: 100%; }
 
-/* Botão só de ícone, perfeitamente quadrado */
 .btn--icon {
   padding: 0;
   width: 36px;
@@ -132,7 +121,6 @@
 .btn--icon.btn--sm { width: 30px; height: 30px; flex-basis: 30px; }
 .btn--icon::after { display: none; }
 
-/* Ondulação no clique, posicionada por JS */
 .ripple {
   position: absolute;
   border-radius: 50%;
@@ -143,9 +131,6 @@
   z-index: 0;
 }
 
-/* ---------------------------------------------------------------------
-   CAMPOS DE FORMULÁRIO
-   --------------------------------------------------------------------- */
 .field { position: relative; display: flex; flex-direction: column; gap: 7px; }
 
 .field__label {
@@ -202,7 +187,6 @@
 .field__hint  { font-size: var(--fs-xs); color: var(--text-3); }
 .field__error { font-size: var(--fs-xs); color: var(--danger); display: flex; gap: 6px; align-items: center; }
 
-/* Interruptor */
 .switch {
   position: relative;
   display: inline-flex;
@@ -243,7 +227,6 @@
 }
 .switch input:focus-visible ~ .switch__track { box-shadow: 0 0 0 3px var(--accent-soft); }
 
-/* Caixa de marcação */
 .check {
   position: relative;
   width: 18px;
@@ -273,13 +256,9 @@
 }
 .check[aria-checked='true']::after { transform: rotate(45deg) scale(1); }
 
-/* No instante da marcação — e só nele — a caixinha pulsa e o visto é
-   traçado. Nos itens que já estavam concluídos ele apenas está lá: a
-   animação é do gesto, não do estado. */
 .check--just-done { animation: checkPop .44s var(--ease-spring) both; }
 .check--just-done::after { animation: checkDraw .34s var(--ease-out) .06s both; }
 
-/* Controle segmentado */
 .segmented {
   display: inline-flex;
   padding: 3px;
@@ -304,9 +283,6 @@
   box-shadow: inset 0 0 0 1px var(--accent-line);
 }
 
-/* ---------------------------------------------------------------------
-   PAINÉIS E CARTÕES
-   --------------------------------------------------------------------- */
 .panel {
   position: relative;
   background:
@@ -318,7 +294,6 @@
   backdrop-filter: blur(14px);
 }
 
-/* Cantoneiras técnicas nos quatro cantos */
 .panel--bracket::before,
 .panel--bracket::after {
   content: '';
@@ -356,7 +331,6 @@
 }
 .panel__body { padding: var(--s-5); }
 
-/* Cartão com inclinação 3D reagindo ao ponteiro (aplicada por JS) */
 .tilt {
   transform-style: preserve-3d;
   transition: transform var(--t-slow) var(--ease-out), box-shadow var(--t-slow) var(--ease-out);
@@ -377,9 +351,6 @@
 }
 .tilt:hover .tilt__shine { opacity: 1; }
 
-/* ---------------------------------------------------------------------
-   ETIQUETAS, CHIPS E DISTINTIVOS
-   --------------------------------------------------------------------- */
 .chip {
   display: inline-flex;
   align-items: center;
@@ -428,9 +399,6 @@
 .badge--danger  { background: var(--danger-dim);   color: var(--danger); }
 .badge--success { background: var(--success-dim);  color: var(--success); }
 
-/* ---------------------------------------------------------------------
-   MODAIS E GAVETAS
-   --------------------------------------------------------------------- */
 .overlay {
   position: fixed;
   inset: 0;
@@ -464,7 +432,6 @@
 .overlay[data-open='true'] .modal { transform: none; opacity: 1; }
 .modal--wide { width: min(860px, 100%); }
 
-/* Fio de luz no topo do modal */
 .modal::before {
   content: '';
   position: absolute;
@@ -505,9 +472,6 @@
   .modal__foot .btn--primary { flex-basis: 100%; }
 }
 
-/* ---------------------------------------------------------------------
-   MENUS SUSPENSOS
-   --------------------------------------------------------------------- */
 .menu {
   position: absolute;
   z-index: var(--z-drawer);
@@ -538,9 +502,6 @@
 .menu__sep { height: 1px; margin: 5px 8px; background: var(--line); }
 .menu__key { margin-left: auto; font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--text-4); }
 
-/* ---------------------------------------------------------------------
-   AVISOS FLUTUANTES
-   --------------------------------------------------------------------- */
 .toasts {
   position: fixed;
   bottom: var(--s-5);
@@ -580,9 +541,6 @@
 }
 .toast__action:hover { color: var(--blue-200); }
 
-/* ---------------------------------------------------------------------
-   ESTADOS DE CARREGAMENTO E VAZIO
-   --------------------------------------------------------------------- */
 .skeleton {
   background: linear-gradient(90deg, var(--surface) 25%, var(--surface-3) 50%, var(--surface) 75%);
   background-size: 220% 100%;
@@ -610,7 +568,6 @@
 .empty__title { font-family: var(--font-display); font-size: var(--fs-md); color: var(--text-2); }
 .empty__text  { font-size: var(--fs-sm); color: var(--text-3); max-width: 42ch; }
 
-/* Barra de progresso */
 .progress {
   height: 3px;
   background: var(--surface-3);
@@ -624,7 +581,6 @@
   transition: width var(--t-slow) var(--ease-out);
 }
 
-/* Dica de contexto */
 .tip {
   position: relative;
 }
@@ -648,7 +604,6 @@
 }
 .tip:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-/* Divisor com rótulo */
 .divider-label {
   display: flex;
   align-items: center;
@@ -667,11 +622,6 @@
   background: linear-gradient(90deg, transparent, var(--line-2), transparent);
 }
 
-/* ---------------------------------------------------------------------
-   LOGO EM 3D — plano B sem WebGL
-   Empilha cópias da imagem original em profundidade. Continua sendo a
-   mesma logo: nada é redesenhado.
-   --------------------------------------------------------------------- */
 .logo-css3d {
   position: absolute;
   inset: 0;

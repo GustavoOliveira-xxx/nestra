@@ -1,14 +1,10 @@
-/* GET /api/auth/me — devolve a sessão atual com os dados do usuário. */
+import {
+  asUser, environmentToClient, itemToClient, prefsToClient,
+  meetingToClient, agendaToClient,
+} from './db.js';
 
-import { asUser, environmentToClient, itemToClient, prefsToClient } from '../_lib/db.js';
-import { handler, json } from '../_lib/http.js';
-import { requireUser } from '../_lib/auth.js';
-
-export default handler(async (req, res) => {
-  const user = await requireUser(req, res);
-  if (!user) return;
-
-  const [envs, items, prefs, notifications] = await asUser(user.id, (sql) => [
+export async function accountState(user) {
+  const [envs, items, prefs, notifications, meetings, agendas] = await asUser(user.id, (sql) => [
     sql`select * from environments where owner_id = ${user.id} order by position`,
     sql`
       select i.*, coalesce(
@@ -23,18 +19,27 @@ export default handler(async (req, res) => {
     `,
     sql`select * from user_preferences where user_id = ${user.id}`,
     sql`select * from notification_preferences where user_id = ${user.id}`,
+    sql`select * from meetings where owner_id = ${user.id} order by created_at`,
+    sql`
+      select * from meeting_agendas
+       where owner_id = ${user.id} and occurs_on > current_date - 90
+       order by occurs_on desc
+       limit 400
+    `,
   ]);
 
-  json(res, 200, {
+  return {
     user: {
       id: user.id,
       email: user.email,
-      displayName: user.displayName,
+      displayName: user.displayName ?? user.display_name,
       timezone: user.timezone,
       locale: user.locale,
     },
     preferences: prefsToClient(prefs[0], notifications[0]),
     environments: envs.map(environmentToClient),
     items: items.map(itemToClient),
-  });
-});
+    meetings: meetings.map(meetingToClient),
+    agendas: agendas.map(agendaToClient),
+  };
+}

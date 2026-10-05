@@ -1,10 +1,3 @@
-/* =====================================================================
-   NESTRA — Telas
-   ===================================================================== */
-
-/* =====================================================================
-   1. PÁGINA DE ENTRADA
-   ===================================================================== */
 .landing { position: relative; }
 
 .hero {
@@ -27,7 +20,6 @@
   max-width: 880px;
 }
 
-/* A marca em 3D domina a abertura */
 .hero__logo {
   width: min(320px, 54vw);
   aspect-ratio: 1;
@@ -78,7 +70,6 @@
 
 .hero__cta { display: flex; gap: var(--s-3); flex-wrap: wrap; justify-content: center; margin-top: var(--s-2); }
 
-/* Demonstração da captura, viva, na própria dobra inicial */
 .hero__demo {
   width: min(720px, 100%);
   margin-top: var(--s-4);
@@ -148,7 +139,6 @@
   background: linear-gradient(180deg, var(--accent), transparent);
 }
 
-/* --- Seções da página de entrada --- */
 .section {
   position: relative;
   padding: var(--s-11) var(--s-5);
@@ -189,7 +179,6 @@
 .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(268px, 1fr)); gap: var(--s-4); }
 .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--s-4); }
 
-/* Cartão de recurso, com inclinação 3D */
 .feature {
   position: relative;
   padding: var(--s-6);
@@ -234,7 +223,6 @@
 .feature__title { font-family: var(--font-display); font-size: var(--fs-lg); font-weight: 600; }
 .feature__text  { font-size: var(--fs-sm); color: var(--text-2); line-height: 1.66; }
 
-/* Tipos de item, em quatro colunas com cor própria */
 .type-card {
   position: relative;
   padding: var(--s-5);
@@ -254,7 +242,6 @@
 .type-card__def { font-size: var(--fs-sm); color: var(--text-2); }
 .type-card__ex  { margin-top: var(--s-3); font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-3); font-style: italic; }
 
-/* Faixa de números */
 .stats-strip {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -279,7 +266,6 @@
 }
 .stat__label { font-family: var(--font-mono); font-size: var(--fs-micro); letter-spacing: .14em; text-transform: uppercase; color: var(--text-4); }
 
-/* Rodapé */
 .footer {
   border-top: 1px solid var(--line);
   padding: var(--s-8) var(--s-5) var(--s-6);
@@ -315,9 +301,6 @@
   color: var(--text-4);
 }
 
-/* =====================================================================
-   2. ACESSO (cadastro / login)
-   ===================================================================== */
 .auth {
   min-height: 100dvh;
   display: grid;
@@ -339,7 +322,6 @@
 .auth__form  { display: flex; flex-direction: column; gap: var(--s-4); }
 .auth__foot  { margin-top: var(--s-5); font-size: var(--fs-sm); color: var(--text-3); text-align: center; }
 
-/* Onde a conta vai morar — o aviso é parte do formulário, não rodapé */
 .auth__note {
   display: flex;
   align-items: flex-start;
@@ -362,7 +344,6 @@
 .auth__note--warn { border-left-color: var(--overdue); background: var(--overdue-dim); }
 .auth__note--warn svg { color: var(--overdue); }
 
-/* Força da senha: quatro blocos retos */
 .pw-meter { display: flex; gap: 3px; margin-top: 6px; }
 .pw-meter i {
   flex: 1;
@@ -376,9 +357,6 @@
 .pw-meter[data-score='3'] i:nth-child(-n+3) { background: var(--blue-400); }
 .pw-meter[data-score='4'] i                 { background: var(--success); }
 
-/* =====================================================================
-   3. CAPTURA RÁPIDA (§7.1) — o coração do produto
-   ===================================================================== */
 .capture {
   position: relative;
   margin-bottom: var(--s-6);
@@ -425,13 +403,6 @@
 
 .capture__send { flex: 0 0 auto; margin-top: 1px; }
 
-/* ---------------------------------------------------------------------
-   DITADO
-
-   O microfone fica ao lado do botão de registrar, discreto enquanto
-   está parado. Ligado, ele pulsa — e a caixa inteira ganha uma borda
-   viva, para não restar dúvida de que o aparelho está ouvindo.
-   --------------------------------------------------------------------- */
 .capture__mic { flex: 0 0 auto; margin-top: 1px; }
 
 .capture__mic[data-on='true'] {
@@ -440,7 +411,6 @@
   background: color-mix(in srgb, var(--danger) 12%, transparent);
 }
 
-/* O anel que se abre em volta do microfone, como uma onda de som */
 .capture__mic[data-on='true']::after {
   content: '';
   position: absolute;
@@ -460,7 +430,6 @@
   box-shadow: var(--shadow-2), 0 0 0 1px color-mix(in srgb, var(--danger) 26%, transparent);
 }
 
-/* Uma faixa correndo no topo da caixa: o sinal de que está gravando */
 .capture[data-listening='true']::after {
   content: '';
   position: absolute;
@@ -480,7 +449,6 @@
 [data-motion='reduced'] .capture__mic[data-on='true']::after,
 [data-motion='reduced'] .capture[data-listening='true']::after { animation: none; }
 
-/* O que o sistema entendeu da frase, antes de gravar (§7.1) */
 .capture__parse {
   display: flex;
   align-items: center;
@@ -522,9 +490,6 @@
 }
 .capture__hints kbd { margin: 0 2px; }
 
-/* =====================================================================
-   4. LISTA DE ITENS
-   ===================================================================== */
 .item-group { margin-bottom: var(--s-7); }
 
 .group-head {
@@ -581,7 +546,6 @@
 }
 .item:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
-/* Faixa de tipo à esquerda */
 .item__type {
   position: absolute;
   left: -1px; top: -1px; bottom: -1px;
@@ -632,7 +596,6 @@
 .item__date--overdue { color: var(--overdue); font-weight: 600; }
 .item__date--today   { color: var(--blue-300); font-weight: 600; }
 
-/* Prioridade alta ganha marca própria, não só cor (§22) */
 .item__prio {
   display: inline-flex;
   align-items: center;
@@ -660,7 +623,6 @@
   .item__actions { opacity: 1; transform: none; }
 }
 
-/* Estados */
 .item[data-status='done'] { background: color-mix(in srgb, var(--surface) 60%, transparent); }
 .item[data-status='done'] .item__title { color: var(--text-4); }
 .item[data-status='done'] .item__title::after { animation: strikeThrough .34s var(--ease-out) forwards; }
@@ -681,11 +643,8 @@
 .item--completing { animation: completeAway .5s var(--ease-out) forwards; }
 .item--removing   { animation: dropOut .34s var(--ease-in-out) forwards; overflow: hidden; }
 
-/* Concluir sem sumir da lista: a linha assenta no lugar, em vez de
-   recuar para fora dele. É o mesmo gesto, na medida do que fica. */
 .item--settled { animation: completeSettle .42s var(--ease-out) both; }
 
-/* Varredura de luz percorrendo a linha recém-concluída */
 .item__sweep {
   position: absolute;
   inset: 0;
@@ -707,7 +666,6 @@
   animation: doneSweep .62s var(--ease-out) forwards;
 }
 
-/* Progresso do checklist embutido na linha */
 .item__checkline {
   display: flex;
   align-items: center;
@@ -718,9 +676,6 @@
 }
 .item__checkline .progress { width: 54px; height: 2px; }
 
-/* =====================================================================
-   5. AMBIENTES (§7.3)
-   ===================================================================== */
 .env-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(272px, 1fr)); gap: var(--s-4); }
 
 .env-card {
@@ -762,9 +717,6 @@
 }
 .env-card:hover::after { opacity: 1; }
 
-/* Alvo de abertura separado do botão de editar. Evita controles
-   interativos aninhados (inválidos em HTML e inconsistentes no toque) e
-   deixa o cartão inteiro clicável sem cobrir a engrenagem. */
 .env-card__open {
   position: absolute;
   inset: 0;
@@ -799,7 +751,6 @@
 .env-stat__l { font-family: var(--font-mono); font-size: var(--fs-micro); letter-spacing: .1em; text-transform: uppercase; color: var(--text-4); }
 .env-stat--overdue .env-stat__n { color: var(--overdue); }
 
-/* Cartão de criar ambiente */
 .env-card--new {
   align-items: center;
   justify-content: center;
@@ -812,7 +763,6 @@
 .env-card--new::before { display: none; }
 .env-card--new:hover { color: var(--blue-300); border-color: var(--accent-line); background: var(--accent-soft); }
 
-/* Seletor de cor: quadrados, coerente com a linguagem visual */
 .color-picker { display: flex; gap: 6px; flex-wrap: wrap; }
 .color-dot {
   width: 26px; height: 26px;
@@ -842,9 +792,6 @@
 .icon-opt:hover { border-color: var(--line-hi); color: var(--text); }
 .icon-opt[aria-pressed='true'] { border-color: var(--accent); background: var(--accent-soft); color: var(--blue-300); }
 
-/* =====================================================================
-   6. DETALHE DO ITEM (§7.4)
-   ===================================================================== */
 .detail { display: flex; flex-direction: column; gap: var(--s-5); }
 
 .detail__raw-input {
@@ -893,7 +840,6 @@
 .checklist__drag { color: var(--text-4); cursor: grab; opacity: 0; transition: opacity var(--t-fast) var(--ease-out); }
 .checklist__row:hover .checklist__drag { opacity: 1; }
 
-/* Histórico do item */
 .timeline { display: flex; flex-direction: column; gap: 0; padding-left: var(--s-3); }
 .timeline__row {
   position: relative;
@@ -918,9 +864,6 @@
 .timeline__row:first-child::before { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 10px var(--accent-glow); }
 .timeline__when { margin-left: auto; font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--text-4); }
 
-/* =====================================================================
-   7. CONFIGURAÇÕES
-   ===================================================================== */
 .settings-nav { display: flex; gap: 2px; flex-wrap: wrap; margin-bottom: var(--s-6); border-bottom: 1px solid var(--line); }
 .settings-nav__tab {
   position: relative;
@@ -966,9 +909,6 @@
 }
 .danger-zone h4 { color: var(--danger); margin-bottom: var(--s-2); }
 
-/* =====================================================================
-   8. BUSCA E PALETA DE COMANDOS
-   ===================================================================== */
 .palette {
   position: fixed;
   inset: 0;
@@ -1033,9 +973,6 @@
   font-family: var(--font-mono);
 }
 
-/* =====================================================================
-   9. FILTROS
-   ===================================================================== */
 .filters {
   display: flex;
   gap: var(--s-2);

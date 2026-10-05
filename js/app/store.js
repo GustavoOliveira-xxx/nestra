@@ -1,12 +1,3 @@
-/* =====================================================================
-   NESTRA — Estado da aplicação
-
-   Funciona offline por padrão e sincroniza com o Neon quando existe uma
-   API publicada. Cada conta guarda seus dados numa chave própria: nunca
-   há como uma conta enxergar a outra pela interface (§19). A proteção
-   real, porém, mora no servidor e no banco — o front só organiza.
-   ===================================================================== */
-
 import { api, syncQueue } from './api.js';
 import { todayIn, toISODate } from './nlp.js';
 
@@ -15,12 +6,9 @@ const K = {
   session: 'nestra:session',
   data: (userId) => `nestra:data:${userId}`,
   lastEnv: 'nestra:last-env',
-  // Quem entrou por último pelo servidor. Serve para abrir o app já com
-  // conteúdo quando o celular está sem rede no momento da abertura.
   remoteUser: 'nestra:remote-user',
 };
 
-/* Intervalo entre buscas automáticas enquanto a aba está à vista. */
 const PULL_EVERY = 15000;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Math.random().toString(36).slice(2));
@@ -35,9 +23,6 @@ const read = (key, fallback) => {
 };
 const write = (key, value) => localStorage.setItem(key, JSON.stringify(value));
 
-/* ---------------------------------------------------------------------
-   Senhas — nunca em texto puro, nem no modo local (§20)
-   --------------------------------------------------------------------- */
 async function hashPassword(password, saltHex) {
   const enc = new TextEncoder();
   const salt = saltHex
@@ -56,9 +41,6 @@ async function hashPassword(password, saltHex) {
   return { hash: toHex(bits), salt: toHex(salt) };
 }
 
-/* ---------------------------------------------------------------------
-   Preferências padrão (§21: valores sensatos, sem questionário)
-   --------------------------------------------------------------------- */
 export const DEFAULT_PREFS = {
   theme: 'nestra-noturno',
   accent: '#2F6BFF',
@@ -87,7 +69,6 @@ export const DEFAULT_PREFS = {
   locale: 'pt-BR',
 };
 
-/* Ambientes sugeridos — apenas exemplos editáveis (§7.3, §29) */
 export const SUGGESTED_ENVIRONMENTS = [
   { name: 'Trabalho', color: '#2F6BFF', icon: 'briefcase', description: 'Demandas, respostas e prazos.' },
   { name: 'Estudos',  color: '#4FD8FF', icon: 'book',      description: 'Provas, leituras e entregas.' },
@@ -99,7 +80,13 @@ const slugify = (s) =>
     .toLowerCase().replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '').slice(0, 40) || 'ambiente';
 
-/* ===================================================================== */
+export const weekdayOf = (iso) => new Date(iso + 'T12:00:00Z').getUTCDay();
+
+export function shiftDay(iso, days) {
+  const d = new Date(iso + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
 
 class Store extends EventTarget {
   constructor() {
@@ -111,6 +98,8 @@ class Store extends EventTarget {
       items: [],
       tags: [],
       events: [],
+      meetings: [],
+      agendas: [],
       syncState: 'local',
       mode: 'local',
     };
@@ -121,8 +110,6 @@ class Store extends EventTarget {
     if (type !== 'change') this.dispatchEvent(new CustomEvent('change', { detail: { type, detail } }));
   }
 
-  /* ---------------- persistência ---------------- */
-
   persist() {
     if (!this.state.user) return;
     write(K.data(this.state.user.id), {
@@ -131,6 +118,8 @@ class Store extends EventTarget {
       items: this.state.items,
       tags: this.state.tags,
       events: this.state.events.slice(-400),
+      meetings: this.state.meetings,
+      agendas: this.state.agendas,
     });
   }
 
@@ -142,16 +131,18 @@ class Store extends EventTarget {
       this.state.items = data.items || [];
       this.state.tags = data.tags || [];
       this.state.events = data.events || [];
+      this.state.meetings = data.meetings || [];
+      this.state.agendas = data.agendas || [];
     } else {
       this.state.prefs = { ...DEFAULT_PREFS };
       this.state.environments = [];
       this.state.items = [];
       this.state.tags = [];
       this.state.events = [];
+      this.state.meetings = [];
+      this.state.agendas = [];
     }
   }
-
-  /* ---------------- sessão ---------------- */
 
   async restoreSession() {
     await api.probe();
@@ -162,21 +153,14 @@ class Store extends EventTarget {
         const me = await api.get('/auth/me');
         if (me && me.user) {
           this.adoptRemote(me);
-          // O aparelho pode ter ficado offline com alterações na fila.
           this.flush();
           return true;
         }
       } catch (err) {
-        // 401 é resposta legítima: não há sessão neste aparelho.
-        // Falha de rede é outra história — vale abrir com o que ficou
-        // guardado da última vez, em vez de fingir que a conta sumiu.
         if (!err.status && this.restoreCachedRemote()) return true;
       }
     }
 
-    /* A API pode estar temporariamente fora do ar antes mesmo de `/me`.
-       Nesse caso ainda abre a última cópia conhecida, em vez de mandar
-       uma conta remota para a tela pública como se não existisse. */
     if (!api.online && this.restoreCachedRemote()) return true;
 
     const session = read(K.session, null);
@@ -189,13 +173,6 @@ class Store extends EventTarget {
     const account = accounts.find((a) => a.id === session.userId);
     if (!account) return false;
 
-    /* Sessão local, mesmo com servidor disponível.
-       Acontece com quem criou a conta antes de a API existir: a conta
-       vive só neste navegador e o servidor não a conhece. Enfileirar as
-       alterações dela seria mandar dados que voltariam recusados, então
-       o modo volta a ser local — e a barra lateral diz exatamente isso.
-       Para sincronizar entre aparelhos, basta criar a conta de novo
-       agora que existe servidor. */
     this.state.mode = 'local';
     this.state.user = { id: account.id, email: account.email, displayName: account.displayName };
     this.load(account.id);
@@ -204,13 +181,6 @@ class Store extends EventTarget {
     return true;
   }
 
-  /**
-   * Assume o que o servidor mandou como verdade e guarda uma cópia local.
-   *
-   * A cópia não é um segundo banco: é só a memória do último estado
-   * conhecido, para o app abrir com conteúdo mesmo sem rede. Na primeira
-   * resposta do servidor ela é substituída inteira.
-   */
   adoptRemote(payload) {
     this.state.mode = 'remote';
     this.state.user = payload.user;
@@ -222,6 +192,8 @@ class Store extends EventTarget {
     };
     this.state.environments = payload.environments || [];
     this.state.items = payload.items || [];
+    this.state.meetings = payload.meetings || [];
+    this.state.agendas = this.mergeAgendas(payload.agendas || []);
 
     write(K.remoteUser, payload.user);
     this.persist();
@@ -231,7 +203,6 @@ class Store extends EventTarget {
     return this.state.user;
   }
 
-  /** Abre com o último estado conhecido quando o servidor não responde. */
   restoreCachedRemote() {
     const cached = read(K.remoteUser, null);
     if (!cached || !cached.id) return false;
@@ -245,18 +216,6 @@ class Store extends EventTarget {
     return true;
   }
 
-  /**
-   * Traz do servidor o estado atual da conta.
-   *
-   * É isto que faz o mesmo login mostrar o mesmo progresso no computador
-   * e no celular: o que foi criado num aparelho aparece no outro assim
-   * que ele volta a ficar em primeiro plano.
-   *
-   * A ordem importa. Primeiro sobe o que está pendente, depois desce o
-   * que o servidor tem. Se algo da fila não subiu, a busca é adiada —
-   * baixar antes de subir apagaria da tela uma alteração ainda não
-   * enviada.
-   */
   async pull({ reason = 'auto' } = {}) {
     if (this.state.mode !== 'remote' || !this.state.user) return false;
     if (this._pulling) return this._pulling;
@@ -286,6 +245,8 @@ class Store extends EventTarget {
         };
         this.state.environments = me.environments || [];
         this.state.items = me.items || [];
+        this.state.meetings = me.meetings || [];
+        this.state.agendas = this.mergeAgendas(me.agendas || []);
 
         write(K.remoteUser, me.user);
         this.persist();
@@ -296,11 +257,11 @@ class Store extends EventTarget {
         return changed;
       } catch (err) {
         if (err.status === 401) {
-          // A sessão caiu neste aparelho: melhor pedir para entrar de novo
-          // do que continuar mostrando dados que não sincronizam mais.
           this.state.user = null;
           this.state.items = [];
           this.state.environments = [];
+          this.state.meetings = [];
+          this.state.agendas = [];
           localStorage.removeItem(K.remoteUser);
           this.emit('auth', null);
         } else {
@@ -315,12 +276,7 @@ class Store extends EventTarget {
     return this._pulling;
   }
 
-  /** Impressão barata do estado, só para saber se algo mudou de verdade. */
   signature() {
-    /* O servidor substitui o estado inteiro a cada pull. A assinatura
-       precisa observar tudo o que muda a tela, inclusive checklist,
-       preferências e perfil; checklist não altera `items.updated_at` e
-       antes chegava do outro aparelho sem provocar nenhum redesenho. */
     return JSON.stringify({
       user: this.state.user && {
         id: this.state.user.id,
@@ -338,14 +294,18 @@ class Store extends EventTarget {
         environmentId: i.environmentId, dueDate: i.dueDate, dueTime: i.dueTime,
         timePeriod: i.timePeriod, checklist: i.checklist,
       })),
+      meetings: this.state.meetings.map((m) => ({
+        id: m.id, title: m.title, template: m.template, color: m.color, weekdays: m.weekdays,
+        startTime: m.startTime, durationMinutes: m.durationMinutes,
+        environmentId: m.environmentId, archivedAt: m.archivedAt,
+      })),
+      agendas: this.state.agendas.map((a) => ({
+        id: a.id, meetingId: a.meetingId, occursOn: a.occursOn, nodes: a.nodes,
+        notes: a.notes, summary: a.summary, startedAt: a.startedAt, endedAt: a.endedAt,
+      })),
     });
   }
 
-  /**
-   * Mantém os aparelhos alinhados sem ficar batendo no servidor à toa:
-   * busca quando a aba volta ao primeiro plano, quando a conexão volta e,
-   * enquanto a aba está visível, a cada 15 segundos.
-   */
   startAutoSync() {
     if (this._autoSync) return;
     this._autoSync = true;
@@ -367,7 +327,6 @@ class Store extends EventTarget {
 
     setInterval(() => refresh('interval'), PULL_EVERY);
 
-    // O service worker avisa quando a conexão volta em segundo plano
     navigator.serviceWorker?.addEventListener?.('message', (ev) => {
       if (ev.data?.type === 'flush-queue') this.flush();
     });
@@ -386,7 +345,6 @@ class Store extends EventTarget {
     }
 
     const accounts = read(K.accounts, []);
-    // §18: mensagem neutra, sem revelar se o e-mail já existe
     if (accounts.some((a) => a.email === email)) {
       throw new Error('Não foi possível criar a conta com esses dados. Tente recuperar o acesso.');
     }
@@ -408,6 +366,8 @@ class Store extends EventTarget {
     this.state.environments = [];
     this.state.items = [];
     this.state.events = [];
+    this.state.meetings = [];
+    this.state.agendas = [];
     this.openSession(account.id);
     this.emit('auth', this.state.user);
     return this.state.user;
@@ -423,7 +383,6 @@ class Store extends EventTarget {
 
     const accounts = read(K.accounts, []);
     const account = accounts.find((a) => a.email === email);
-    // Mesma mensagem para e-mail inexistente e senha errada (§20)
     const generic = 'E-mail ou senha incorretos.';
     if (!account) throw new Error(generic);
 
@@ -443,19 +402,18 @@ class Store extends EventTarget {
 
   async logout() {
     if (api.online) {
-      // O que ainda não subiu sobe agora: sair não pode perder trabalho.
-      try { await this.flush(); } catch { /* a fila fica para a próxima */ }
-      try { await api.post('/auth/logout', {}); } catch { /* segue mesmo assim */ }
+      try { await this.flush(); } catch {  }
+      try { await api.post('/auth/logout', {}); } catch {  }
     }
     localStorage.removeItem(K.session);
     localStorage.removeItem(K.remoteUser);
     this.state.user = null;
     this.state.items = [];
     this.state.environments = [];
+    this.state.meetings = [];
+    this.state.agendas = [];
     this.emit('auth', null);
   }
-
-  /* ---------------- ambientes ---------------- */
 
   createEnvironment({ name, color, icon, description, isDefault }) {
     const env = {
@@ -497,13 +455,9 @@ class Store extends EventTarget {
     env.archivedAt = new Date().toISOString();
     env.isDefault = false;
 
-    /* Um ambiente arquivado não pode continuar recebendo capturas por ser
-       o padrão antigo. Sem esta limpeza, o item existia, mas ficava preso
-       num ambiente que já não aparece na navegação. */
     const wasDefault = this.state.prefs.defaultEnvironmentId === id;
     if (wasDefault) this.state.prefs.defaultEnvironmentId = null;
 
-    // os itens não somem junto: voltam para a caixa de entrada
     this.state.items.forEach((i) => {
       if (i.environmentId === id) i.environmentId = null;
     });
@@ -516,13 +470,9 @@ class Store extends EventTarget {
 
   seedEnvironments() {
     if (this.state.environments.length) return;
-    // Sugestões não escolhem contexto pelo usuário. Sem indicação na
-    // frase, uma captura nova começa na caixa de entrada.
     SUGGESTED_ENVIRONMENTS.forEach((e) =>
       this.createEnvironment({ ...e, isDefault: false }));
   }
-
-  /* ---------------- itens ---------------- */
 
   createItem(data) {
     const now = new Date().toISOString();
@@ -532,7 +482,6 @@ class Store extends EventTarget {
       : null;
     const item = {
       id: uid(),
-      // Nunca deixa uma captura cair num ambiente removido ou desconhecido.
       environmentId: targetEnvironment?.id || null,
       type: data.type || 'task',
       title: String(data.title || '').trim().slice(0, 280),
@@ -599,7 +548,6 @@ class Store extends EventTarget {
     return this.updateItem(id, { status: item.status === 'done' ? 'pending' : 'done' });
   }
 
-  /** Adia por N dias a partir de hoje, ou para uma data específica. */
   snoozeItem(id, days = 1, isoDate = null) {
     const tz = this.state.prefs.timezone;
     let target = isoDate;
@@ -611,7 +559,6 @@ class Store extends EventTarget {
     return this.updateItem(id, { dueDate: target, status: 'pending' });
   }
 
-  /** Exclusão passa pela lixeira antes de ser definitiva (§24). */
   trashItem(id) {
     const item = this.state.items.find((i) => i.id === id);
     if (!item) return null;
@@ -650,13 +597,9 @@ class Store extends EventTarget {
     const removed = this.state.items.filter((i) => i.deletedAt).map((i) => i.id);
     this.state.items = this.state.items.filter((i) => !i.deletedAt);
     this.persist();
-    // Esvaziar também precisa acontecer no banco. Só apagar a cópia local
-    // fazia todos os itens reaparecerem no próximo aparelho ou pull.
     removed.forEach((id) => this.queue('DELETE', `/items/${id}?purge=1`));
     this.emit('items', { action: 'purge' });
   }
-
-  /* ---------------- checklists (§7.4) ---------------- */
 
   addChecklistItem(itemId, title, options = {}) {
     const item = this.state.items.find((i) => i.id === itemId);
@@ -699,7 +642,133 @@ class Store extends EventTarget {
     this.emit('items', { action: 'checklist', item });
   }
 
-  /* ---------------- preferências ---------------- */
+  get activeMeetings() {
+    return this.state.meetings
+      .filter((m) => !m.archivedAt)
+      .sort((a, b) => (a.startTime || '99:99').localeCompare(b.startTime || '99:99') ||
+        a.title.localeCompare(b.title));
+  }
+
+  meetingById(id) {
+    return this.state.meetings.find((m) => m.id === id) || null;
+  }
+
+  saveMeeting(data) {
+    const now = new Date().toISOString();
+    const existing = data.id ? this.meetingById(data.id) : null;
+    const meeting = existing || { id: uid(), createdAt: now, archivedAt: null };
+    Object.assign(meeting, {
+      title: String(data.title ?? meeting.title ?? '').trim().slice(0, 80),
+      template: data.template ?? meeting.template ?? 'free',
+      color: data.color ?? meeting.color ?? '#2F6BFF',
+      weekdays: [...new Set((data.weekdays ?? meeting.weekdays ?? [1, 2, 3, 4, 5]).map(Number))].sort(),
+      startTime: data.startTime === undefined ? (meeting.startTime ?? null) : (data.startTime || null),
+      durationMinutes: Number(data.durationMinutes ?? meeting.durationMinutes ?? 15),
+      environmentId: data.environmentId === undefined ? (meeting.environmentId ?? null) : (data.environmentId || null),
+      archivedAt: data.archivedAt === undefined ? meeting.archivedAt : data.archivedAt,
+      updatedAt: now,
+    });
+    if (!meeting.title) return null;
+    if (!existing) this.state.meetings.push(meeting);
+    this.persist();
+    this.queue('POST', '/meetings', { op: 'saveMeeting', meeting }, 'meeting:' + meeting.id);
+    this.emit('meetings', { action: existing ? 'update' : 'create', meeting });
+    return meeting;
+  }
+
+  archiveMeeting(id) {
+    return this.saveMeeting({ id, archivedAt: new Date().toISOString() });
+  }
+
+  meetingsOn(iso) {
+    const weekday = weekdayOf(iso);
+    return this.activeMeetings.filter((m) => m.weekdays.includes(weekday));
+  }
+
+  nextOccurrence(meeting, fromIso) {
+    if (!meeting?.weekdays?.length) return fromIso;
+    let iso = fromIso;
+    for (let i = 0; i < 8; i++) {
+      if (meeting.weekdays.includes(weekdayOf(iso))) return iso;
+      iso = shiftDay(iso, 1);
+    }
+    return fromIso;
+  }
+
+  previousOccurrence(meeting, beforeIso) {
+    if (!meeting?.weekdays?.length) return shiftDay(beforeIso, -1);
+    let iso = shiftDay(beforeIso, -1);
+    for (let i = 0; i < 8; i++) {
+      if (meeting.weekdays.includes(weekdayOf(iso))) return iso;
+      iso = shiftDay(iso, -1);
+    }
+    return shiftDay(beforeIso, -1);
+  }
+
+  agendaFor(meetingId, iso) {
+    return this.state.agendas.find((a) => a.meetingId === meetingId && a.occursOn === iso) || null;
+  }
+
+  lastAgendaBefore(meetingId, iso) {
+    return this.state.agendas
+      .filter((a) => a.meetingId === meetingId && a.occursOn < iso && a.nodes.some((n) => n.kind !== 'root'))
+      .sort((a, b) => b.occursOn.localeCompare(a.occursOn))[0] || null;
+  }
+
+  agendasOf(meetingId) {
+    return this.state.agendas
+      .filter((a) => a.meetingId === meetingId)
+      .sort((a, b) => b.occursOn.localeCompare(a.occursOn));
+  }
+
+  openAgenda(meetingId, iso) {
+    const found = this.agendaFor(meetingId, iso);
+    if (found) return found;
+    const meeting = this.meetingById(meetingId);
+    return {
+      id: uid(),
+      meetingId,
+      occursOn: iso,
+      nodes: [{ id: uid(), parentId: null, kind: 'root', text: meeting?.title || 'Reunião', done: false, order: 0 }],
+      notes: null,
+      summary: null,
+      startedAt: null,
+      endedAt: null,
+      draft: true,
+    };
+  }
+
+  saveAgenda(agenda) {
+    const now = new Date().toISOString();
+    delete agenda.draft;
+    agenda.updatedAt = now;
+    if (!this.state.agendas.includes(agenda)) {
+      const index = this.state.agendas.findIndex((a) => a.meetingId === agenda.meetingId && a.occursOn === agenda.occursOn);
+      if (index >= 0) this.state.agendas[index] = agenda;
+      else this.state.agendas.push(agenda);
+    }
+    this.persist();
+    const { draft, ...body } = agenda;
+    this.queue('POST', '/meetings', { op: 'saveAgenda', agenda: body }, 'agenda:' + agenda.id);
+    this.emit('meetings', { action: 'agenda', agenda });
+    return agenda;
+  }
+
+  deleteAgenda(id) {
+    this.state.agendas = this.state.agendas.filter((a) => a.id !== id);
+    this.persist();
+    this.queue('POST', '/meetings', { op: 'deleteAgenda', id }, 'agenda:' + id);
+    this.emit('meetings', { action: 'agenda-delete' });
+  }
+
+  mergeAgendas(remote) {
+    const pending = new Set(syncQueue.read()
+      .filter((op) => op.body?.op === 'saveAgenda')
+      .map((op) => op.body.agenda.id));
+    const local = this.state.agendas.filter((a) => pending.has(a.id));
+    const keep = remote.filter((r) => !local.some((l) => l.meetingId === r.meetingId && l.occursOn === r.occursOn));
+    return [...keep, ...local];
+  }
 
   setPrefs(patch) {
     Object.assign(this.state.prefs, patch);
@@ -722,8 +791,6 @@ class Store extends EventTarget {
     return this.state.user;
   }
 
-  /* ---------------- histórico ---------------- */
-
   logEvent(itemId, action, metadata = {}) {
     this.state.events.push({
       id: uid(),
@@ -741,12 +808,10 @@ class Store extends EventTarget {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
-  /* ---------------- sincronização ---------------- */
-
-  queue(method, path, body) {
+  queue(method, path, body, coalesce = null) {
     if (this.state.mode !== 'remote') return;
     syncQueue.setOwner(this.state.user?.id);
-    syncQueue.push({ method, path, body });
+    syncQueue.push({ method, path, body, coalesce });
     this.setSync('syncing');
     clearTimeout(this._flushTimer);
     this._flushTimer = setTimeout(() => this.flush(), 900);
@@ -771,8 +836,6 @@ class Store extends EventTarget {
     this.state.syncState = state;
     this.emit('sync', state);
   }
-
-  /* ---------------- seletores ---------------- */
 
   get live() {
     return this.state.items.filter((i) => !i.deletedAt && i.status !== 'archived');
@@ -808,10 +871,6 @@ class Store extends EventTarget {
     return item.dueDate < toISODate(todayIn(this.state.prefs.timezone));
   }
 
-  /**
-   * A composição da tela "Hoje" (§7.2), na ordem recomendada:
-   * atrasados, para hoje, alta prioridade e capturas recentes.
-   */
   todayBuckets() {
     const tz = this.state.prefs.timezone;
     const today = toISODate(todayIn(tz));
@@ -885,25 +944,6 @@ class Store extends EventTarget {
       .slice(0, 24);
   }
 
-  /* ---------------- importação ---------------- */
-
-  /**
-   * Traz de volta um export do Nestra.
-   *
-   * Existe porque exportar sem poder importar não é levar os dados
-   * embora — é só olhar para eles. E há um caso em que isso deixa de ser
-   * teórico: os dados ficam guardados por endereço, então mudar o site de
-   * lugar (do GitHub Pages para um domínio publicado, por exemplo) abre
-   * um espaço vazio, com tudo intacto no endereço antigo. É este método
-   * que atravessa essa ponte.
-   *
-   * Nada é sobrescrito. Os identificadores originais são preservados, e
-   * o que já existe por aqui é ignorado — importar o mesmo arquivo duas
-   * vezes não duplica nada.
-   *
-   * As preferências ficam de fora de propósito: quem importa quer os
-   * ambientes e os itens de volta, não trocar o tema no meio do caminho.
-   */
   importData(raw) {
     let data;
     try {
@@ -927,21 +967,14 @@ class Store extends EventTarget {
     const itensAqui = new Set(this.state.items.map((i) => i.id));
     const agora = new Date().toISOString();
 
-    /* Ambientes iguais de nome, vindos de contas diferentes, têm
-       identificadores diferentes. Sem casar por nome, importar numa conta
-       recém-criada produziria dois "Trabalho", dois "Estudos" e dois
-       "Pessoal" — os de exemplo e os do arquivo. Aqui o que chega é
-       reconhecido pelo nome e os itens são religados ao ambiente que já
-       existe. */
     const porNome = new Map(
       this.state.environments.map((e) => [String(e.name).trim().toLowerCase(), e.id]),
     );
-    const religar = new Map();   // id do arquivo → id daqui
+    const religar = new Map();
 
     let ambientes = 0;
     let itens = 0;
 
-    /* --- ambientes --- */
     envsIn.forEach((e, i) => {
       if (!e || !e.id || envsAqui.has(e.id)) return;
 
@@ -960,7 +993,7 @@ class Store extends EventTarget {
         icon: String(e.icon || 'layers').slice(0, 30),
         description: e.description || null,
         position: Number.isInteger(e.position) ? e.position : this.state.environments.length + i,
-        isDefault: false,          // o padrão é uma escolha local, não vem no arquivo
+        isDefault: false,
         archivedAt: e.archivedAt || null,
         createdAt: e.createdAt || agora,
       };
@@ -972,15 +1005,11 @@ class Store extends EventTarget {
       ambientes++;
     });
 
-    /* --- itens --- */
     itemsIn.forEach((i) => {
       if (!i || !i.id || itensAqui.has(i.id)) return;
       const titulo = String(i.title || '').trim();
       if (!titulo) return;
 
-      /* Segue o religamento por nome; e um item que aponta para um
-         ambiente que não veio no arquivo iria parar num lugar invisível,
-         então cai na caixa de entrada, onde a pessoa vê e decide. */
       const alvo = religar.get(i.environmentId) || i.environmentId;
       const ambienteValido = alvo && envsAqui.has(alvo);
 
@@ -1027,7 +1056,6 @@ class Store extends EventTarget {
       itens++;
     });
 
-    // ordem de sempre: o mais recente primeiro
     this.state.items.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
 
     this.persist();
@@ -1038,8 +1066,6 @@ class Store extends EventTarget {
     return { ambientes, itens, ignorados };
   }
 
-  /* ---------------- exportação (§18) ---------------- */
-
   exportJSON() {
     return JSON.stringify({
       exportedAt: new Date().toISOString(),
@@ -1048,6 +1074,8 @@ class Store extends EventTarget {
       preferences: this.state.prefs,
       environments: this.state.environments,
       items: this.state.items,
+      meetings: this.state.meetings,
+      agendas: this.state.agendas,
     }, null, 2);
   }
 
@@ -1070,7 +1098,6 @@ class Store extends EventTarget {
     return [cols.join(','), ...rows].join('\n');
   }
 
-  /** §18: exclusão da conta no servidor e remoção efetiva da cópia local. */
   async deleteAccount() {
     const id = this.state.user?.id;
     if (!id) return;
@@ -1092,6 +1119,8 @@ class Store extends EventTarget {
     this.state.user = null;
     this.state.items = [];
     this.state.environments = [];
+    this.state.meetings = [];
+    this.state.agendas = [];
     this.emit('auth', null);
   }
 }

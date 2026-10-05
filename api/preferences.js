@@ -1,5 +1,3 @@
-/* PUT /api/preferences — §21 preferências individuais */
-
 import { asUser, oneAsUser, prefsToClient } from './_lib/db.js';
 import { handler, json, fail, readBody, isUuid } from './_lib/http.js';
 import { requireUser } from './_lib/auth.js';
@@ -117,9 +115,6 @@ export default handler(async (req, res) => {
     `,
   ]);
 
-  /* Mantém o indicador legado do ambiente alinhado à preferência usada
-     de fato pelas capturas. Assim nenhum aparelho mostra um padrão e
-     envia os itens para outro lugar. */
   if ('defaultEnvironmentId' in patch) {
     await asUser(user.id, (sql) => [
       sql`update environments

@@ -1,11 +1,3 @@
-/* =====================================================================
-   NESTRA — Utilitários de interface
-   Ícones, avisos, modais e ajudantes de DOM.
-   ===================================================================== */
-
-/* ---------------------------------------------------------------------
-   Ícones — traço de 1.6, cantos retos, coerentes com a linguagem visual
-   --------------------------------------------------------------------- */
 const PATHS = {
   check:     '<polyline points="20 6 9 17 4 12"/>',
   plus:      '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
@@ -51,8 +43,6 @@ const PATHS = {
 
 export function icon(name, size = 18, extra = '') {
   const body = PATHS[name] || PATHS.layers;
-  // Traço arredondado nas pontas e nas junções: o desenho fica mais
-  // limpo e menos duro do que com terminação reta.
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none"
     stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"
     aria-hidden="true" ${extra}>${body}</svg>`;
@@ -68,9 +58,6 @@ export const COLOR_CHOICES = [
   '#FFC96B', '#FFA23D', '#FF5F6B', '#8FB4FF',
 ];
 
-/* ---------------------------------------------------------------------
-   DOM
-   --------------------------------------------------------------------- */
 export const $  = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
@@ -84,7 +71,6 @@ export function el(tag, attrs = {}, children = []) {
     else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2).toLowerCase(), v);
     else if (k === 'dataset') Object.assign(node.dataset, v);
     else if (k === 'style' && typeof v === 'object') {
-      // Object.assign não escreve custom properties: elas precisam de setProperty
       for (const [prop, value] of Object.entries(v)) {
         if (value == null) continue;
         if (prop.startsWith('--')) node.style.setProperty(prop, String(value));
@@ -100,16 +86,12 @@ export function el(tag, attrs = {}, children = []) {
   return node;
 }
 
-/** Escapa texto do usuário antes de entrar em innerHTML. */
 export function esc(text) {
   return String(text ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-/* ---------------------------------------------------------------------
-   Avisos flutuantes
-   --------------------------------------------------------------------- */
 let toastHost = null;
 
 export function toast(message, options = {}) {
@@ -134,7 +116,6 @@ export function toast(message, options = {}) {
 
   toastHost.appendChild(node);
 
-  // Nunca mais de três avisos ao mesmo tempo: além disso vira ruído
   while (toastHost.children.length > 3) {
     toastHost.firstElementChild.remove();
   }
@@ -153,9 +134,6 @@ export function toast(message, options = {}) {
   return dismiss;
 }
 
-/* ---------------------------------------------------------------------
-   Modal genérico com foco preso e fechamento por Esc
-   --------------------------------------------------------------------- */
 export function openModal({ title, body, footer, wide = false, onClose = null }) {
   const overlay = el('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true' });
   const modal = el('div', { class: 'modal' + (wide ? ' modal--wide' : '') });
@@ -224,7 +202,6 @@ export function openModal({ title, body, footer, wide = false, onClose = null })
   return { overlay, modal, body: bodyNode, close };
 }
 
-/** Confirmação para ações destrutivas (§24). */
 export function confirmDialog({ title, message, confirmLabel = 'Confirmar', danger = true }) {
   return new Promise((resolve) => {
     let settled = false;
@@ -252,9 +229,6 @@ export function confirmDialog({ title, message, confirmLabel = 'Confirmar', dang
   });
 }
 
-/* ---------------------------------------------------------------------
-   Menu suspenso ancorado a um botão
-   --------------------------------------------------------------------- */
 export function openMenu(anchor, entries) {
   document.querySelectorAll('.menu').forEach((m) => m.remove());
 
@@ -307,9 +281,6 @@ export function openMenu(anchor, entries) {
   return close;
 }
 
-/* ---------------------------------------------------------------------
-   Download de arquivo gerado no cliente (exportação, §18)
-   --------------------------------------------------------------------- */
 export function downloadFile(filename, content, mime = 'application/json') {
   const blob = new Blob([content], { type: mime + ';charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -320,7 +291,6 @@ export function downloadFile(filename, content, mime = 'application/json') {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
-/** Iniciais para o avatar. */
 export function initials(name) {
   const parts = String(name || '?').trim().split(/\s+/);
   return ((parts[0]?.[0] || '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();

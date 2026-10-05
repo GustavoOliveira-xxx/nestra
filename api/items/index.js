@@ -1,12 +1,3 @@
-/* =====================================================================
-   GET  /api/items   — lista os itens do usuário autenticado
-   POST /api/items   — cria um item
-
-   §19: "Cada consulta e alteração deve ser filtrada pelo usuário
-   autenticado." O owner_id entra em toda cláusula E a RLS do banco
-   confere de novo.
-   ===================================================================== */
-
 import { asUser, oneAsUser, itemToClient } from '../_lib/db.js';
 import {
   handler, json, fail, readBody, isUuid, isDateOnly, isTimeOnly, validTimestamp,
@@ -46,7 +37,6 @@ export default handler(async (req, res) => {
 
   const body = await readBody(req);
 
-  // §20: validar tipos, tamanhos e formatos de entrada
   const title = String(body.title || '').trim();
   if (!title || title.length > 280) {
     return fail(res, 400, 'invalid_title', 'O título precisa ter entre 1 e 280 caracteres.');
@@ -80,16 +70,13 @@ export default handler(async (req, res) => {
   if ('needsReview' in body && typeof body.needsReview !== 'boolean') {
     return fail(res, 400, 'invalid_review', 'Valor de revisão inválido.');
   }
-  if ('parseConfidence' in body &&
+  if (body.parseConfidence != null &&
       (typeof body.parseConfidence !== 'number' || body.parseConfidence < 0 || body.parseConfidence > 1)) {
     return fail(res, 400, 'invalid_confidence', 'Confiança de interpretação inválida.');
   }
   const dueDate = body.dueDate || null;
   const dueTime = dueDate ? body.dueTime || null : null;
 
-  /* A FK garante que o ambiente exista, mas não que ele pertença à mesma
-     conta nem que ainda esteja ativo. Valida os dois antes de gravar para
-     uma captura nunca aparecer no contexto errado ou sumir num arquivado. */
   let environmentId = body.environmentId || null;
   if (environmentId) {
     if (!isUuid(environmentId)) {
@@ -130,7 +117,6 @@ export default handler(async (req, res) => {
   ]);
 
   if (!rows.length) {
-    // O id já existia: a fila de sincronização reenviou a mesma operação
     return json(res, 200, { item: null, duplicated: true });
   }
 

@@ -1,9 +1,3 @@
-/* =====================================================================
-   NESTRA — Utilitários de WebGL e matemática 3D
-   Escrito à mão, sem bibliotecas: o site precisa funcionar offline
-   (é um PWA) e não pode depender de CDN.
-   ===================================================================== */
-
 export const M4 = {
   identity() {
     return new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
@@ -95,7 +89,6 @@ export const M4 = {
   },
 };
 
-/** Compila um shader e devolve mensagens de erro legíveis. */
 export function compile(gl, type, source) {
   const sh = gl.createShader(type);
   gl.shaderSource(sh, source);
@@ -108,7 +101,6 @@ export function compile(gl, type, source) {
   return sh;
 }
 
-/** Cria um programa e já resolve uniforms e atributos por nome. */
 export function program(gl, vsSource, fsSource) {
   const vs = compile(gl, gl.VERTEX_SHADER, vsSource);
   const fs = compile(gl, gl.FRAGMENT_SHADER, fsSource);
@@ -142,7 +134,6 @@ export function program(gl, vsSource, fsSource) {
   return { p, u, a };
 }
 
-/** Quad em tela cheia — base de todo passe em fragment shader. */
 export function fullscreenQuad(gl) {
   const buf = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, buf);
@@ -150,7 +141,6 @@ export function fullscreenQuad(gl) {
   return buf;
 }
 
-/** Converte float32 para half-float (usado nas texturas R16F do SDF). */
 const _f32 = new Float32Array(1);
 const _i32 = new Int32Array(_f32.buffer);
 export function toHalf(value) {
@@ -169,10 +159,6 @@ export function toHalf(value) {
   return bits + (m & 1);
 }
 
-/**
- * Transformada de distância euclidiana exata (Felzenszwalb & Huttenlocher).
- * Trabalha em uma dimensão sobre distâncias já ao quadrado.
- */
 function edt1d(f, d, v, z, n) {
   let k = 0;
   v[0] = 0;
@@ -197,7 +183,6 @@ function edt1d(f, d, v, z, n) {
   }
 }
 
-/** Distância euclidiana ao quadrado, em 2D, para uma máscara binária. */
 function edt2d(mask, w, h) {
   const INF = 1e12;
   const f = new Float64Array(Math.max(w, h));
@@ -221,14 +206,6 @@ function edt2d(mask, w, h) {
   return out;
 }
 
-/**
- * Converte a imagem da logo em um campo de distância com sinal.
- * É esta função que permite extrudar QUALQUER logo em 3D sem redesenhá-la:
- * a silhueta sai exatamente dos pixels do arquivo original.
- *
- * @returns {{data: Float32Array, w: number, h: number, aspect: number, pad: number}}
- *          distância em unidades onde 1.0 = metade da altura da imagem.
- */
 export function buildSDF(imageData, w, h, pad) {
   pad = pad || 0;
   const pw = w + pad * 2;
@@ -244,10 +221,10 @@ export function buildSDF(imageData, w, h, pad) {
   const outsideMask = new Uint8Array(pw * ph);
   for (let i = 0; i < pw * ph; i++) outsideMask[i] = inside[i] ? 0 : 1;
 
-  const dIn = edt2d(inside, pw, ph);        // distância até o traço
-  const dOut = edt2d(outsideMask, pw, ph);  // distância até o fundo
+  const dIn = edt2d(inside, pw, ph);
+  const dOut = edt2d(outsideMask, pw, ph);
 
-  const scale = 2 / ph;   // normaliza para meia-altura = 1
+  const scale = 2 / ph;
   const sdf = new Float32Array(pw * ph);
   for (let i = 0; i < pw * ph; i++) {
     const outer = Math.sqrt(dIn[i]);
@@ -258,7 +235,6 @@ export function buildSDF(imageData, w, h, pad) {
   return { data: sdf, w: pw, h: ph, aspect: pw / ph, pad };
 }
 
-/** Redimensiona uma imagem para caber num limite, preservando a proporção. */
 export function rasterize(image, maxSide) {
   let w = image.naturalWidth || image.width;
   let h = image.naturalHeight || image.height;
@@ -275,18 +251,7 @@ export function rasterize(image, maxSide) {
   return { data: ctx.getImageData(0, 0, w, h).data, w, h, canvas: cv };
 }
 
-/**
- * Remove o fundo externo de uma logo exportada sem transparência.
- *
- * Faz um preenchimento por inundação a partir das bordas: só o que está
- * conectado à moldura vira transparente. Brancos internos — a palavra na
- * marca, estrelas, brilhos — continuam intactos, porque não encostam na
- * borda. A logo em si não é alterada; apenas o papel em volta some.
- *
- * Não faz nada se a imagem já tiver transparência.
- */
 export function dematte(px, w, h, tolerance = 46) {
-  // Já tem canal alfa útil? então não há papel para remover.
   for (let i = 3; i < px.length; i += 4) {
     if (px[i] < 250) return false;
   }
@@ -320,8 +285,6 @@ export function dematte(px, w, h, tolerance = 46) {
     push(x + 1, y); push(x - 1, y); push(x, y + 1); push(x, y - 1);
   }
 
-  // Borda suave: pixels vizinhos do fundo ganham alfa proporcional à
-  // distância da cor de fundo, o que preserva a antisserrilha original.
   const feather = tolerance * 2.2;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
@@ -342,7 +305,6 @@ export function dematte(px, w, h, tolerance = 46) {
   return true;
 }
 
-/** Reduz uma imagem RGBA por média de blocos, preservando o alfa. */
 export function downscaleRGBA(px, w, h, tw, th) {
   const out = new Uint8ClampedArray(tw * th * 4);
   const sx = w / tw;
@@ -370,7 +332,6 @@ export function downscaleRGBA(px, w, h, tw, th) {
   return out;
 }
 
-/** Recorta a imagem na caixa mínima que contém pixels visíveis. */
 export function trimAlpha(px, w, h) {
   let minX = w, minY = h, maxX = -1, maxY = -1;
   for (let y = 0; y < h; y++) {

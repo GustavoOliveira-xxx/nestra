@@ -1,33 +1,3 @@
-#!/usr/bin/env node
-/* =====================================================================
-   NESTRA — Testes das partes que já quebraram
-
-   Uso:
-     npm test
-
-   Não é uma suíte de tudo: são os dois pontos que voltaram a falhar
-   depois de já terem sido corrigidos, e que agora ficam travados aqui.
-
-     1. O ditado que repetia no celular. O reconhecimento do Android
-        reentrega a frase inteira crescida a cada evento, e reabre o
-        microfone sozinho depois de cada pausa. As sequências reais estão
-        reproduzidas abaixo — nenhuma delas precisa de microfone.
-
-     2. A camada de “secretário”: pedidos falados viram ações curtas sem
-        perder data, horário, ambiente nem a frase original.
-
-     3. A data que virava NaN depois de recarregar a página. A coluna
-        `date` do Postgres chega como Date do JavaScript, e convertê-la
-        com `String(...).slice(0, 10)` produzia "Wed Aug 19". O teste passa
-        pelo conversor de verdade do driver, em vários fusos de servidor.
-
-     4. A fila que podia apagar um cadastro novo durante outro envio ou
-        mandar o item antes do ambiente do qual ele dependia.
-   ===================================================================== */
-
-/* O cliente do Neon é construído no import de api/_lib/db.js e recusa
-   nascer sem string de conexão. Nenhuma conexão é aberta neste teste —
-   só as funções de conversão são exercitadas. */
 import fs from 'node:fs';
 
 process.env.DATABASE_URL ||= 'postgresql://ninguem:nada@localhost/vazio';
@@ -46,11 +16,6 @@ function eq(nome, obtido, esperado) {
   }
 }
 
-/* =====================================================================
-   1. DITADO
-   ===================================================================== */
-
-/** Uma lista de resultados no formato que o navegador entrega. */
 function resultados(pares) {
   return pares.map(([texto, isFinal]) => {
     const r = [{ transcript: texto }];
@@ -59,7 +24,6 @@ function resultados(pares) {
   });
 }
 
-/** Reconhecimento de mentira, com as manias do Android. */
 const criados = [];
 class FakeRecognition {
   constructor() { criados.push(this); this.iniciado = 0; }
@@ -83,7 +47,6 @@ const proximoQuadro = () => new Promise((r) => setTimeout(r, 0));
 console.log('\nDitado');
 
 {
-  /* O padrão do Android: cada entrega traz a frase inteira, maior. */
   const v = new VoiceCapture();
   v.applyResults(resultados([
     ['pegar', true],
@@ -94,7 +57,6 @@ console.log('\nDitado');
 }
 
 {
-  /* O provisório costuma repetir o definitivo, acrescido do fim. */
   const v = new VoiceCapture();
   v.committed = 'comprar pão';
   v.applyResults(resultados([['comprar pão integral', false]]));
@@ -102,7 +64,6 @@ console.log('\nDitado');
 }
 
 {
-  /* O que é fala nova continua somando, que é o caso comum. */
   const v = new VoiceCapture();
   v.committed = 'comprar pão';
   v.applyResults(resultados([['ligar para o João', true]]));
@@ -117,8 +78,6 @@ eq('reentrega menor não apaga o que já havia',
   mergeSpoken('pegar ração para o Max', 'pegar ração'), 'pegar ração para o Max');
 
 {
-  /* O navegador reabre o microfone depois da pausa e, no celular,
-     reentrega a sessão anterior junto. */
   criados.length = 0;
   const v = new VoiceCapture();
   v.start();
@@ -135,7 +94,6 @@ eq('reentrega menor não apaga o que já havia',
 }
 
 {
-  /* Dois toques seguidos no microfone — comum em tela de toque. */
   criados.length = 0;
   const v = new VoiceCapture();
   const primeiro = v.start();
@@ -149,7 +107,6 @@ eq('reentrega menor não apaga o que já havia',
 }
 
 {
-  /* A tela pode ser trocada antes de o navegador confirmar `start()`. */
   criados.length = 0;
   const v = new VoiceCapture();
   v.start();
@@ -161,7 +118,6 @@ eq('reentrega menor não apaga o que já havia',
 }
 
 {
-  /* Um ditado inteiro, com pausas, do jeito que acontece. */
   criados.length = 0;
   const v = new VoiceCapture();
   v.start();
@@ -180,10 +136,6 @@ eq('reentrega menor não apaga o que já havia',
   v.stop();
   await proximoQuadro();
 }
-
-/* =====================================================================
-   2. SECRETÁRIO LOCAL
-   ===================================================================== */
 
 console.log('\nSecretário local');
 
@@ -300,10 +252,6 @@ eq('meia-noite falada como doze da noite vira zero hora',
 eq('meio-dia falado como doze da tarde permanece doze horas',
   interpretar('Almoçar às 12 da tarde').dueTime, '12:00');
 
-/* =====================================================================
-   3. DATAS VINDAS DO BANCO
-   ===================================================================== */
-
 console.log('\nDatas');
 
 const { types } = await import('@neondatabase/serverless');
@@ -313,8 +261,8 @@ const { isUuid, isDateOnly, isTimeOnly, validTimestamp } = await import('../api/
 const comoOBancoEntrega = (data, hora) => ({
   id: 'x', environment_id: null, type: 'task', title: 'reunião',
   description: null, status: 'pending', priority: 'normal',
-  due_date: types.getTypeParser(1082)(data),      // date  → Date do JS
-  due_time: types.getTypeParser(1083)(hora),      // time  → texto
+  due_date: types.getTypeParser(1082)(data),
+  due_time: types.getTypeParser(1083)(hora),
   snoozed_until: null, time_period: 'any', pinned: false,
   source: 'manual', raw_input: null, parse_confidence: null,
   needs_review: false, completed_at: null, deleted_at: null,
@@ -327,7 +275,6 @@ eq(`coluna date vira AAAA-MM-DD (fuso do servidor: ${process.env.TZ || 'padrão'
 eq('coluna time vira HH:MM', item.dueTime, '19:00');
 eq('data nula continua nula', itemToClient(comoOBancoEntrega(null, null)).dueDate, null);
 
-/* A tela nunca deve escrever NaN, aconteça o que acontecer com o dado. */
 eq('data ilegível não vira texto', humanDate('Wed Aug 19', 'America/Sao_Paulo'), null);
 eq('data vazia não vira texto', humanDate(null, 'America/Sao_Paulo'), null);
 eq('data boa vira texto', typeof humanDate('2026-08-19', 'America/Sao_Paulo'), 'string');
@@ -359,10 +306,6 @@ const preferenciasConvertidas = prefsToClient({
 });
 eq('preferências de notificações vêm do banco', preferenciasConvertidas.notificationsEnabled, true);
 eq('antecedência de notificação vem do banco', preferenciasConvertidas.notifyLeadMinutes, 45);
-
-/* =====================================================================
-   4. FILA DE SINCRONIZAÇÃO
-   ===================================================================== */
 
 console.log('\nSincronização');
 
@@ -497,10 +440,6 @@ const respostaOk = () => ({
 syncQueue.clear();
 globalThis.fetch = fetchOriginal;
 
-/* =====================================================================
-   5. PWA EM PREVIEW PROTEGIDO
-   ===================================================================== */
-
 console.log('\nPWA e publicação');
 
 {
@@ -515,9 +454,71 @@ console.log('\nPWA e publicação');
     /beforeinstallprompt[\s\S]{0,500}preventDefault\s*\(/.test(main), false);
 }
 
-/* =====================================================================
-   Fecho
-   ===================================================================== */
+console.log('\nReuniões e copiloto');
+
+{
+  const { localTopics, stripLead, classify, addTopics, removeNode, progress, localSummary, actionTitle } =
+    await import('../js/app/copilot.js');
+  const { cleanNodes } = await import('../api/meetings.js');
+  const { weekdayOf, shiftDay } = await import('../js/app/store.js');
+
+  const topics = localTopics(`Preciso falar sobre o deploy de ontem que quebrou o login.
+perguntar pro João se ele já liberou o acesso ao banco?
+avisar que vou sair mais cedo sexta
+terminei a tela de relatórios: filtros, exportação e gráfico`);
+
+  eq('texto livre vira quatro tópicos', topics.length, 4);
+  eq('moldura "preciso falar sobre" sai do título', topics[0].label, 'Deploy de ontem que quebrou o login');
+  eq('quebra vira bloqueio', topics[0].kind, 'blocker');
+  eq('pergunta a alguém vira pergunta', topics[1].kind, 'question');
+  eq('pessoa citada é reconhecida', topics[1].who, 'João');
+  eq('aviso é reconhecido', topics[2].kind, 'notice');
+  eq('lista depois de dois-pontos vira subtópicos', topics[3].children.length, 3);
+  eq('andamento é reconhecido', classify('terminei a tela de relatórios'), 'update');
+  eq('"hoje vou" sai do título', stripLead('hoje vou seguir com a integração'), 'Seguir com a integração');
+
+  const agenda = { occursOn: '2026-10-05', nodes: [{ id: 'root', parentId: null, kind: 'root', text: 'Daily', done: false }] };
+  eq('tópicos entram no mapa', addTopics(agenda, topics, 'local'), 7);
+  eq('repetir o texto não duplica balões', addTopics(agenda, topics, 'local'), 0);
+  agenda.nodes[1].done = true;
+  eq('progresso conta só balões falados', progress(agenda).done, 1);
+  const parent = agenda.nodes.find((n) => n.text === 'Terminei a tela de relatórios');
+  removeNode(agenda, parent.id);
+  eq('excluir um tópico leva os subtópicos junto', agenda.nodes.length, 4);
+
+  const ata = localSummary({ title: 'Daily' }, agenda);
+  eq('ata separa o que foi falado', /Falado\n- Deploy/.test(ata.summary), true);
+  eq('ata lista o que ficou', /Ficou para depois/.test(ata.summary), true);
+  eq('anotação vira título de tarefa limpo', actionTitle({ text: 'x', note: 'Vou mandar o print do erro' }), 'Mandar o print do erro');
+
+  const cleaned = cleanNodes([
+    { id: 'r', kind: 'root', text: 'D' },
+    { id: 'a', parentId: 'fantasma', kind: 'hack', text: 'x'.repeat(500), done: 'sim' },
+    { id: 'a', kind: 'topic', text: 'duplicado' },
+  ]);
+  eq('servidor descarta id duplicado', cleaned.length, 2);
+  eq('servidor corta texto longo', cleaned[1].text.length, 240);
+  eq('servidor troca tipo desconhecido', cleaned[1].kind, 'topic');
+  eq('servidor solta pai inexistente', cleaned[1].parentId, null);
+  eq('servidor recusa mapa que não é lista', cleanNodes('x'), null);
+
+  eq('dia da semana de uma data', weekdayOf('2026-10-05'), 1);
+  eq('virada de mês', shiftDay('2026-10-31', 1), '2026-11-01');
+}
+
+{
+  syncQueue.setOwner('user-test');
+  syncQueue.clear();
+  syncQueue.push({ method: 'POST', path: '/meetings', body: { op: 'saveMeeting' }, coalesce: 'meeting:1' });
+  syncQueue.push({ method: 'POST', path: '/meetings', body: { op: 'saveAgenda', v: 1 }, coalesce: 'agenda:1' });
+  syncQueue.push({ method: 'POST', path: '/meetings', body: { op: 'saveMeeting', v: 2 }, coalesce: 'meeting:1' });
+  syncQueue.push({ method: 'POST', path: '/meetings', body: { op: 'saveAgenda', v: 2 }, coalesce: 'agenda:1' });
+  const list = syncQueue.read();
+  eq('salvamentos repetidos do mesmo mapa viram um só', list.length, 2);
+  eq('reunião continua antes da pauta que depende dela', list[0].body.op, 'saveMeeting');
+  eq('fica a versão mais nova', list[1].body.v, 2);
+  syncQueue.clear();
+}
 
 console.log(falhas
   ? `\n${falhas} de ${total} falharam\n`

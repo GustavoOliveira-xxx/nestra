@@ -1,11 +1,3 @@
-/* =====================================================================
-   POST /api/checklist — subtarefas e checklists (§7.4)
-
-   Um endpoint só, com `op`, porque a fila de sincronização do cliente
-   reenvia operações fora de ordem e um caminho único simplifica muito o
-   tratamento de conflito. A posse vem sempre do item pai.
-   ===================================================================== */
-
 import { asUser } from './_lib/db.js';
 import { handler, json, fail, readBody, isUuid } from './_lib/http.js';
 import { requireUser } from './_lib/auth.js';
@@ -19,7 +11,6 @@ export default handler(async (req, res) => {
   const { op, itemId, entryId, entry, patch } = await readBody(req);
   if (!isUuid(itemId)) return fail(res, 400, 'invalid_id', 'Item inválido.');
 
-  // O item precisa ser do usuário autenticado (§19)
   const [owned] = await asUser(user.id, (sql) => [
     sql`select id from items where id = ${itemId} and owner_id = ${user.id} limit 1`,
   ]);

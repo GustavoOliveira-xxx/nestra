@@ -1,16 +1,3 @@
-/* =====================================================================
-   NESTRA — Peça 3D do cartão de ambiente
-
-   O mesmo sólido que abre a tela do ambiente, agora pequeno, dentro do
-   cartão da grade: quem olha a lista reconhece o ambiente pela forma
-   antes de ler o nome. As formas vêm de gfx/shapes.js — uma para cada
-   ícone do formulário — e cada uma tem o movimento próprio, então a
-   grade inteira fica viva sem nenhuma peça repetida.
-
-   Tudo é traçado por ray marching sobre formas arredondadas — nenhuma
-   aresta viva, para combinar com o traço mais limpo da interface.
-   ===================================================================== */
-
 import { program, fullscreenQuad } from '../core/gl.js';
 import { device, quality, sizeCanvas, renderWhenVisible, onResize, glBudget } from '../core/device.js';
 import { SHAPES_GLSL, shapeOf } from './shapes.js';
@@ -35,16 +22,12 @@ uniform vec3  uColor;
 uniform int   uShape;
 uniform vec2  uTilt;
 uniform float uHover;
-uniform float uEnergy;   // 0..1 — quanto o ambiente está "carregado"
-uniform int   uSteps;    // passos de ray marching, conforme o aparelho
+uniform float uEnergy;
+uniform int   uSteps;
 
 mat3 rotY(float a) { float c = cos(a), s = sin(a); return mat3(c,0.0,-s, 0.0,1.0,0.0, s,0.0,c); }
 mat3 rotX(float a) { float c = cos(a), s = sin(a); return mat3(1.0,0.0,0.0, 0.0,c,s, 0.0,-s,c); }
-
-${SHAPES_GLSL}
-
-vec2 map(vec3 p) {
-  // uma respiração lenta, para a peça nunca parecer congelada
+${SHAPES_GLSL}vec2 map(vec3 p) {
   float breathe = 1.0 + sin(uTime * 1.1) * 0.032 + uHover * 0.08;
   vec2 res = envShape(p / breathe, uShape, uTime, uEnergy);
   res.x *= breathe;
@@ -99,8 +82,6 @@ void main() {
     vec3 h = normalize(key - rd);
     float spec = pow(max(dot(n, h), 0.0), 64.0);
 
-    /* Mesma leitura de material da peça grande: corpo na cor do
-       ambiente, detalhe em metal claro, núcleo aceso por dentro. */
     vec3 base = gBase;
     float lit = 0.0;
     if (mat > 1.5) {
@@ -116,11 +97,9 @@ void main() {
     color += base * lit * (0.75 + (1.0 - fres) * 0.80);
 
     if (mat < 0.5) {
-      // faixas internas girando, como um núcleo vivo
       float rings = sin(p.y * 12.0 - uTime * 2.2) * 0.5 + 0.5;
       color += base * smoothstep(0.86, 1.0, rings) * (0.28 + uEnergy * 0.5);
 
-      // reflexo de céu falso
       vec3 refl = reflect(rd, n);
       color += mix(vec3(0.02, 0.03, 0.07), base * 0.5, refl.y * 0.5 + 0.5) * 0.4;
     }
@@ -134,11 +113,6 @@ void main() {
   color = pow(max(color, 0.0), vec3(0.4545));
   outColor = vec4(color * alpha, alpha);
 }`;
-
-/* Quantas peças com WebGL podem existir ao mesmo tempo é decidido pelo
-   orçamento compartilhado em core/device.js — ele conhece o aparelho e
-   já conta a cena de fundo e a peça do topo do ambiente. O que não
-   couber usa o plano B em CSS, que continua girando. */
 
 function hexToRgb(hex) {
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || '#2F6BFF');
@@ -214,8 +188,6 @@ export class EnvOrb {
     host.addEventListener('pointerleave', this._onLeave, { passive: true });
     this._host = host;
 
-    /* Cartão fora da tela não desenha. Numa lista com muitos ambientes é
-       a diferença entre rolar liso e rolar aos trancos no celular. */
     this._unwatch = renderWhenVisible(host, {
       onEnter: () => { this.offscreen = false; if (!document.hidden) this.start(); },
       onLeave: () => { this.offscreen = true; this.stop(); },
@@ -227,12 +199,10 @@ export class EnvOrb {
     };
     document.addEventListener('visibilitychange', this._onVis);
 
-    // Só remede quando o tamanho realmente muda
     this._unobserve = onResize(this.canvas, () => { this._dirty = true; });
     this._onQuality = () => { this._dirty = true; };
     quality.addEventListener('change', this._onQuality);
 
-    // Contexto perdido pelo navegador: some o canvas e entra o cubo em CSS
     this._onLost = (ev) => {
       ev.preventDefault();
       this.stop();
@@ -244,14 +214,6 @@ export class EnvOrb {
     this.canvas.addEventListener('webglcontextlost', this._onLost);
   }
 
-  /**
-   * Troca a aparência sem trocar a peça.
-   *
-   * Quem está criando um ambiente muda de ícone e de cor várias vezes
-   * seguidas. Cada troca destruir e recriar um contexto WebGL seria o
-   * caminho mais curto para o navegador começar a descartar contextos —
-   * forma e cor são uniformes, então basta escrevê-los de novo.
-   */
   setLook({ color, icon } = {}) {
     if (color) {
       this.hexColor = color;
@@ -264,8 +226,6 @@ export class EnvOrb {
 
   resize() {
     if (!this.gl) return;
-    // A peça é pequena: um teto um pouco mais generoso do que o da cena
-    // de fundo mantém a silhueta limpa sem pesar.
     const { w, h, changed } = sizeCanvas(this.canvas, {
       cap: Math.min(2, quality.dprCap + 0.4),
     });
@@ -310,8 +270,6 @@ export class EnvOrb {
     gl.uniform2f(u.uTilt, this.tilt.x, this.tilt.y);
     gl.uniform1f(u.uHover, this.hover);
     gl.uniform1f(u.uEnergy, this.energy);
-    // A peça é pequena na tela: no degrau mais baixo ela pode marchar
-    // menos sem que ninguém perceba a diferença.
     gl.uniform1i(u.uSteps, quality.level === 'low' ? 40 : (quality.level === 'medium' ? 56 : 72));
 
     gl.clearColor(0, 0, 0, 0);
@@ -340,18 +298,13 @@ export class EnvOrb {
       this.gl = null;
     }
 
-    // Canvas sem contexto sai de cena: nunca um retângulo vazio no lugar
     this.canvas.style.display = 'none';
     active.delete(this);
   }
 }
 
-/* --------------------------------------------------------------------
-   Registro das peças vivas, para trocar de tela sem vazar contextos
-   -------------------------------------------------------------------- */
 const active = new Set();
 
-/** Sem WebGL disponível: um sólido em CSS mantém a ideia de peça 3D. */
 function mountCssCube(canvas, color) {
   const host = canvas.parentElement;
   if (!host) return null;
@@ -375,9 +328,6 @@ export function mountOrb(canvas, options) {
     return orb;
   }
 
-  /* Sem WebGL a peça é o cubo em CSS. Quem chamou continua recebendo
-     algo com `setLook` e `destroy`, para não precisar saber qual dos
-     dois caminhos acabou de acontecer. */
   const cube = mountCssCube(canvas, options?.color);
   return {
     fallback: true,

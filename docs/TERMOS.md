@@ -1,22 +1,22 @@
-# Termos de Uso — Nestra
+# Termos de Uso do Nestra
 
 > **Rascunho técnico.** Escrito para acompanhar o produto durante o
 > desenvolvimento. Antes de valer como documento legal, revise com apoio
-> jurídico — sobretudo as cláusulas de responsabilidade, rescisão e foro.
+> jurídico, sobretudo as cláusulas de responsabilidade, rescisão e foro.
 
 **Última atualização:** conforme a data do commit deste arquivo.
 
 ## 1. O que é o Nestra
 
 Um organizador pessoal para registrar tarefas, lembretes, compromissos e ideias,
-organizados em ambientes criados por você.
+organizados em ambientes criados por você, e para preparar e registrar reuniões.
 
 ## 2. Sua conta
 
 - Você precisa fornecer um nome de exibição, um e-mail válido e uma senha de
   pelo menos 8 caracteres.
 - Você é responsável por manter a senha em segurança.
-- Uma conta pertence a uma pessoa. Compartilhar credenciais é desaconselhado —
+- Uma conta pertence a uma pessoa. Compartilhar credenciais é desaconselhado:
   o Nestra foi desenhado para ser privado por padrão.
 - Você pode encerrar a conta quando quiser, em Configurações.
 
@@ -51,13 +51,18 @@ navegador. Nesse modo:
 A interface indica esse estado na barra lateral, como `somente neste
 dispositivo`.
 
-## 7. Limitação de responsabilidade
+## 7. Copiloto de reuniões
+
+O copiloto sugere a organização da pauta e o texto da ata. Confira o resultado
+antes de compartilhar: a responsabilidade pelo conteúdo enviado a terceiros é sua.
+
+## 8. Limitação de responsabilidade
 
 O Nestra é uma ferramenta de organização pessoal. Ele não substitui sistemas
 críticos e não deve ser a única salvaguarda para obrigações com consequências
 legais, financeiras ou de saúde.
 
-## 8. Alterações
+## 9. Alterações
 
 Estes termos podem mudar conforme o produto evolui. Mudanças relevantes serão
 comunicadas dentro do aplicativo.

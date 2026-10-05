@@ -1,14 +1,3 @@
-/* =====================================================================
-   NESTRA — Caixa de captura rápida (§7.1)
-
-   "O sistema registra primeiro e pergunta depois. Uma frase nunca deve
-   ser perdida apenas porque a interpretação automática não foi perfeita."
-
-   Enquanto o usuário digita, o que foi entendido aparece em fichas
-   abaixo do campo. Cada ficha pode ser descartada com um clique — a
-   confirmação é compacta e não bloqueia a captura.
-   ===================================================================== */
-
 import { store } from '../store.js';
 import { parse, humanDate, TYPE_LABELS, PRIORITY_LABELS, PERIOD_LABELS } from '../nlp.js';
 import { el, icon, esc, toast } from '../ui.js';
@@ -33,9 +22,6 @@ export function createCapture({ environmentId = null, onCreated = null } = {}) {
   const input = el('textarea', {
     class: 'capture__input',
     rows: 1,
-    /* Em tela estreita o convite é mais curto: com o microfone ao lado,
-       a frase inteira quebrava em duas linhas e a segunda ficava cortada
-       pela altura de uma linha só. */
     placeholder: device.compact ? 'O que precisa lembrar?' : 'Escreva o que precisa lembrar…',
     'aria-label': 'Captura rápida',
     autocomplete: 'off',
@@ -50,9 +36,6 @@ export function createCapture({ environmentId = null, onCreated = null } = {}) {
 
   const parseRow = el('div', { class: 'capture__parse', 'aria-live': 'polite' });
 
-  /* --- Ditar em vez de digitar ---
-     Só existe onde o navegador sabe transcrever. Onde não sabe, o botão
-     não aparece — melhor não ter do que ter e não funcionar. */
   const mic = voiceSupported()
     ? el('button', {
         class: 'btn btn--ghost btn--icon capture__mic tip',
@@ -79,7 +62,6 @@ export function createCapture({ environmentId = null, onCreated = null } = {}) {
     hints,
   );
 
-  /** Campos que o usuário descartou manualmente nesta frase. */
   let dismissed = new Set();
   let current = null;
 
@@ -94,7 +76,6 @@ export function createCapture({ environmentId = null, onCreated = null } = {}) {
   function refresh() {
     const text = input.value;
 
-    // altura acompanha o conteúdo
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 200) + 'px';
 
@@ -210,12 +191,8 @@ export function createCapture({ environmentId = null, onCreated = null } = {}) {
 
     if (!item) return;
 
-    /* Registrar encerra o ditado naquele instante. A fala já está no item
-       e não há motivo para o navegador continuar exibindo o indicador de
-       microfone na aba enquanto a tela é reconstruída. */
     root.stopVoice?.();
 
-    // A cena de fundo reage à captura
     window.nestraScene?.pulseAt(0.9);
     const r = send.getBoundingClientRect();
     burstAt(r.left + r.width / 2, r.top + r.height / 2, '#2F6BFF', 12);
@@ -242,14 +219,6 @@ export function createCapture({ environmentId = null, onCreated = null } = {}) {
     onCreated?.(item);
   }
 
-  /* ---------------------------------------------------------------
-     Ditado
-
-     O texto reconhecido entra na caixa como se estivesse sendo digitado:
-     o mesmo `refresh()` roda, as mesmas fichas de data e ambiente
-     aparecem. O que a pessoa já tinha escrito antes de apertar o
-     microfone é preservado — o ditado acrescenta, não substitui.
-     --------------------------------------------------------------- */
   if (mic) {
     const voz = new VoiceCapture({ lang: store.state.prefs.locale || 'pt-BR' });
     let textoAntes = '';
@@ -262,11 +231,6 @@ export function createCapture({ environmentId = null, onCreated = null } = {}) {
       mic.setAttribute('aria-label', ouvindo ? 'Parar de ditar' : 'Ditar em vez de digitar');
     };
 
-    /* Só pinta. O ponto de partida do texto NÃO pode ser fixado aqui:
-       o navegador reinicia o reconhecimento sozinho depois de cada pausa
-       e este evento dispara de novo a cada reinício. Fixar o texto e
-       zerar o acumulado a cada volta era a segunda causa da frase saindo
-       repetida. Isso agora acontece uma vez só, no clique. */
     voz.addEventListener('start', () => {
       pintar(true);
       window.nestraScene?.pulseAt(0.4);
@@ -285,7 +249,6 @@ export function createCapture({ environmentId = null, onCreated = null } = {}) {
 
     voz.addEventListener('end', () => {
       pintar(false);
-      // Nada foi entendido: devolve a caixa como estava
       if (!voz.text) input.value = textoAntes;
       refresh();
       input.focus();
@@ -295,13 +258,11 @@ export function createCapture({ environmentId = null, onCreated = null } = {}) {
       ev.preventDefault();
       if (voz.running) { voz.stop(); return; }
 
-      // Uma vez por ditado, e não a cada reinício do reconhecimento
       textoAntes = input.value.trim();
       voz.reset();
       voz.start();
     });
 
-    // Sair da tela com o microfone aberto seria péssimo: encerra junto
     root.stopVoice = () => {
       pintar(false);
       voz.abort();

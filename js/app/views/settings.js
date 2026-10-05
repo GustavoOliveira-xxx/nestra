@@ -1,9 +1,3 @@
-/* =====================================================================
-   NESTRA — Configurações, lixeira, privacidade e conta
-   §18 (ciclo de vida da conta), §19 (privacidade), §21 (preferências),
-   §22 (acessibilidade), §24 (lixeira).
-   ===================================================================== */
-
 import { store, DEFAULT_PREFS } from '../store.js';
 import { api, syncQueue } from '../api.js';
 import { el, icon, toast, confirmDialog, downloadFile, COLOR_CHOICES } from '../ui.js';
@@ -11,14 +5,6 @@ import { setLogoFromFile, clearLogoOverride, getLogoOverride } from '../../gfx/l
 import { renderItem } from './items.js';
 import { humanDate } from '../nlp.js';
 
-/* ---------------------------------------------------------------------
-   Escolha da marca
-
-   O efeito 3D lê os pixels do arquivo, então trocar a logo é trocar a
-   imagem — nada é redesenhado. Aqui dá para fazer isso sem sair do app:
-   arraste o arquivo ou escolha pelo seletor. A imagem fica só neste
-   navegador; não sobe para lugar nenhum.
-   --------------------------------------------------------------------- */
 function logoPicker(onChange) {
   const current = getLogoOverride();
 
@@ -113,16 +99,6 @@ function logoPicker(onChange) {
   return el('div', {}, [zone, actions]);
 }
 
-/* ---------------------------------------------------------------------
-   IMPORTAR UM EXPORT
-
-   O par que faltava do "Baixar JSON". Sem ele, exportar não era levar os
-   dados embora — era só olhar para eles de fora.
-
-   O caso concreto: o conteúdo fica guardado por endereço, então publicar
-   o site em outro lugar abre um espaço vazio, com tudo intacto no
-   endereço antigo. Aqui está a ponte entre os dois.
-   --------------------------------------------------------------------- */
 function importButton(onDone) {
   const input = el('input', {
     type: 'file',
@@ -154,7 +130,6 @@ function importButton(onDone) {
       } else {
         toast(`Importado: ${partes.join(' e ')}.` +
           (ignorados ? ` ${ignorados} já existiam por aqui.` : ''), { kind: 'success' });
-        // Se houver servidor, o que entrou sobe agora
         store.flush();
       }
 
@@ -162,7 +137,7 @@ function importButton(onDone) {
     } catch (err) {
       toast(err.message || 'Não consegui importar esse arquivo.', { kind: 'error' });
     } finally {
-      input.value = '';   // permite reescolher o mesmo arquivo
+      input.value = '';
     }
   });
 
@@ -192,7 +167,6 @@ export function renderSettings(root, { onNavigate, applyPrefs }) {
     ]),
   ]));
 
-  /* Abas */
   const nav = el('div', {
     class: 'settings-nav',
     role: 'tablist',
@@ -261,7 +235,6 @@ export function renderSettings(root, { onNavigate, applyPrefs }) {
     return wrap;
   };
 
-  /* ---------------- Aparência ---------------- */
   if (active === 'appearance') {
     const swatches = el('div', { class: 'color-picker' });
     COLOR_CHOICES.forEach((c) => {
@@ -280,7 +253,7 @@ export function renderSettings(root, { onNavigate, applyPrefs }) {
         segmented('density', [['compact', 'Compacta'], ['comfortable', 'Confortável'], ['spacious', 'Espaçosa']])),
       row('Cantos', 'A linguagem visual do Nestra é reta. Dá para suavizar.',
         segmented('cornerStyle', [['square', 'Retos'], ['soft', 'Arredondados']])),
-      row('Movimento', 'Desligue as animações se preferir uma interface parada (§22).',
+      row('Movimento', 'Desligue as animações se preferir uma interface parada.',
         segmented('motion', [['full', 'Completo'], ['reduced', 'Reduzido']])),
       row('Alto contraste', 'Aumenta a separação entre texto e fundo.', toggle('highContrast')),
     );
@@ -295,12 +268,10 @@ export function renderSettings(root, { onNavigate, applyPrefs }) {
     });
     panel.appendChild(row('Intensidade do brilho', 'Controla o quanto o azul acende na interface.', glow));
 
-    /* --- A marca --- */
     panel.appendChild(el('div', { class: 'divider-label', style: { margin: 'var(--s-6) 0 var(--s-4)' }, text: 'Marca' }));
     panel.appendChild(logoPicker(rerender));
   }
 
-  /* ---------------- Comportamento ---------------- */
   if (active === 'behavior') {
     const envSel = el('select', { class: 'select', style: { minWidth: '180px' } }, [
       el('option', { value: '', text: 'Caixa de entrada', selected: !p.defaultEnvironmentId }),
@@ -338,7 +309,7 @@ export function renderSettings(root, { onNavigate, applyPrefs }) {
       row('Mostrar alta prioridade fora da data de hoje',
         'Traz para o presente o que é importante mesmo tendo outra data.',
         toggle('showHighPriorityOutsideToday')),
-      row('Confirmar antes de excluir', 'Ações destrutivas pedem confirmação (§24).', toggle('confirmBeforeDelete')),
+      row('Confirmar antes de excluir', 'Ações destrutivas pedem confirmação.', toggle('confirmBeforeDelete')),
       row('Ao concluir um item', 'O que acontece visualmente depois de marcar como feito.',
         segmented('afterComplete', [['keep', 'Mantém'], ['fade', 'Esmaece'], ['hide', 'Some da lista']])),
       row('Primeiro dia da semana', null,
@@ -346,7 +317,6 @@ export function renderSettings(root, { onNavigate, applyPrefs }) {
     );
   }
 
-  /* ---------------- Notificações (§9) ---------------- */
   if (active === 'notifications') {
     const permission = typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
 
@@ -413,7 +383,6 @@ export function renderSettings(root, { onNavigate, applyPrefs }) {
     }));
   }
 
-  /* ---------------- Lixeira (§24) ---------------- */
   if (active === 'trash') {
     const trashed = store.trash.sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
 
@@ -484,12 +453,11 @@ export function renderSettings(root, { onNavigate, applyPrefs }) {
     }
   }
 
-  /* ---------------- Dados e privacidade (§18, §19) ---------------- */
   if (active === 'data') {
     panel.appendChild(el('p', {
       class: 'setting-row__desc',
       style: { marginBottom: 'var(--s-4)', maxWidth: '68ch' },
-      text: 'Seus dados são seus. O conteúdo das tarefas pode ser sensível — por isso ele nunca aparece em logs, mensagens de erro ou ferramentas de diagnóstico. Você pode consultar, exportar e apagar tudo a qualquer momento.',
+      text: 'Seus dados são seus. O conteúdo das tarefas pode ser sensível, por isso ele nunca aparece em logs, mensagens de erro ou ferramentas de diagnóstico. Você pode consultar, exportar e apagar tudo a qualquer momento.',
     }));
 
     panel.append(
@@ -512,11 +480,10 @@ export function renderSettings(root, { onNavigate, applyPrefs }) {
           },
         })),
       row('Importar um JSON',
-        'Traz de volta ambientes e itens de um export do Nestra — inclusive de outro endereço ou de outro navegador. Nada é sobrescrito: o que já existe aqui é mantido, e importar o mesmo arquivo duas vezes não duplica nada.',
+        'Traz de volta ambientes e itens de um export do Nestra, inclusive de outro endereço ou de outro navegador. Nada é sobrescrito: o que já existe aqui é mantido, e importar o mesmo arquivo duas vezes não duplica nada.',
         importButton(rerender)),
     );
 
-    /* --- Sincronização entre aparelhos --- */
     const remote = store.state.mode === 'remote';
     const failedSync = remote ? syncQueue.failedSize() : 0;
 
@@ -529,14 +496,11 @@ export function renderSettings(root, { onNavigate, applyPrefs }) {
         `<span>Modo atual: <b>${remote ? 'sincronizado com o Neon' : 'somente neste dispositivo'}</b></span>`,
     }));
 
-    /* Três situações diferentes, e cada uma pede uma explicação diferente:
-       sincronizando; servidor no ar mas com uma conta que só existe neste
-       navegador; e sem servidor nenhum. */
     const syncNote = remote
-      ? 'Entrar com o mesmo e-mail e a mesma senha no celular mostra os mesmos ambientes e os mesmos itens. O que você escreve num aparelho aparece no outro assim que ele volta para a frente — não é preciso exportar nem importar nada.'
+      ? 'Entrar com o mesmo e-mail e a mesma senha no celular mostra os mesmos ambientes e os mesmos itens. O que você escreve num aparelho aparece no outro assim que ele volta para a frente. Não é preciso exportar nem importar nada.'
       : api.online
         ? 'O servidor está no ar, mas esta conta foi criada quando ele ainda não existia: ela vive apenas neste navegador. Exporte seus dados, crie a conta de novo com o mesmo e-mail e ela passará a acompanhar você em qualquer aparelho.'
-        : 'Este navegador não encontrou uma API publicada, então os dados ficam guardados só aqui — entrar com a mesma conta em outro aparelho abriria um espaço vazio. Publique a API junto do site (ou informe o endereço abaixo) e a mesma conta passa a valer nos dois.';
+        : 'Este navegador não encontrou uma API publicada, então os dados ficam guardados só aqui: entrar com a mesma conta em outro aparelho abriria um espaço vazio. Publique a API junto do site (ou informe o endereço abaixo) e a mesma conta passa a valer nos dois.';
 
     panel.appendChild(el('p', {
       class: 'setting-row__desc',
@@ -607,8 +571,8 @@ export function renderSettings(root, { onNavigate, applyPrefs }) {
       el('span', {
         class: 'field__hint',
         text: api.autoDetected
-          ? `Em branco, o Nestra procura sozinho em ${api.base}. Preencha só para apontar para outro servidor. O banco Neon nunca é acessado direto pelo navegador — as credenciais ficam no servidor.`
-          : 'O banco Neon nunca é acessado direto pelo navegador — as credenciais ficam no servidor.',
+          ? `Em branco, o Nestra procura sozinho em ${api.base}. Preencha só para apontar para outro servidor. O banco Neon nunca é acessado direto pelo navegador: as credenciais ficam no servidor.`
+          : 'O banco Neon nunca é acessado direto pelo navegador: as credenciais ficam no servidor.',
       }),
     ]));
 
@@ -636,7 +600,6 @@ export function renderSettings(root, { onNavigate, applyPrefs }) {
     ]));
   }
 
-  /* ---------------- Conta (§18) ---------------- */
   if (active === 'account') {
     const user = store.state.user || {};
 
@@ -722,9 +685,6 @@ export function renderSettings(root, { onNavigate, applyPrefs }) {
   }
 }
 
-/* ---------------------------------------------------------------------
-   Caixa de entrada — itens sem ambiente
-   --------------------------------------------------------------------- */
 export function renderInbox(root, { onNavigate }) {
   const rerender = () => renderInbox(root, { onNavigate });
   const items = store.live

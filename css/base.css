@@ -1,7 +1,3 @@
-/* =====================================================================
-   NESTRA — Base: fontes, reset e fundamentos
-   ===================================================================== */
-
 @font-face {
   font-family: 'Space Grotesk';
   src: url('../assets/fonts/SpaceGrotesk-Variable.ttf') format('truetype-variations');
@@ -46,13 +42,11 @@ body {
   overscroll-behavior-y: none;
 }
 
-/* Toque: sem atraso de 300ms e sem zoom por toque duplo em controle */
 button, a, .btn, .chip, .item, .side-link, .env-card, [role='button'] {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
 
-/* O fundo vivo: gradientes de profundidade + a cena WebGL por trás de tudo */
 body::before {
   content: '';
   position: fixed;
@@ -66,7 +60,6 @@ body::before {
   pointer-events: none;
 }
 
-/* Grão sutil — impede que os gradientes formem faixas (banding) */
 body::after {
   content: '';
   position: fixed;
@@ -78,11 +71,6 @@ body::after {
   animation: grain 6s steps(6) infinite;
 }
 
-/* O grão é uma camada duas vezes maior que a tela repintada seis vezes
-   por segundo. No computador não se sente; no celular é uma das contas
-   mais caras da página, para um efeito que ninguém percebe num painel
-   pequeno. Ali ele fica parado — e some de vez quando o aparelho já
-   estiver sofrendo. */
 @media (max-width: 820px), (pointer: coarse) {
   body::after { inset: 0; animation: none; opacity: .022; }
 }
@@ -147,7 +135,6 @@ kbd {
   line-height: 1;
 }
 
-/* --- Foco visível e previsível (§22: navegação por teclado) --- */
 :focus { outline: none; }
 :focus-visible {
   outline: 2px solid var(--accent);
@@ -164,7 +151,6 @@ kbd {
   color: var(--blue-100);
 }
 
-/* --- Barras de rolagem --- */
 * { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -175,7 +161,6 @@ kbd {
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--line-hi); background-clip: content-box; }
 
-/* --- Utilitários --- */
 .sr-only {
   position: absolute;
   width: 1px; height: 1px;
@@ -220,7 +205,6 @@ kbd {
 .gap-6 { gap: var(--s-6); }
 .grow  { flex: 1; }
 
-/* Gradiente de texto usado nos títulos de destaque */
 .grad-text {
   background: linear-gradient(180deg, var(--text) 12%, #93A6C8 96%);
   -webkit-background-clip: text;

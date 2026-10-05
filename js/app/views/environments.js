@@ -1,10 +1,3 @@
-/* =====================================================================
-   NESTRA — Ambientes (§5, §7.3, Fluxo D)
-
-   "O usuário poderá cadastrar ambientes livremente. O sistema não deve
-   impor uma lista fixa de categorias."
-   ===================================================================== */
-
 import { store } from '../store.js';
 import { el, icon, toast, openModal, confirmDialog, ICON_CHOICES, COLOR_CHOICES } from '../ui.js';
 import { bindTilt } from '../../gfx/fx.js';
@@ -34,11 +27,6 @@ export function renderEnvironments(root, { onNavigate }) {
 
   const grid = el('div', { class: 'env-grid stagger' });
 
-  /* Cada peça 3D compila o próprio programa de shader, e compilar é
-     trabalho síncrono: montar as doze de uma vez trava o quadro por um
-     tempo que se sente ao rolar. A fila abaixo monta uma por quadro —
-     o custo total é o mesmo, mas dividido, e a grade ainda ganha o
-     efeito de ir se acendendo peça por peça. */
   const pending = [];
   const drainOrbs = () => {
     const next = pending.shift();
@@ -50,7 +38,6 @@ export function renderEnvironments(root, { onNavigate }) {
   envs.forEach((env) => {
     const stats = store.environmentStats(env.id);
 
-    // A peça 3D do ambiente: forma vinda do ícone, cor vinda do ambiente
     const orbCanvas = el('canvas', { 'aria-hidden': 'true' });
     const orbSlot = el('div', { class: 'env-orb' }, [orbCanvas]);
 
@@ -105,7 +92,6 @@ export function renderEnvironments(root, { onNavigate }) {
 
     grid.appendChild(card);
 
-    // Precisa estar no documento para o canvas ter tamanho medido
     pending.push({
       canvas: orbCanvas,
       options: {
@@ -118,7 +104,6 @@ export function renderEnvironments(root, { onNavigate }) {
 
   requestAnimationFrame(drainOrbs);
 
-  /* Cartão de criação */
   grid.appendChild(el('button', {
     class: 'env-card env-card--new',
     onClick: () => openEnvironmentForm(null, rerender),
@@ -131,7 +116,6 @@ export function renderEnvironments(root, { onNavigate }) {
   root.appendChild(grid);
   bindTilt(root);
 
-  /* Caixa de entrada: itens sem ambiente */
   const inboxCount = store.live.filter((i) => !i.environmentId && i.status === 'pending').length;
   if (inboxCount) {
     root.appendChild(el('div', {
@@ -153,7 +137,6 @@ export function renderEnvironments(root, { onNavigate }) {
     ]));
   }
 
-  /* Ambientes arquivados */
   const archived = store.state.environments.filter((e) => e.archivedAt);
   if (archived.length) {
     root.appendChild(el('div', { class: 'divider-label', style: { marginTop: 'var(--s-7)' }, text: 'Arquivados' }));
@@ -176,9 +159,6 @@ export function renderEnvironments(root, { onNavigate }) {
   }
 }
 
-/* ---------------------------------------------------------------------
-   Formulário de criação e edição
-   --------------------------------------------------------------------- */
 export function openEnvironmentForm(env, onDone) {
   const isNew = !env;
   const draft = {
@@ -186,9 +166,6 @@ export function openEnvironmentForm(env, onDone) {
     description: env?.description || '',
     color: env?.color || COLOR_CHOICES[0],
     icon: env?.icon || 'layers',
-    // A preferência é a fonte da verdade para novas capturas. O campo do
-    // ambiente existe no banco por compatibilidade, mas não pode deixar o
-    // seletor marcado quando a preferência aponta para a caixa de entrada.
     isDefault: env ? store.state.prefs.defaultEnvironmentId === env.id : false,
   };
 
@@ -208,7 +185,7 @@ export function openEnvironmentForm(env, onDone) {
   const descInput = el('input', {
     class: 'input',
     value: draft.description,
-    placeholder: 'Opcional — para lembrar do que se trata',
+    placeholder: 'Opcional, para lembrar do que se trata',
     maxlength: '160',
   });
   body.appendChild(el('label', { class: 'field' }, [
@@ -216,7 +193,6 @@ export function openEnvironmentForm(env, onDone) {
     descInput,
   ]));
 
-  /* Cor */
   const colorRow = el('div', { class: 'color-picker' });
   COLOR_CHOICES.forEach((c) => {
     const dot = el('button', {
@@ -238,7 +214,6 @@ export function openEnvironmentForm(env, onDone) {
     colorRow,
   ]));
 
-  /* Ícone */
   const iconRow = el('div', { class: 'icon-picker' });
   ICON_CHOICES.forEach((name) => {
     const opt = el('button', {
@@ -260,12 +235,6 @@ export function openEnvironmentForm(env, onDone) {
     iconRow,
   ]));
 
-  /* Pré-visualização
-
-     O ícone não escolhe só um desenho de 15 px: ele escolhe o sólido que
-     vai abrir a tela deste ambiente. A prévia mostra a peça de verdade,
-     girando na cor escolhida, então dá para decidir olhando o resultado
-     em vez de imaginar. */
   const previewCanvas = el('canvas', { 'aria-hidden': 'true' });
   const previewOrb = el('div', { class: 'env-orb' }, [previewCanvas]);
   const previewName = el('h3', { class: 'env-card__name', text: draft.name || 'Nome do ambiente' });
@@ -290,7 +259,6 @@ export function openEnvironmentForm(env, onDone) {
     orb?.setLook({ color: draft.color, icon: draft.icon });
   };
 
-  /* Padrão para novas capturas */
   const defaultSwitch = el('label', { class: 'switch' }, [
     el('input', { type: 'checkbox', checked: draft.isDefault }),
     el('span', { class: 'switch__track' }),
@@ -333,11 +301,8 @@ export function openEnvironmentForm(env, onDone) {
     onClose: () => { orb?.destroy(); orb = null; giveBackSlot(); },
   });
 
-  // A grade atrás já gastou o orçamento de contextos; a prévia pega uma
-  // vaga emprestada enquanto o formulário está aberto.
   const giveBackSlot = glBudget.lend();
 
-  // O canvas precisa estar no documento para ter tamanho medido
   requestAnimationFrame(() => {
     if (!previewCanvas.isConnected) { giveBackSlot(); return; }
     orb = mountOrb(previewCanvas, { color: draft.color, icon: draft.icon, energy: 0.5 });

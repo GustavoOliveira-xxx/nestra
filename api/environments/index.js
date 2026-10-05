@@ -1,8 +1,3 @@
-/* =====================================================================
-   GET  /api/environments — lista os ambientes do usuário
-   POST /api/environments — cria um ambiente (§5, Fluxo D)
-   ===================================================================== */
-
 import { asUser, environmentToClient } from '../_lib/db.js';
 import { handler, json, fail, readBody, isUuid } from '../_lib/http.js';
 import { requireUser } from '../_lib/auth.js';

@@ -1,12 +1,3 @@
-/* =====================================================================
-   PUT    /api/account — atualiza perfil/fuso da conta autenticada
-   DELETE /api/account — exclui a conta e todos os dados associados
-
-   A interface já oferecia as duas ações, mas elas só alteravam a cópia
-   do navegador. Este endpoint torna a promessa verdadeira no modo
-   sincronizado e mantém a operação filtrada pela sessão atual.
-   ===================================================================== */
-
 import { sql } from './_lib/db.js';
 import { handler, json, fail, readBody, setCookie } from './_lib/http.js';
 import { requireUser, SESSION_COOKIE, logAccountEvent } from './_lib/auth.js';

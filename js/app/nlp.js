@@ -1,16 +1,3 @@
-/* =====================================================================
-   NESTRA — Interpretação de linguagem natural (pt-BR)
-
-   §13: "A interpretação pode começar com regras simples para datas,
-   expressões como 'hoje', 'amanhã' e 'sábado', períodos como 'de manhã'
-   e palavras associadas a prioridade."
-
-   §24: quando não houver confiança suficiente, a frase original é
-   preservada e o item é marcado para confirmação. E, principalmente:
-   se o usuário escrever "fazer isso depois", o sistema NÃO inventa data.
-   ===================================================================== */
-
-/** Remove acentos preservando o comprimento, para os índices baterem. */
 function fold(text) {
   return Array.from(text)
     .map((ch) => {
@@ -38,15 +25,11 @@ const MONTHS = {
   outubro: 9, out: 9, novembro: 10, nov: 10, dezembro: 11, dez: 11,
 };
 
-/* Expressões deliberadamente vagas: nunca viram data (§24). */
 const VAGUE = [
   'depois', 'mais tarde', 'algum dia', 'qualquer hora', 'quando der',
   'um dia desses', 'sem pressa', 'eventualmente', 'em breve',
 ];
 
-/* O ditado costuma cercar o período com aproximações e hesitações:
-   “mais ou menos umas nove da noite”, “por volta da tarde”. Consumir a
-   moldura inteira evita que esse ruído volte para o título da ação. */
 const PERIOD_APPROX = '(?:(?:mais\\s+ou\\s+menos|aproximadamente|por\\s+volta\\s+d(?:e|a|as)|cerca\\s+de)\\s+(?:umas?\\s+)?(?:d[ae]\\s+)?)?';
 const PERIODS = [
   { re: new RegExp(`\\b${PERIOD_APPROX}(?:(?:de|da|do|pela|a|na)\\s+)?(?:manha|cedo)\\b`), value: 'morning', label: 'manhã' },
@@ -77,10 +60,6 @@ const TYPES = [
   { re: /^\s*tarefa\s*[:\-–—]/, value: 'task', label: 'tarefa' },
 ];
 
-/* --------------------------------------------------------------------
-   Datas no fuso configurado na conta (§24: "se escrever 'sábado', deve
-   usar o fuso horário configurado na conta")
-   -------------------------------------------------------------------- */
 export function todayIn(timezone) {
   try {
     const fmt = new Intl.DateTimeFormat('en-CA', {
@@ -105,7 +84,6 @@ function addDays(date, n) {
   return d;
 }
 
-/** Próxima ocorrência de um dia da semana (hoje conta como "hoje", não como daqui a 7). */
 function nextWeekday(base, weekday, forceNext) {
   const cur = base.getUTCDay();
   let delta = (weekday - cur + 7) % 7;
@@ -114,30 +92,14 @@ function nextWeekday(base, weekday, forceNext) {
   return addDays(base, delta);
 }
 
-/* --------------------------------------------------------------------
-   Ação limpa — a camada de “secretário”
-
-   O reconhecimento de voz entrega exatamente o que foi dito, inclusive
-   chamadas ("Nestra"), pedidos ("por favor") e molduras de intenção
-   ("preciso lembrar de"). Esses trechos são importantes para entender a
-   frase, mas não são a ação que deve aparecer na lista.
-
-   As regras abaixo são deliberadamente conservadoras: só retiram molduras
-   conversacionais reconhecíveis. A frase completa continua preservada em
-   `rawInput`, portanto nenhuma palavra se perde caso a pessoa queira rever
-   o que falou depois.
-   -------------------------------------------------------------------- */
 const ACTION_PREFIXES = [
-  // Cortesia e hesitação comuns no começo de um ditado.
   /^(?:por\s+favor|faz\s+favor)(?:\s*[,;:–—-]\s*|\s+)/iu,
   /^(?:ei|ah|bom|ent[aã]o)\s*[,;:–—-]\s*/iu,
 
-  // “Você poderia me lembrar / adicionar uma tarefa para...”
   /^(?:ser[aá]\s+que\s+)?(?:(?:voc[eê]|c[eê])\s+)?(?:pode|poderia|consegue|conseguiria|daria\s+para|d[aá]\s+para|d[aá]\s+pra|tem\s+como)\s+(?:por\s+favor\s+)?(?:me\s+)?(?:ajudar\s+a\s+)?(?:lembrar|recordar|avisar|anotar|registrar|adicionar|incluir|colocar|criar|cadastrar|salvar|p[oõ]r)(?:\s+(?:(?:um|uma)\s+)?(?:lembrete|tarefa|item|atividade))?(?:\s+(?:a[ií]|isso|isto|pra\s+mim|para\s+mim))*\s*(?:(?:de|que|para|pra)\s+)?(?:eu\s+)?/iu,
   /^(?:te\s+)?(?:pedir|solicitar)\s+(?:para|pra)\s+(?:que\s+)?(?:voc[eê]\s+)?(?:me\s+)?(?:lembrar|recordar|avisar|anotar|registrar|adicionar|incluir|colocar|salvar|lembre|anote|registre|adicione|inclua|coloque|salve)(?:\s+(?:(?:um|uma)\s+)?(?:lembrete|tarefa|item))?\s*(?:(?:de|que|para|pra)\s+)?(?:eu\s+)?/iu,
   /^que\s+(?:voc[eê]\s+)?(?:me\s+)?(?:lembre|recorde|avise|anote|registre|adicione|inclua|coloque|salve)\s*(?:(?:de|que|para|pra)\s+)?(?:eu\s+)?/iu,
 
-  // Pedidos diretos de lembrança.
   /^(?:(?:eu\s+)?(?:preciso|quero|queria|gostaria|necessito|devo|tenho\s+que|vou\s+precisar|estou\s+precisando|t[oô]\s+precisando)\s+)?(?:me\s+)?(?:lembrar|recordar)(?:-me)?\s+(?:de|que|para|pra)\s+/iu,
   /^(?:me\s+)?(?:lembra|lembre|recorda|recorde|avisa|avise)(?:-me)?(?:\s+a[ií])?\s+(?:de|que|para|pra)\s+/iu,
   /^(?:n[aã]o)\s+(?:posso|devo|quero)\s+(?:me\s+)?esquecer(?:-me)?\s+(?:de|que)\s+/iu,
@@ -145,13 +107,10 @@ const ACTION_PREFIXES = [
   /^(?:n[aã]o)\s+esquecer(?:\s+(?:de|que))?\s*[:\-–—]?\s*/iu,
   /^(?:para|pra)\s+(?:eu\s+)?n[aã]o\s+esquecer\s*(?:(?:de|que)\s+)?/iu,
 
-  // “Crie um lembrete”, “anota aí”, “coloca na lista”.
   /^(?:(?:um|uma)\s+)?(?:lembrete|tarefa|item)\s+(?:para|pra|de|que)\s+/iu,
   /^(?:anota|anote|registra|registre|adicione|adiciona|inclua|inclui|coloque|coloca|salve|salva|cadastre|cadastra|p[oõ]e|ponha|bota|bote|guarda|guarde|lan[cç]a|lance)\b(?:\s+(?:a[ií]|isso|isto|pra\s+mim|para\s+mim|na\s+(?:minha\s+)?lista))*\s*[,;:–—-]?\s*(?:(?:que|para|pra)\s+(?:eu\s+)?)?/iu,
   /^(?:crie|cria|cadastre|cadastra)\s+(?:(?:um|uma)\s+)?(?:novo\s+)?(?:lembrete|tarefa|item|atividade)\s*(?:(?:para|pra|de|que)\s+)?/iu,
 
-  // Obrigação, intenção e desejo. O verbo da ação fica: “preciso fazer”
-  // vira “fazer”, e não apenas “atividade”.
   /^(?:eu\s+)?(?:preciso|necessito|devo|tenho\s+que|tenho\s+de|tem\s+que|vou\s+precisar|estou\s+precisando|t[oô]\s+precisando|seria\s+bom|seria\s+legal)\s+(?:mesmo\s+)?(?:de\s+)?/iu,
   /^(?:eu\s+)?(?:quero|queria|gostaria)\s+(?:muito\s+)?(?:de\s+)?/iu,
   /^(?:[eé])\s+(?:para|pra)\s+(?:eu\s+)?/iu,
@@ -174,23 +133,15 @@ function cleanActionEdges(value) {
     .trim();
 }
 
-/**
- * Converte a frase conversacional no texto curto que aparece como ação.
- * Devolve também se alguma moldura foi reconhecida, para a confiança do
- * parser refletir esse entendimento.
- */
 function secretaryAction(input) {
   const source = String(input || '').trim();
   let title = source;
 
-  // A chamada pode vir no início, entre vírgulas ou no fim da fala.
   title = title
     .replace(/^\s*(?:(?:ei|ol[aá])\s+)?nestra\b[\s,;:.!?\-–—]*/iu, '')
     .replace(/([,;:])\s*(?:ei\s+)?nestra\b\s*[,;:]?/giu, '$1 ')
     .replace(/\s*[,;:]\s*(?:ei\s+)?nestra\s*[.!?]*$/iu, '');
 
-  // Algumas molduras vêm empilhadas: “Nestra, anota aí que eu tenho que”.
-  // O laço curto permite retirar uma camada por vez sem regras destrutivas.
   for (let pass = 0; pass < 8; pass++) {
     const before = title;
     title = cleanActionEdges(title);
@@ -204,16 +155,11 @@ function secretaryAction(input) {
     if (title === before) break;
   }
 
-  /* Quando a pessoa diz “tenho uma atividade”, o verbo da ação ficou
-     implícito. Só completamos casos inequivocamente executáveis; “tenho
-     uma consulta”, por exemplo, continua consulta e não vira uma ação
-     inventada. */
   title = title.replace(
     /^(?:eu\s+)?tenho\s+((?:um|uma|uns|umas)\s+(?:atividade|tarefa|trabalho|dever|exerc[ií]cio|reda[cç][aã]o|projeto))\b/iu,
     'Fazer $1',
   );
 
-  // Comandos de agenda são a própria ação, então vão ao infinitivo.
   title = title
     .replace(/^agende\b/iu, 'Agendar')
     .replace(/^agenda\b/iu, 'Agendar')
@@ -224,9 +170,6 @@ function secretaryAction(input) {
   return { title, changed: title !== source };
 }
 
-/* --------------------------------------------------------------------
-   Parser principal
-   -------------------------------------------------------------------- */
 export function parse(rawInput, context = {}) {
   const {
     environments = [],
@@ -255,13 +198,11 @@ export function parse(rawInput, context = {}) {
   if (!original) return result;
 
   const today = todayIn(timezone);
-  /** Trechos consumidos, removidos do título no fim. */
   const consumed = [];
   const eat = (start, end) => consumed.push([start, end]);
   const overlapsConsumed = (start, end) =>
     consumed.some(([s, e]) => start < e && end > s);
 
-  /** Primeiro casamento que não esteja dentro de um metadado já lido. */
   const firstFreeMatch = (patterns, text) => {
     const candidates = [];
     for (const re of patterns) {
@@ -280,7 +221,6 @@ export function parse(rawInput, context = {}) {
     result.matches.push({ kind, label, value });
   };
 
-  /* --- 1. Descrição depois de travessão (§ Fluxo B) --- */
   const dashSplit = work.match(/^(.*?)\s+[—–]\s+(.+)$/s) || work.match(/^(.*?)\s+--\s+(.+)$/s);
   if (dashSplit && dashSplit[1].trim().length > 2) {
     result.description = dashSplit[2].trim();
@@ -289,7 +229,6 @@ export function parse(rawInput, context = {}) {
     note('desc', 'descrição', result.description);
   }
 
-  /* --- 2. Atalhos diretos: #etiqueta, @ambiente, !prioridade --- */
   work = work.replace(/(^|\s)#([\p{L}\p{N}_-]{2,30})/gu, (m, sp, tag) => {
     result.tags.push(tag);
     return sp;
@@ -316,14 +255,12 @@ export function parse(rawInput, context = {}) {
   }
   flat = fold(work);
 
-  /* --- 3. Tipo --- */
   for (const t of TYPES) {
     const m = flat.match(t.re);
     if (m) {
       result.type = t.value;
       result.confidence += 0.14;
       note('type', 'tipo', t.value);
-      // "ideia:" e "lembrete:" são prefixos e saem do título
       if (/^\s*(ideia|lembrete|tarefa)\s*[:\-–—]/.test(flat)) {
         eat(m.index, m.index + m[0].length);
       }
@@ -331,7 +268,6 @@ export function parse(rawInput, context = {}) {
     }
   }
 
-  /* --- 4. Prioridade em linguagem natural --- */
   if (result.priority === 'normal') {
     for (const p of PRIORITY) {
       const m = flat.match(p.re);
@@ -345,12 +281,9 @@ export function parse(rawInput, context = {}) {
     }
   }
 
-  /* --- 5. Expressões vagas travam a inferência de data (§24) --- */
-  // “depois” é vago sozinho, mas não dentro da data exata “depois de amanhã”.
   const vagueProbe = flat.replace(/\bdepois\s+de\s+amanha\b/g, ' ');
   const vagueHit = VAGUE.find((v) => new RegExp(`\\b${v}\\b`).test(vagueProbe));
 
-  /* --- 6. Data --- */
   let dateFound = false;
 
   const setDate = (date, label, start, end) => {
@@ -364,7 +297,6 @@ export function parse(rawInput, context = {}) {
   if (!vagueHit) {
     let m;
 
-    // dd/mm ou dd/mm/aaaa
     if ((m = flat.match(/\b(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](\d{2,4}))?\b/))) {
       const day = +m[1];
       const month = +m[2] - 1;
@@ -372,13 +304,11 @@ export function parse(rawInput, context = {}) {
       if (year < 100) year += 2000;
       const d = new Date(Date.UTC(year, month, day));
       if (d.getUTCMonth() === month && d.getUTCDate() === day) {
-        // sem ano explícito e já passou? assume o próximo ano
         if (!m[3] && d < today) d.setUTCFullYear(year + 1);
         setDate(d, m[0], m.index, m.index + m[0].length);
       }
     }
 
-    // "5 de março" / "dia 12"
     if (!dateFound && (m = flat.match(/\bdia\s+(\d{1,2})(?:\s+de\s+([a-z]+))?\b/))) {
       const day = +m[1];
       const month = m[2] && MONTHS[m[2]] !== undefined ? MONTHS[m[2]] : today.getUTCMonth();
@@ -397,7 +327,6 @@ export function parse(rawInput, context = {}) {
       }
     }
 
-    // relativos simples
     if (!dateFound && (m = flat.match(/\bdepois\s+de\s+amanha\b/))) {
       setDate(addDays(today, 2), 'depois de amanhã', m.index, m.index + m[0].length);
     }
@@ -419,7 +348,6 @@ export function parse(rawInput, context = {}) {
       setDate(nextWeekday(today, 6, false), 'fim de semana', m.index, m.index + m[0].length);
     }
 
-    // dias da semana
     if (!dateFound) {
       const names = Object.keys(WEEKDAYS).sort((a, b) => b.length - a.length);
       for (const name of names) {
@@ -438,10 +366,7 @@ export function parse(rawInput, context = {}) {
     if (vi >= 0) eat(vi, vi + vagueHit.length);
   }
 
-  /* --- 7. Horário --- */
   const m2 = firstFreeMatch([
-    /* “às 9”, “umas 9: 00” e “mais ou menos umas 9h”. O espaço
-       depois dos dois-pontos é frequente na transcrição do celular. */
     /\b(?:mais\s+ou\s+menos|aproximadamente|por\s+volta\s+d(?:e|a|as)|cerca\s+de)\s+(?:(?:as|a|pelas?|umas?)\s+)?(\d{1,2})(?:\s*(?:h|:)\s*(\d{1,2}))?\s*(?:h|horas?)?\b/,
     /\b(?:(?:as|a|pelas?)\s+|umas?\s+)(\d{1,2})(?:\s*(?:h|:)\s*(\d{1,2}))?\s*(?:h|horas?)?\b/,
     /\b(\d{1,2})\s*(?:h|:)\s*(\d{1,2})\b/,
@@ -455,9 +380,7 @@ export function parse(rawInput, context = {}) {
       result.confidence += 0.12;
       note('time', 'horário', result.dueTime);
       eat(m2.index, m2.index + m2[0].length);
-      // um horário quase sempre indica compromisso
       if (result.type === 'task') result.type = 'commitment';
-      // horário sem data explícita significa hoje
       if (!result.dueDate && !vagueHit) result.dueDate = toISODate(today);
       result.timePeriod =
         hh < 12 ? 'morning' : hh < 18 ? 'afternoon' : hh < 22 ? 'evening' : 'night';
@@ -476,11 +399,6 @@ export function parse(rawInput, context = {}) {
     note('time', 'horário', '00:00');
   }
 
-  /* --- 8. Período do dia ---
-
-     Lê todas as ocorrências livres. Voz costuma repetir “à noite” e
-     deixar uma aproximação incompleta no fim; retirar só a primeira
-     ocorrência fazia esse pedaço inteiro virar parte da tarefa. */
   const explicitPeriods = [];
   for (const p of PERIODS) {
     const flags = p.re.flags.includes('g') ? p.re.flags : p.re.flags + 'g';
@@ -498,8 +416,6 @@ export function parse(rawInput, context = {}) {
     note('period', 'período', first.label);
     explicitPeriods.forEach(({ match }) => eat(match.index, match.index + match[0].length));
 
-    /* Em português, “9 da noite” é 21:00. Sem esta regra o horário ficava
-       09:00 ou nem era reconhecido, apesar de o período ser inequívoco. */
     if (result.dueTime) {
       let [hh, mm] = result.dueTime.split(':').map(Number);
       if ((first.value === 'afternoon' || first.value === 'evening') && hh >= 1 && hh <= 11) hh += 12;
@@ -511,7 +427,6 @@ export function parse(rawInput, context = {}) {
     if (conflicting.size > 1) result.needsReview = true;
   }
 
-  /* --- 9. Ambiente pelo nome, com apelidos comuns --- */
   if (!result.environmentName) {
     const aliases = [
       {
@@ -543,7 +458,6 @@ export function parse(rawInput, context = {}) {
       },
     ];
 
-    // 1º: nome exato de um ambiente do usuário
     let hit = null;
     for (const env of environments) {
       const n = fold(env.name);
@@ -556,7 +470,6 @@ export function parse(rawInput, context = {}) {
       }
     }
 
-    // 2º: apelido que aponta para um ambiente existente
     if (!hit) {
       for (const alias of aliases) {
         const found = alias.words.find((w) => new RegExp(`\\b${w}\\b`).test(flat));
@@ -577,16 +490,11 @@ export function parse(rawInput, context = {}) {
       result.environmentName = hit.env.name;
       result.confidence += 0.15;
       note('env', 'ambiente', hit.env.name);
-      // o nome do ambiente permanece no título quando faz parte da frase
     }
   }
 
-  /* --- 10. Monta o título limpo --- */
   let title = work;
   if (consumed.length) {
-    /* Duas interpretações podem tocar o mesmo trecho (por exemplo, uma
-       data relativa e uma preposição de horário). Unir os intervalos
-       antes de cortar impede que o segundo corte remova letras da ação. */
     const merged = consumed
       .filter(([s, e]) => s >= 0 && e > s && e <= title.length)
       .sort((a, b) => a[0] - b[0])
@@ -605,12 +513,10 @@ export function parse(rawInput, context = {}) {
   title = title
     .replace(/\s{2,}/g, ' ')
     .replace(/\s+([,.;!?])/g, '$1')
-    // pontuação órfã deixada pelos trechos removidos: "benefício,." -> "benefício."
     .replace(/([,;:])+\s*([.!?])/g, '$2')
     .replace(/([,;:])\s*\1+/g, '$1')
     .replace(/^[\s,;:.\-–—]+/, '')
     .replace(/[\s,;:]+$/, '')
-    // preposição solta no fim: "a prova de" -> "a prova"
     .replace(/\s+(de|da|do|dos|das|em|na|no|nas|nos|para|pra|ate|até|com|por|a|o)\s*([.!?])?\s*$/i,
       (_m, _w, punct) => punct || '')
     .trim();
@@ -622,7 +528,6 @@ export function parse(rawInput, context = {}) {
     note('action', 'ação', title);
   }
 
-  // Nunca devolve um título vazio: a frase original vale mais que a regra
   result.title = title.length >= 2 ? title : original;
   result.title = result.title.charAt(0).toUpperCase() + result.title.slice(1);
 
@@ -632,13 +537,9 @@ export function parse(rawInput, context = {}) {
   return result;
 }
 
-/* --------------------------------------------------------------------
-   Formatação amigável de datas
-   -------------------------------------------------------------------- */
 const DAY_NAMES = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
 const MONTH_NAMES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
-/** É uma data no formato que o app guarda, 'AAAA-MM-DD'? */
 export function isISODate(valor) {
   return typeof valor === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(valor);
 }
@@ -646,11 +547,6 @@ export function isISODate(valor) {
 export function humanDate(iso, timezone) {
   if (!iso) return null;
 
-  /* Data que não está no formato guardado não vira texto nenhum.
-     Escrever "NaN undefined NaN" na linha do item — que foi o que a API
-     produziu enquanto convertia mal a coluna do banco — é pior do que
-     não escrever data alguma: o item continua legível e o defeito fica
-     onde tem de ser corrigido, em vez de aparecer na cara de quem usa. */
   if (!isISODate(iso)) return null;
 
   const today = todayIn(timezone);

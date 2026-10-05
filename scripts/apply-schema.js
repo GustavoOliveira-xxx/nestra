@@ -1,15 +1,3 @@
-#!/usr/bin/env node
-/* =====================================================================
-   Aplica um arquivo .sql no Neon, statement por statement.
-
-   Uso:
-     DATABASE_URL='postgresql://…' node scripts/apply-schema.js db/schema.sql
-
-   O driver HTTP do Neon aceita apenas um comando por requisição, então o
-   arquivo é dividido aqui — respeitando blocos $$ … $$, strings e
-   comentários.
-   ===================================================================== */
-
 import fs from 'node:fs';
 import { neon } from '@neondatabase/serverless';
 

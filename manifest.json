@@ -1,18 +1,26 @@
 {
   "id": "./",
-  "name": "Nestra — seu espaço para o que importa",
+  "name": "Nestra · seu espaço para o que importa",
   "short_name": "Nestra",
-  "description": "Organizador pessoal simples e rápido: escreva uma frase natural e o Nestra entende o tipo, a data e o ambiente. Escuro, direto e centrado no hoje.",
+  "description": "Organizador pessoal: capture uma frase natural, organize por ambiente e prepare suas reuniões com um mapa mental.",
   "lang": "pt-BR",
   "dir": "ltr",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "display_override": [
+    "window-controls-overlay",
+    "standalone",
+    "minimal-ui"
+  ],
   "orientation": "any",
   "background_color": "#04060A",
   "theme_color": "#070911",
-  "categories": ["productivity", "utilities", "lifestyle"],
+  "categories": [
+    "productivity",
+    "utilities",
+    "lifestyle"
+  ],
   "prefer_related_applications": false,
   "icons": [
     {
@@ -52,21 +60,48 @@
       "short_name": "Capturar",
       "description": "Abre direto na caixa de captura rápida",
       "url": "./index.html#/hoje",
-      "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "assets/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Reuniões",
+      "short_name": "Reuniões",
+      "description": "Preparar a pauta da próxima reunião",
+      "url": "./index.html#/reunioes",
+      "icons": [
+        {
+          "src": "assets/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     },
     {
       "name": "Meus ambientes",
       "short_name": "Ambientes",
       "description": "Trabalho, Estudos, Pessoal e o que mais você criar",
       "url": "./index.html#/ambientes",
-      "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "assets/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     },
     {
       "name": "Caixa de entrada",
       "short_name": "Entrada",
       "description": "Capturas que ainda não têm ambiente",
       "url": "./index.html#/entrada",
-      "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "assets/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ],
   "share_target": {

@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';

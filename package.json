@@ -1,14 +1,14 @@
 {
   "name": "nestra",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "private": true,
-  "description": "Nestra — organizador pessoal: capture uma frase natural, o resto o sistema organiza.",
+  "description": "Organizador pessoal com copiloto de reuniões.",
   "type": "module",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "dev": "npx http-server -p 8080 -c-1 .",
+    "dev": "node scripts/dev-server.js",
     "db:schema": "node scripts/apply-schema.js db/schema.sql",
     "check:syntax": "node scripts/check-syntax.js",
     "check:health": "node scripts/check-health-import.js",
@@ -16,6 +16,7 @@
     "check": "npm run check:syntax && npm run check:health && npm test"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@neondatabase/serverless": "^1.1.0"
   },
   "keywords": [

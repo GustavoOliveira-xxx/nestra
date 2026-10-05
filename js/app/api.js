@@ -1,34 +1,10 @@
-/* =====================================================================
-   NESTRA — Camada de acesso à API
-
-   §14: "O banco Neon não deve ser acessado diretamente pelo navegador
-   com credenciais sensíveis. Será necessário um backend ou uma camada
-   de funções serverless."
-
-   O front nunca vê a string de conexão. Ele fala com /api/*, que valida
-   a sessão e só então conversa com o Postgres. Quando não existe API
-   publicada (por exemplo, no GitHub Pages puro), o app cai para o modo
-   local e avisa o usuário na barra lateral.
-   ===================================================================== */
-
 const CONFIG_KEY = 'nestra:api-base';
 
 export const api = {
   base: null,
   online: false,
+  ai: false,
 
-  /**
-   * Descobre o endereço da API, nesta ordem:
-   *   1. o que a pessoa digitou nas configurações;
-   *   2. a `<meta name="nestra-api">` do index.html;
-   *   3. `/api` na mesma origem.
-   *
-   * O terceiro caso é o que faz a conta funcionar em dois aparelhos sem
-   * ninguém configurar nada: publicado na Vercel, o front e as funções
-   * moram na mesma origem, então `/api` simplesmente existe. Onde não
-   * existir — GitHub Pages puro, arquivo local — o `probe()` recebe um
-   * 404 e o app volta ao modo local, exatamente como antes.
-   */
   resolveBase() {
     const meta = document.querySelector('meta[name="nestra-api"]');
     const stored = localStorage.getItem(CONFIG_KEY);
@@ -41,7 +17,6 @@ export const api = {
       return this.base;
     }
 
-    // `file://` não tem origem para conversar; aí é modo local mesmo.
     if (location.protocol === 'http:' || location.protocol === 'https:') {
       const path = location.pathname.replace(/\/[^/]*$/, '');
       this.base = (location.origin + path).replace(/\/$/, '') + '/api';
@@ -60,13 +35,6 @@ export const api = {
     this.resolveBase();
   },
 
-  /**
-   * Testa se existe uma API viva antes de tentar sincronizar.
-   *
-   * Não basta o 200: hospedagem estática costuma devolver o index.html
-   * para qualquer caminho desconhecido, e aí o app acharia que tem banco
-   * quando só tem HTML. Por isso a resposta precisa se identificar.
-   */
   async probe() {
     if (!this.resolveBase()) {
       this.online = false;
@@ -86,16 +54,15 @@ export const api = {
       const payload = await res.json().catch(() => null);
       const isNestra = payload?.service === 'nestra-api';
 
-      /* API publicada mas com o banco fora do ar é diferente de não haver
-         API nenhuma. Nos dois casos o app funciona local, mas só no
-         primeiro dá para dizer à pessoa o que exatamente falta. */
       this.degraded = isNestra && payload.ok === false
         ? { reason: payload.reason || 'desconhecido', message: payload.message || '' }
         : null;
 
       this.online = isNestra && payload.ok !== false;
+      this.ai = this.online && payload.ai === true;
     } catch {
       this.online = false;
+      this.ai = false;
       this.degraded = null;
     }
     return this.online;
@@ -142,11 +109,6 @@ export class ApiError extends Error {
   }
 }
 
-/* ---------------------------------------------------------------------
-   Fila de sincronização — §24 "se houver conexão interrompida, o item
-   deve permanecer em estado de envio pendente e informar claramente o
-   que aconteceu."
-   --------------------------------------------------------------------- */
 const QUEUE_KEY = 'nestra:sync-queue';
 const FAILED_KEY = 'nestra:sync-failed';
 
@@ -176,7 +138,10 @@ export const syncQueue = {
 
   push(op) {
     const list = this.read();
-    list.push({ ...op, id: crypto.randomUUID(), at: Date.now(), tries: 0 });
+    const entry = { ...op, id: crypto.randomUUID(), at: Date.now(), tries: 0 };
+    const index = op.coalesce ? list.findIndex((e) => e.coalesce === op.coalesce) : -1;
+    if (index >= 0) list[index] = entry;
+    else list.push(entry);
     this.write(list);
   },
 
@@ -225,19 +190,6 @@ export const syncQueue = {
     if (failedKey) localStorage.removeItem(failedKey);
   },
 
-  /**
-   * Envia tudo o que está pendente; devolve quantas operações passaram.
-   *
-   * A fila pode receber outra captura enquanto uma requisição está no ar.
-   * Por isso cada conclusão relê o armazenamento e remove somente a
-   * operação que acabou de subir. Reescrever a fotografia antiga da fila
-   * apagava exatamente o cadastro feito nesse intervalo — comportamento
-   * que aparecia mais no celular, onde a rede demora um pouco mais.
-   *
-   * Uma falha temporária também interrompe a rodada. A ordem é parte da
-   * integridade: se criar um ambiente falhou, o item seguinte não pode ser
-   * enviado antes dele e perder a referência ao ambiente.
-   */
   async flush() {
     if (!api.online) return 0;
     if (this._flushing) return this._flushing;
@@ -254,7 +206,6 @@ export const syncQueue = {
         try {
           await api.request(op.path, { method: op.method, body: op.body });
 
-          // Preserva tudo o que chegou à fila enquanto a rede respondia.
           this.write(this.read().filter((entry) => entry.id !== op.id));
           sent++;
         } catch (err) {
@@ -262,14 +213,10 @@ export const syncQueue = {
           const index = current.findIndex((entry) => entry.id === op.id);
           if (index < 0) continue;
 
-          // 4xx que não seja 408/429 significa operação inválida: descarta.
           const permanent = err.status >= 400 && err.status < 500 &&
             err.status !== 408 && err.status !== 429;
 
           if (permanent || (current[index].tries || 0) >= 6) {
-            /* Nunca finge que uma alteração rejeitada foi sincronizada.
-               Ela sai da fila ativa para não bloquear o restante, mas
-               permanece visível e pode ser tentada após a correção. */
             this.rememberFailure(current[index], err);
             current.splice(index, 1);
             this.write(current);

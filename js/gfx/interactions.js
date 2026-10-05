@@ -1,23 +1,9 @@
-/* =====================================================================
-   NESTRA — Camada de interação
-
-   Tudo o que dá resposta física à interface: o clique que abre uma onda,
-   o botão que mostra que está trabalhando, a tela que troca com
-   profundidade em vez de piscar.
-   ===================================================================== */
-
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const reduced = () =>
   document.documentElement.dataset.motion === 'reduced' ||
   (document.documentElement.dataset.motion !== 'full' &&
    window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-
-/* =====================================================================
-   1. CLIQUE GLOBAL
-   Um anel que abre, faíscas que saem e a cena 3D respondendo no mesmo
-   ponto. Vale para a interface inteira, não só para os botões.
-   ===================================================================== */
 
 export function bindGlobalClick() {
   let layer = document.querySelector('.fx-layer');
@@ -34,7 +20,6 @@ export function bindGlobalClick() {
     const x = ev.clientX;
     const y = ev.clientY;
 
-    // A cena de fundo sente o clique em qualquer lugar da página
     window.nestraScene?.ripple(
       x / window.innerWidth,
       y / window.innerHeight,
@@ -47,7 +32,6 @@ export function bindGlobalClick() {
     const accent = getComputedStyle(document.documentElement)
       .getPropertyValue('--accent').trim() || '#2F6BFF';
 
-    // anel que abre
     const ring = document.createElement('span');
     ring.className = 'fx-ring';
     ring.style.left = x + 'px';
@@ -60,7 +44,6 @@ export function bindGlobalClick() {
     ], { duration: strong ? 620 : 460, easing: 'cubic-bezier(.16,1,.3,1)', fill: 'forwards' });
     setTimeout(() => ring.remove(), 700);
 
-    // clarão curto no ponto
     const flash = document.createElement('span');
     flash.className = 'fx-flash';
     flash.style.left = x + 'px';
@@ -75,7 +58,6 @@ export function bindGlobalClick() {
 
     if (!strong) return;
 
-    // faíscas
     const n = 7;
     for (let i = 0; i < n; i++) {
       const spark = document.createElement('i');
@@ -99,25 +81,6 @@ export function bindGlobalClick() {
   }, { passive: true });
 }
 
-/* =====================================================================
-   2. CARREGAMENTO NOS BOTÕES
-   ===================================================================== */
-
-/**
- * Mostra que o botão está trabalhando enquanto `fn` roda.
- * O tempo mínimo existe para a resposta ser percebida mesmo quando a
- * ação é instantânea — sem isso o estado pisca e ninguém vê.
- */
-/**
- * Mede o alvo e devolve o indicador do tamanho dele.
- *
- * Um anel de 15px é grande demais num pontinho de cor e pequeno demais
- * num cartão de ambiente. Aqui o indicador nasce proporcional ao que foi
- * clicado: cresce com o elemento, mas com piso e teto, para nunca virar
- * um alfinete nem um pneu. Elementos largos e baixos — uma linha da
- * lista, um item do menu — recebem o anel encostado na direita, porque
- * no centro ele cairia em cima do texto.
- */
 function shapeLoader(el) {
   const r = el.getBoundingClientRect();
   const short = Math.min(r.width, r.height) || 32;
@@ -126,10 +89,8 @@ function shapeLoader(el) {
   const size = Math.max(11, Math.min(Math.round(short * 0.42), 34));
   const thickness = Math.max(1.5, Math.min(size / 7, 3.5));
 
-  // Faixa larga e baixa: o anel vai para o canto, não para o meio
   const banner = long / short > 2.6 && short < 96;
 
-  // O trilho só faz sentido onde há largura para ele correr
   const rail = r.width >= 72;
 
   return { size, thickness, banner, rail, area: r.width * r.height };
@@ -139,8 +100,6 @@ export async function withLoading(btn, fn, { minMs = 300, mode = 'true' } = {}) 
   if (!btn || btn.dataset.loading) return;
 
   const t0 = performance.now();
-  // 'true' bloqueia novos cliques (operação de verdade em andamento);
-  // 'auto' é só o retorno visual de uma ação que já foi executada.
   btn.dataset.loading = mode;
   btn.setAttribute('aria-busy', 'true');
 
@@ -172,7 +131,6 @@ export async function withLoading(btn, fn, { minMs = 300, mode = 'true' } = {}) 
   }
 }
 
-/* Tudo o que responde a um clique e merece dizer que está trabalhando. */
 const LOADABLE = [
   '.btn', '.side-link', '.settings-nav__tab', '.segmented__opt',
   '.chip--interactive', '.chip', '.item', '.env-card', '.avatar',
@@ -180,25 +138,8 @@ const LOADABLE = [
   '.topbar__link', '.logo-drop', 'a[href]', '[role="button"]',
 ].join(', ');
 
-/**
- * Liga o carregamento automático em toda a interface.
- *
- * Qualquer coisa clicada mostra o estado por um instante — inclusive as
- * ações locais, como criar um lembrete ou trocar de ambiente, que
- * respondem rápido demais para dar retorno sozinhas. A duração mínima
- * também acompanha o tamanho do alvo: um cartão grande sugere mais
- * trabalho do que um pontinho de cor, e a resposta segue essa leitura.
- *
- * Um `data-noload` dispensa o efeito onde ele atrapalharia. A caixa de
- * conclusão é o caso claro: marcar um item precisa ser instantâneo, e
- * qualquer indicador ali só atrasaria a sensação de ter concluído.
- */
 export function bindAutoLoading(root = document) {
-  // Escuta no `click`, e não no `pointerdown`: se o estado entrasse antes,
-  // o próprio clique seria bloqueado e a ação nunca aconteceria.
   root.addEventListener('click', (ev) => {
-    // O clique pode ter nascido dentro de algo que pediu para ficar de
-    // fora; nesse caso nem o ancestral responde.
     if (ev.target.closest('[data-noload], .check')) return;
 
     const btn = ev.target.closest(LOADABLE);
@@ -206,29 +147,17 @@ export function bindAutoLoading(root = document) {
     if (btn.dataset.loading) return;
     if (btn.disabled || btn.getAttribute('aria-disabled') === 'true') return;
 
-    // Âncoras que saem do site levam o navegador junto: um indicador que
-    // nunca some ficaria preso na tela ao voltar.
     if (btn.tagName === 'A' && btn.target === '_blank') return;
 
     const { area } = shapeLoader(btn);
-    // ~280ms num alvo pequeno, ~460ms num cartão grande
     const minMs = Math.round(280 + Math.min(180, Math.sqrt(area) * 1.6));
 
     withLoading(btn, async () => {
-      // Espera a interface se redesenhar antes de tirar o indicador
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     }, { minMs, mode: 'auto' });
   }, { passive: true });
 }
 
-/* =====================================================================
-   3. TROCA DE TELAS
-   ===================================================================== */
-
-/**
- * Substitui o conteúdo de um container com profundidade: o que sai recua
- * e desfoca, o que entra sobe em escada. Nada de corte seco.
- */
 export async function swapView(container, render, options = {}) {
   const { direction = 'forward', onSwap = null } = options;
 
@@ -241,7 +170,6 @@ export async function swapView(container, render, options = {}) {
 
   const sign = direction === 'back' ? -1 : 1;
 
-  // saída
   const outgoing = Array.from(container.children);
   const outAnim = outgoing.map((node, i) =>
     node.animate([
@@ -261,27 +189,14 @@ export async function swapView(container, render, options = {}) {
 
   await Promise.all(outAnim.map((a) => a.finished.catch(() => {})));
 
-  /* Só agora as peças 3D podem ser desmontadas.
-     Desmontá-las antes — que era o que acontecia — destruía o contexto
-     WebGL enquanto o nó ainda estava na tela saindo de cena, e o canvas
-     morto virava um retângulo em branco durante a animação inteira. */
   onSwap?.();
 
   container.replaceChildren();
 
-  /* As animações de saída gravam o estado final no elemento
-     (`fill: forwards`). Nós que são reaproveitados entre renderizações —
-     a marca 3D da tela Hoje e a peça do ambiente — voltariam para a tela
-     ainda apagados e desfocados, porque continuariam carregando o último
-     quadro da saída. Cancelar devolve cada um ao estado natural. */
-  outAnim.forEach((a) => { try { a.cancel(); } catch { /* já terminou */ } });
+  outAnim.forEach((a) => { try { a.cancel(); } catch {  } });
 
   render(container);
 
-  // (removido) a varredura de luz no topo causava um artefato visual
-  // ao trocar de tela; a entrada em escada abaixo já dá o movimento.
-
-  // entrada, em escada
   const incoming = Array.from(container.children);
   incoming.forEach((node, i) => {
     node.animate([
@@ -300,7 +215,6 @@ export async function swapView(container, render, options = {}) {
   });
 }
 
-/** Lâmina de luz que atravessa o container uma vez. */
 export function sweep(container) {
   if (reduced()) return;
   const bar = document.createElement('span');
@@ -315,16 +229,6 @@ export function sweep(container) {
   setTimeout(() => bar.remove(), 950);
 }
 
-/* =====================================================================
-   4. TROCA DE TELA INTEIRA (landing → acesso → aplicação)
-   ===================================================================== */
-
-/**
- * A marca girando, do tamanho de um botão.
- *
- * É a mesma linguagem da abertura: anéis em órbita e a marca respirando
- * no meio. Serve para qualquer espera que valha ser mostrada.
- */
 export function brandLoader(label) {
   const box = document.createElement('div');
   box.className = 'brand-loader';
@@ -353,29 +257,6 @@ export function brandLoader(label) {
   return box;
 }
 
-/**
- * O carregamento da própria página, sobre a área de conteúdo.
- *
- * Trocar de seção pela barra lateral monta uma tela inteira: a lista, os
- * agrupamentos, as peças 3D. Isso acontece rápido, e antes acontecia em
- * silêncio — clicava-se em "Ambientes" e a tela simplesmente pulava. Aqui
- * a marca aparece girando por cima do conteúdo enquanto a próxima tela é
- * montada, com a mesma linguagem da abertura do site.
- *
- * Cobre só a área de conteúdo, não a barra lateral nem o topo: quem
- * clicou continua vendo onde está e pode mudar de ideia no meio.
- *
- * @returns {() => Promise<void>} chame para encerrar; ela respeita o
- *          tempo mínimo antes de sumir, para não piscar.
- */
-/**
- * A mesma composição da abertura do site, em tamanho de seção.
- *
- * Não é uma releitura: são os mesmos elementos e as mesmas animações da
- * tela que abre o Nestra — anéis em órbita, arco, marca no centro,
- * medidor segmentado e a palavra chegando letra a letra. O que muda é só
- * a escala, controlada por uma classe.
- */
 function bootPiece({ label = 'montando a tela' } = {}) {
   const stage = document.createElement('div');
   stage.className = 'boot-piece';
@@ -399,7 +280,6 @@ function bootPiece({ label = 'montando a tela' } = {}) {
   stage.querySelector('.boot-piece__mark').src =
     window.nestraLogoSrc || 'assets/logo/nestra-mark.png';
 
-  // O medidor segmentado da abertura, com o mesmo número de blocos
   const meter = stage.querySelector('.boot-piece__meter');
   for (let i = 0; i < 24; i++) {
     const seg = document.createElement('span');
@@ -408,9 +288,6 @@ function bootPiece({ label = 'montando a tela' } = {}) {
     meter.appendChild(seg);
   }
 
-  /* O arco percorre o círculo enquanto a tela é montada. Como não há um
-     progresso real para medir — a montagem é rápida demais para isso —,
-     ele descreve o tempo de espera, não uma porcentagem inventada. */
   const arc = stage.querySelector('.boot__arc-fill');
   const total = 2 * Math.PI * 56;
   arc.style.strokeDasharray = String(total);
@@ -428,7 +305,6 @@ export function viewLoading(host, { minMs = 620 } = {}) {
 
   const t0 = performance.now();
 
-  // Navegação rápida não pode empilhar véus por cima uns dos outros
   host.querySelectorAll(':scope > .view-loading').forEach((old) => old.remove());
 
   const veil = document.createElement('div');
@@ -440,10 +316,6 @@ export function viewLoading(host, { minMs = 620 } = {}) {
   veil.animate([{ opacity: 0 }, { opacity: 1 }],
     { duration: 140, easing: 'ease-out', fill: 'forwards' });
 
-  /* Rede de segurança: se por qualquer motivo o encerramento não for
-     chamado — uma exceção no meio da montagem da tela, por exemplo —, o
-     véu sai sozinho. Um carregamento preso sobre o conteúdo seria pior
-     do que qualquer falha que ele estivesse escondendo. */
   const failsafe = setTimeout(() => veil.remove(), 6000);
 
   return async () => {
@@ -464,8 +336,6 @@ export function screenTransition() {
   veil.className = 'fx-veil';
   veil.setAttribute('aria-hidden', 'true');
 
-  // A cortina não fica muda: a marca aparece girando enquanto a próxima
-  // tela é montada por baixo.
   const loader = brandLoader();
   loader.classList.add('fx-veil__loader');
   veil.appendChild(loader);
@@ -490,11 +360,6 @@ export function screenTransition() {
     out.finished.then(() => veil.remove()).catch(() => veil.remove());
   };
 }
-
-/* =====================================================================
-   5. RASTRO DO CURSOR
-   Um ponto que persegue o ponteiro e cresce sobre o que é clicável.
-   ===================================================================== */
 
 export function bindCursorTrail() {
   if (window.matchMedia('(hover: none)').matches || reduced()) return;
@@ -529,10 +394,6 @@ export function bindCursorTrail() {
   loop();
 }
 
-/* =====================================================================
-   6. NÚMERO QUE PULSA AO MUDAR
-   ===================================================================== */
-
 export function bumpBadge(node) {
   if (!node || reduced()) return;
   node.animate([
@@ -541,11 +402,6 @@ export function bumpBadge(node) {
     { transform: 'scale(1)' },
   ], { duration: 460, easing: 'cubic-bezier(.34,1.56,.64,1)' });
 }
-
-/* =====================================================================
-   7. CONFETE DE CONCLUSÃO
-   Quando a tela Hoje fica vazia porque tudo foi concluído.
-   ===================================================================== */
 
 export function celebrate() {
   if (reduced()) return;

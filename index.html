@@ -3,21 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Nestra — seu espaço para o que importa</title>
+<title>Nestra · seu espaço para o que importa</title>
 
 <meta name="description" content="Nestra é um organizador pessoal simples e rápido: você escreve uma frase natural e o sistema entende o tipo, a data e o ambiente. Escuro, direto e centrado no hoje.">
 <meta name="theme-color" content="#070911">
 <meta name="color-scheme" content="dark">
 
-<!-- Endereço da API que fala com o Neon.
-     Vazio = procura /api na mesma origem (é o caso quando o site é
-     publicado junto das funções). Não encontrando, o app entra em modo
-     local e guarda tudo só neste navegador. -->
 <meta name="nestra-api" content="">
 
-<!-- Previews protegidos pelo Vercel exigem o cookie de autenticação até
-     para recursos da mesma origem. Sem use-credentials, o manifesto era
-     redirecionado ao SSO e o Chrome registrava um erro de CORS. -->
 <link rel="manifest" href="manifest.json" crossorigin="use-credentials">
 <link rel="icon" type="image/png" href="assets/icons/favicon-64.png">
 <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
@@ -27,7 +20,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 
 <meta property="og:type" content="website">
-<meta property="og:title" content="Nestra — seu espaço para o que importa">
+<meta property="og:title" content="Nestra · seu espaço para o que importa">
 <meta property="og:description" content="Capturar sem pensar demais, organizar por ambiente e visualizar o hoje.">
 <meta property="og:image" content="assets/logo/nestra-logo.png">
 
@@ -42,15 +35,13 @@
 <link rel="stylesheet" href="css/components.css">
 <link rel="stylesheet" href="css/views.css">
 <link rel="stylesheet" href="css/fx.css">
+<link rel="stylesheet" href="css/meetings.css">
 </head>
 
 <body>
 
 <a class="skip-link" href="#main">Ir para o conteúdo</a>
 
-<!-- =====================================================================
-     ABERTURA — a marca sendo construída camada por camada
-     ===================================================================== -->
 <div class="boot" role="status" aria-live="polite" aria-label="Carregando o Nestra">
   <div class="boot__grid" aria-hidden="true"></div>
   <div class="boot__halo" aria-hidden="true"></div>
@@ -58,21 +49,17 @@
 
   <div class="boot__stage">
     <div class="boot__logo">
-      <!-- A marca extrudada em 3D, montada camada por camada pela engine -->
       <canvas id="bootLogo" aria-hidden="true"></canvas>
 
-      <!-- Anéis em órbita ao redor da marca -->
       <div class="boot__orbit" aria-hidden="true">
         <span></span><span></span><span></span>
       </div>
 
-      <!-- Arco que acompanha o progresso, contornando a marca -->
       <svg class="boot__arc" viewBox="0 0 120 120" aria-hidden="true">
         <circle class="boot__arc-track" cx="60" cy="60" r="56" />
         <circle class="boot__arc-fill" cx="60" cy="60" r="56" />
       </svg>
 
-      <!-- Partículas atraídas para a marca enquanto ela se forma -->
       <div class="boot__sparks" aria-hidden="true"></div>
 
       <div class="boot__frame" aria-hidden="true">
@@ -94,18 +81,14 @@
   </div>
 
   <ul class="boot__log" aria-hidden="true"></ul>
-  <div class="boot__version">v1.0.1 · pt-BR</div>
+  <div class="boot__version">v1.1.0 · pt-BR</div>
   <div class="boot__wipe" aria-hidden="true"></div>
 </div>
 
-<!-- Cena 3D de fundo -->
 <canvas id="scene" aria-hidden="true"></canvas>
 
 <div id="app">
 
-  <!-- ===================================================================
-       TELA 1 — APRESENTAÇÃO
-       =================================================================== -->
   <div class="screen landing" id="screen-landing" data-active="false">
 
     <header class="topbar">
@@ -117,6 +100,7 @@
       <nav class="topbar__nav">
         <a class="topbar__link" href="#proposta">Proposta</a>
         <a class="topbar__link" href="#captura">Captura</a>
+        <a class="topbar__link" href="#reunioes">Reuniões</a>
         <a class="topbar__link" href="#ambientes">Ambientes</a>
         <a class="topbar__link" href="#privacidade">Privacidade</a>
       </nav>
@@ -125,7 +109,6 @@
       <a class="btn btn--primary btn--sm" href="#/criar-conta" data-magnetic="0.2">Criar conta</a>
     </header>
 
-    <!-- Abertura -->
     <section class="hero">
       <div class="hero__inner">
         <div class="hero__logo">
@@ -141,7 +124,7 @@
 
         <p class="hero__lede">
           O Nestra reduz a distância entre <b>lembrar de algo</b> e <b>registrar esse algo
-          corretamente</b>. Escreva uma frase natural e siga com o seu dia — o sistema
+          corretamente</b>. Escreva uma frase natural e siga com o seu dia. O sistema
           descobre o tipo, a data e o ambiente.
         </p>
 
@@ -150,7 +133,6 @@
           <a class="btn btn--outline btn--lg" href="#captura" data-magnetic="0.18">Ver como funciona</a>
         </div>
 
-        <!-- Demonstração viva do parser -->
         <div class="hero__demo">
           <div class="demo-box">
             <span id="demoText"></span><span class="demo-caret" aria-hidden="true"></span>
@@ -165,7 +147,6 @@
       </div>
     </section>
 
-    <!-- O problema -->
     <section class="section" id="proposta">
       <div class="section__inner">
         <div class="section__head" data-reveal>
@@ -174,7 +155,7 @@
           <p class="section__text">
             O que atrapalha não é a ausência de listas: é a dispersão de pequenas obrigações
             e ideias que surgem em momentos inadequados. Você lembra na quarta que precisa
-            lavar o tênis no sábado, lembra no expediente que precisa anexar um atestado — e
+            lavar o tênis no sábado, lembra no expediente que precisa anexar um atestado. E
             depois esquece parte disso.
           </p>
         </div>
@@ -186,7 +167,7 @@
             <h3 class="feature__title">Capturar sem pensar demais</h3>
             <p class="feature__text">
               Uma caixa de texto única, com acesso imediato. O sistema registra primeiro e
-              pergunta depois — uma frase nunca se perde porque a interpretação não foi perfeita.
+              pergunta depois: uma frase nunca se perde porque a interpretação não foi perfeita.
             </p>
           </article>
 
@@ -213,7 +194,6 @@
       </div>
     </section>
 
-    <!-- Captura -->
     <section class="section" id="captura">
       <div class="section__inner">
         <div class="section__head" data-reveal>
@@ -260,10 +240,10 @@
               <div class="panel__body stack gap-3">
                 <p class="text-body">A composição segue uma hierarquia simples:</p>
                 <ol class="stack gap-2">
-                  <li class="row gap-3"><span class="badge badge--overdue">1</span><span>Passaram da data — com sinalização clara, sem tom punitivo.</span></li>
-                  <li class="row gap-3"><span class="badge badge--accent">2</span><span>Para hoje — agrupados por período quando houver horário.</span></li>
-                  <li class="row gap-3"><span class="badge">3</span><span>Alta prioridade — o que merece ser visto mesmo com outra data.</span></li>
-                  <li class="row gap-3"><span class="badge">4</span><span>Capturas recentes — para conferir o que acabou de registrar.</span></li>
+                  <li class="row gap-3"><span class="badge badge--overdue">1</span><span>Passaram da data, com sinalização clara, sem tom punitivo.</span></li>
+                  <li class="row gap-3"><span class="badge badge--accent">2</span><span>Para hoje, agrupados por período quando houver horário.</span></li>
+                  <li class="row gap-3"><span class="badge">3</span><span>Alta prioridade: o que merece ser visto mesmo com outra data.</span></li>
+                  <li class="row gap-3"><span class="badge">4</span><span>Capturas recentes, para conferir o que acabou de registrar.</span></li>
                 </ol>
               </div>
             </div>
@@ -273,7 +253,7 @@
               <div class="panel__body">
                 <p class="text-body">
                   Subtarefas e checklists existem, mas ficam escondidos até serem chamados.
-                  Assim “comprar benefício” não parece um projeto — e “atualizar o sistema”
+                  Assim “comprar benefício” não parece um projeto, e “atualizar o sistema”
                   ainda cabe, com passos e observações.
                 </p>
               </div>
@@ -283,7 +263,42 @@
       </div>
     </section>
 
-    <!-- Ambientes -->
+    <section class="section" id="reunioes">
+      <div class="section__inner">
+        <div class="section__head" data-reveal>
+          <span class="section__kicker">Reuniões</span>
+          <h2 class="section__title grad-text">Chegue na daily sabendo o que falar.</h2>
+          <p class="section__text">
+            Cadastre sua agenda fixa. Antes de cada reunião, escreva ou dite o que precisa tratar e o
+            copiloto monta um mapa mental: andamentos, bloqueios, perguntas e avisos, cada um com sua cor.
+            Durante a conversa, toque em cada balão conforme fala. No fim, a ata sai pronta e os
+            combinados viram tarefas.
+          </p>
+        </div>
+
+        <div class="grid-3">
+          <article class="feature" data-reveal data-tilt="6">
+            <span class="feature__num">01</span>
+            <div class="feature__icon" data-icon="sparkle"></div>
+            <h3 class="feature__title">Prepare em um minuto</h3>
+            <p class="feature__text">O copiloto organiza o texto solto, traz o que ficou de fora da última vez e os itens que vencem no dia.</p>
+          </article>
+          <article class="feature" data-reveal data-reveal-delay="0.08" data-tilt="6">
+            <span class="feature__num">02</span>
+            <div class="feature__icon" data-icon="target"></div>
+            <h3 class="feature__title">Olhe o mapa, não a lista</h3>
+            <p class="feature__text">Na reunião, o próximo assunto pulsa, o cronômetro corre e cada balão falado ganha o seu visto.</p>
+          </article>
+          <article class="feature" data-reveal data-reveal-delay="0.16" data-tilt="6">
+            <span class="feature__num">03</span>
+            <div class="feature__icon" data-icon="list"></div>
+            <h3 class="feature__title">Saia com a ata</h3>
+            <p class="feature__text">Resumo do que foi falado, do que ficou e dos combinados. Os próximos passos entram no Nestra como tarefas.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
     <section class="section" id="ambientes">
       <div class="section__inner">
         <div class="section__head" data-reveal>
@@ -291,21 +306,20 @@
           <h2 class="section__title grad-text">Cada contexto no seu lugar.</h2>
           <p class="section__text">
             Um ambiente é um espaço criado por você para representar uma área, contexto ou
-            projeto. O Nestra sugere Trabalho, Estudos e Pessoal apenas como exemplos — todos
+            projeto. O Nestra sugere Trabalho, Estudos e Pessoal apenas como exemplos, todos
             editáveis, todos removíveis.
           </p>
         </div>
 
         <div class="stats-strip" data-reveal>
           <div class="stat"><span class="stat__value count-up" data-count="4">0</span><span class="stat__label">tipos de item</span></div>
-          <div class="stat"><span class="stat__value count-up" data-count="20">0</span><span class="stat__label">tabelas no banco</span></div>
+          <div class="stat"><span class="stat__value count-up" data-count="22">0</span><span class="stat__label">tabelas no banco</span></div>
           <div class="stat"><span class="stat__value">∞</span><span class="stat__label">ambientes por conta</span></div>
           <div class="stat"><span class="stat__value count-up" data-count="0">0</span><span class="stat__label">dados compartilhados</span></div>
         </div>
       </div>
     </section>
 
-    <!-- Privacidade -->
     <section class="section" id="privacidade">
       <div class="section__inner">
         <div class="section__head" data-reveal>
@@ -313,7 +327,7 @@
           <h2 class="section__title grad-text">Cada usuário é dono dos seus dados.</h2>
           <p class="section__text">
             Toda entidade carrega uma referência ao dono, e a autorização acontece no servidor
-            e no próprio banco — não só na interface. Ambientes, itens, checklists, preferências
+            e no próprio banco, não só na interface. Ambientes, itens, checklists, preferências
             e histórico nunca ficam acessíveis só porque alguém conhece um identificador.
           </p>
         </div>
@@ -332,13 +346,12 @@
           <article class="feature" data-reveal data-reveal-delay="0.16" data-tilt="5">
             <div class="feature__icon" data-icon="download"></div>
             <h3 class="feature__title">Exportar e apagar</h3>
-            <p class="feature__text">Baixe tudo em JSON ou CSV quando quiser. Excluir a conta remove os dados — sem letras miúdas.</p>
+            <p class="feature__text">Baixe tudo em JSON ou CSV quando quiser. Excluir a conta remove os dados, sem letras miúdas.</p>
           </article>
         </div>
       </div>
     </section>
 
-    <!-- Chamada final -->
     <section class="section" style="padding-bottom: var(--s-9)">
       <div class="section__inner" style="text-align:center">
         <div data-reveal>
@@ -346,7 +359,7 @@
             Capturar sem pensar demais.
           </h2>
           <p class="section__text" style="max-width:56ch;margin:0 auto var(--s-6)">
-            Organizar por ambiente, visualizar o hoje, respeitar o futuro — e não transformar
+            Organizar por ambiente, visualizar o hoje, respeitar o futuro, sem transformar
             a sua vida em uma planilha.
           </p>
           <a class="btn btn--primary btn--lg" href="#/criar-conta" data-magnetic="0.24">Criar minha conta</a>
@@ -370,6 +383,7 @@
           <h5>Produto</h5>
           <a href="#proposta">Proposta</a>
           <a href="#captura">Captura</a>
+          <a href="#reunioes">Reuniões</a>
           <a href="#ambientes">Ambientes</a>
         </div>
         <div class="footer__col">
@@ -380,8 +394,6 @@
         <div class="footer__col">
           <h5>Dados</h5>
           <a href="#privacidade">Privacidade</a>
-          <!-- Documentos em Markdown: abrem à parte, senão o navegador
-               baixa o arquivo e a pessoa perde a tela em que estava. -->
           <a href="docs/PRIVACIDADE.md" target="_blank" rel="noopener">Política</a>
           <a href="docs/TERMOS.md" target="_blank" rel="noopener">Termos de uso</a>
         </div>
@@ -393,14 +405,8 @@
     </footer>
   </div>
 
-  <!-- ===================================================================
-       TELA 2 — ACESSO (montada pelo JS)
-       =================================================================== -->
   <div class="screen" id="screen-auth" data-active="false"></div>
 
-  <!-- ===================================================================
-       TELA 3 — APLICAÇÃO (montada pelo JS)
-       =================================================================== -->
   <div class="screen" id="screen-app" data-active="false"></div>
 
 </div>

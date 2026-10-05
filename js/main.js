@@ -1,8 +1,3 @@
-/* =====================================================================
-   NESTRA — Ponto de entrada
-   Sequência de abertura, tema, autenticação, navegação e atalhos.
-   ===================================================================== */
-
 import { store, SUGGESTED_ENVIRONMENTS } from './app/store.js';
 import { api } from './app/api.js';
 import { $, el, icon, esc, toast, initials, openMenu, openModal } from './app/ui.js';
@@ -20,6 +15,7 @@ import { renderToday, renderEnvironment, clearTodayBrand } from './app/views/tod
 import { renderEnvironments, openEnvironmentForm } from './app/views/environments.js';
 import { renderSettings, renderInbox } from './app/views/settings.js';
 import { openItemDetail } from './app/views/items.js';
+import { renderMeetings, renderMeeting, openMeetingForm, unpreparedToday, prepState } from './app/views/meetings.js';
 import { parse, humanDate, todayIn, toISODate, TYPE_LABELS } from './app/nlp.js';
 
 const app = {
@@ -28,10 +24,6 @@ const app = {
   heroLogo: null,
   scene: null,
 };
-
-/* =====================================================================
-   1. SEQUÊNCIA DE ABERTURA
-   ===================================================================== */
 
 const BOOT_STEPS = [
   'preparando as superfícies',
@@ -42,7 +34,6 @@ const BOOT_STEPS = [
   'montando a tela Hoje',
 ];
 
-/** Partículas que caem em direção à marca enquanto ela se forma. */
 function seedBootSparks(host) {
   if (!host || device.reducedMotion) return;
 
@@ -77,7 +68,6 @@ async function boot() {
 
   seedBootSparks($('.boot__sparks'));
 
-  // Comprimento do arco: 2πr com r = 56, como no viewBox do SVG
   const ARC = 2 * Math.PI * 56;
 
   let progress = 0;
@@ -102,17 +92,13 @@ async function boot() {
   setProgress(0.04, BOOT_STEPS[0]);
   applyPrefs();
 
-  // O vigia de quadros começa junto com a abertura: se o aparelho já
-  // sofrer aqui, a decoração entra num degrau mais leve desde o início.
   quality.watch();
-  window.nestraQuality = quality;   // visível no console, como a cena
+  window.nestraQuality = quality;
 
-  /* A marca sendo construída dentro do próprio carregamento */
   setProgress(0.14, BOOT_STEPS[1]);
 
-  // Descobre qual arquivo de logo existe na pasta e usa ele em tudo
   app.logoSrc = await resolveLogoSource();
-  window.nestraLogoSrc = app.logoSrc;   // usado pelo carregador de rota
+  window.nestraLogoSrc = app.logoSrc;
   document.querySelectorAll('img[data-logo]').forEach((img) => {
     img.src = app.logoSrc;
   });
@@ -132,12 +118,9 @@ async function boot() {
   await app.logo.init();
   setProgress(0.42);
 
-  /* Cena de fundo */
   setProgress(0.5, BOOT_STEPS[2]);
   const sceneCanvas = $('#scene');
   if (!device.reducedMotion) {
-    // A quantidade de peças não é mais decidida pela largura da tela: o
-    // governo de qualidade mede o aparelho e ajusta quadro a quadro.
     app.scene = new Scene(sceneCanvas, { accent: hexToRgb(store.state.prefs.accent) });
     if (app.scene.init()) {
       window.nestraScene = app.scene;
@@ -146,7 +129,6 @@ async function boot() {
   }
   setProgress(0.66);
 
-  /* Sessão */
   setProgress(0.72, BOOT_STEPS[3]);
   let logged = false;
   try {
@@ -155,9 +137,6 @@ async function boot() {
     logged = false;
   }
 
-  // As preferências só existem depois da sessão: cor de destaque,
-  // densidade e movimento precisam ser aplicados de novo agora, senão a
-  // pessoa vê o padrão até abrir as configurações.
   if (logged) applyPrefs();
 
   setProgress(0.86, BOOT_STEPS[4]);
@@ -166,7 +145,6 @@ async function boot() {
   setProgress(1, BOOT_STEPS[5]);
   await sleep(560);
 
-  /* Fecho */
   bootEl.dataset.done = 'true';
   setTimeout(() => {
     bootEl.remove();
@@ -178,10 +156,6 @@ async function boot() {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-/* =====================================================================
-   2. TEMA E PREFERÊNCIAS
-   ===================================================================== */
 
 function applyPrefs() {
   const p = store.state.prefs;
@@ -197,7 +171,6 @@ function applyPrefs() {
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.content = p.highContrast ? '#000000' : '#070911';
 
-  // A cena e a logo acompanham a cor escolhida
   const rgb = hexToRgb(p.accent);
   if (app.scene) app.scene.opts.accent = rgb;
   if (app.heroLogo) app.heroLogo.opts.accent = rgb;
@@ -210,14 +183,9 @@ function hexToRgb(hex) {
   return [parseInt(m[1], 16) / 255, parseInt(m[2], 16) / 255, parseInt(m[3], 16) / 255];
 }
 
-/* =====================================================================
-   3. INÍCIO
-   ===================================================================== */
-
 function startApp(logged) {
   bindRipple(document);
 
-  // Resposta física em toda a interface
   bindGlobalClick();
   bindAutoLoading(document);
   bindCursorTrail();
@@ -235,18 +203,18 @@ function startApp(logged) {
     scheduleNotifications();
   });
   store.addEventListener('environments', paintSidebar);
+  store.addEventListener('meetings', () => {
+    paintSidebar();
+    scheduleNotifications();
+  });
 
-  /* Chegou coisa nova do servidor — provavelmente feita no outro
-     aparelho. A tela atual se redesenha sozinha, sem recarregar nada. */
   store.addEventListener('pulled', () => {
     if (!store.state.user) return;
-    // As preferências também viajam entre aparelhos
     applyPrefs();
     repaintWhenIdle();
     scheduleNotifications();
   });
 
-  // Mantém computador e celular olhando para os mesmos dados
   store.startAutoSync();
 
   if (!location.hash) {
@@ -267,11 +235,9 @@ function startApp(logged) {
   window.addEventListener('online', () => { store.setSync('syncing'); store.flush(); });
   window.addEventListener('offline', () => store.setSync('offline'));
 
-  // Troca de marca feita nas configurações: reconstrói o 3D na hora
   window.addEventListener('nestra:logo-changed', reloadLogo);
 }
 
-/** Recarrega a marca em todo lugar depois de uma troca. */
 async function reloadLogo() {
   app.logoSrc = await resolveLogoSource();
 
@@ -303,10 +269,6 @@ async function reloadLogo() {
   }
 }
 
-/* =====================================================================
-   4. NAVEGAÇÃO
-   ===================================================================== */
-
 const ROUTES = {
   '': { name: 'landing' },
   '/': { name: 'landing' },
@@ -316,6 +278,7 @@ const ROUTES = {
   '/ambientes': { name: 'environments', guard: true },
   '/entrada': { name: 'inbox', guard: true },
   '/config': { name: 'settings', guard: true },
+  '/reunioes': { name: 'meetings', guard: true },
 };
 
 function route() {
@@ -323,12 +286,16 @@ function route() {
   const [path, param] = (() => {
     const m = hash.match(/^\/ambiente\/(.+)$/);
     if (m) return ['/ambiente', m[1]];
+    const r = hash.match(/^\/reuniao\/([^/]+)(?:\/(\d{4}-\d{2}-\d{2}))?$/);
+    if (r) return ['/reuniao', r[2] ? `${r[1]}/${r[2]}` : r[1]];
     return [hash, null];
   })();
 
   const def = path === '/ambiente'
     ? { name: 'environment', guard: true }
-    : ROUTES[path] || { name: 'landing' };
+    : path === '/reuniao'
+      ? { name: 'meeting', guard: true }
+      : ROUTES[path] || { name: 'landing' };
 
   const logged = Boolean(store.state.user);
 
@@ -359,8 +326,6 @@ function route() {
   const paint = () => {
     document.querySelectorAll('.screen').forEach((s) => (s.dataset.active = 'false'));
 
-    // A cena de fundo sabe em que tela estamos: as placas ficam grandes
-    // na apresentação e recuam dentro do app, sem apagar a aurora.
     app.scene?.setMood(nextScreen);
 
     if (def.name === 'landing') {
@@ -382,8 +347,6 @@ function route() {
     document.body.dataset.sidebar = 'closed';
   };
 
-  // Sair da apresentação para o app (ou o contrário) merece uma cortina;
-  // navegar dentro do app usa a transição mais leve, dentro do conteúdo.
   if (changedScreen) {
     const reveal = screenTransition();
     setTimeout(() => {
@@ -402,16 +365,12 @@ function navigate(name, param) {
     environment: '#/ambiente/' + param,
     inbox: '#/entrada',
     settings: '#/config',
+    meetings: '#/reunioes',
+    meeting: '#/reuniao/' + param,
     landing: '#/',
   };
   const target = map[name] || '#/hoje';
 
-  /* Clicar na seção em que já se está.
-     Antes isso não fazia absolutamente nada: o endereço não mudava, o
-     `hashchange` não disparava e a tela ficava parada — que é a
-     definição de botão quebrado, do ponto de vista de quem clicou.
-     Agora a seção é remontada, com o mesmo carregamento das outras
-     trocas, e a página volta ao topo. */
   if (location.hash === target) {
     if (store.state.user) renderCurrentView({ animate: true });
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -422,17 +381,12 @@ function navigate(name, param) {
   location.hash = target;
 }
 
-/* =====================================================================
-   5. PÁGINA DE ENTRADA
-   ===================================================================== */
-
 let landingReady = false;
 
 function initLanding() {
   bindReveal(document);
   initFx(document);
 
-  // Preenche os ícones declarados no HTML
   document.querySelectorAll('[data-icon]').forEach((node) => {
     if (node.childElementCount) return;
     node.innerHTML = icon(node.dataset.icon, 20);
@@ -443,7 +397,6 @@ function initLanding() {
 
   bindCursorGlow();
 
-  /* A marca em 3D, grande, na abertura */
   const heroCanvas = $('#heroLogo');
   if (heroCanvas) {
     app.heroLogo = new Logo3D(heroCanvas, {
@@ -459,7 +412,6 @@ function initLanding() {
     app.heroLogo.init();
   }
 
-  /* Demonstração viva da captura: escreve e mostra o que foi entendido */
   const demoText = $('#demoText');
   const demoChips = $('#demoChips');
 
@@ -502,10 +454,6 @@ function initLanding() {
     });
   }
 }
-
-/* =====================================================================
-   6. ACESSO
-   ===================================================================== */
 
 function renderAuth(mode) {
   const host = $('#screen-auth');
@@ -596,8 +544,6 @@ function renderAuth(mode) {
       if (isRegister) {
         await store.register({ displayName, email, password });
         store.seedEnvironments();
-        // Sem ambiente padrão: o que a frase não indicar fica na caixa de
-        // entrada, em vez de cair em "Trabalho" por acidente.
         store.setPrefs({ defaultEnvironmentId: null });
         toast(`Bem-vindo ao Nestra, ${displayName.split(' ')[0]}.`, { kind: 'success' });
         showWelcome();
@@ -636,10 +582,6 @@ function renderAuth(mode) {
         text: isRegister ? 'Entrar' : 'Criar agora',
       }),
     ]),
-    /* Onde a conta vai morar — dito antes de a pessoa digitar a senha.
-       Em modo local isso não é um detalhe técnico: a conta criada aqui
-       não existe em nenhum outro aparelho, e descobrir isso só depois de
-       tentar entrar no celular é a pior hora possível. */
     store.state.mode === 'remote'
       ? el('p', {
           class: 'auth__note auth__note--ok',
@@ -649,11 +591,10 @@ function renderAuth(mode) {
       : el('p', {
           class: 'auth__note auth__note--warn',
           html: icon('alert', 14) + '<span>' + (api.degraded
-            // A API existe: o problema é outro, e dá para nomear
             ? `<b>O servidor respondeu, mas o banco não.</b> ${esc(api.degraded.message)} ` +
               'Enquanto isso, a conta criada aqui fica só neste navegador.'
             : '<b>Este endereço guarda os dados só neste navegador.</b> ' +
-              'A conta criada aqui não vai existir no celular — e entrar com ela lá abriria um espaço vazio. ' +
+              'A conta criada aqui não vai existir no celular, e entrar com ela lá abriria um espaço vazio. ' +
               'Para a mesma conta valer nos dois, o site precisa ser publicado junto da API.'
           ) + '</span>',
         }),
@@ -666,10 +607,9 @@ function renderAuth(mode) {
   setTimeout(() => (isRegister ? form.displayName : emailInput).focus(), 160);
 }
 
-/** Primeiro contato: explica os ambientes sugeridos, todos editáveis. */
 function showWelcome() {
   const body = el('div', { class: 'stack gap-4' }, [
-    el('p', { class: 'text-body', text: 'Criamos três ambientes de exemplo para você começar. Eles são só sugestões — renomeie, mude a cor ou apague à vontade.' }),
+    el('p', { class: 'text-body', text: 'Criamos três ambientes de exemplo para você começar. Eles são só sugestões: renomeie, mude a cor ou apague à vontade.' }),
     el('div', { class: 'row gap-2', style: { flexWrap: 'wrap' } },
       store.activeEnvironments.map((e) =>
         el('span', {
@@ -677,7 +617,7 @@ function showWelcome() {
           style: { borderColor: e.color, color: e.color },
           html: icon(e.icon, 13) + `<span>${esc(e.name)}</span>`,
         }))),
-    el('p', { class: 'text-body', text: 'Agora escreva uma frase natural na caixa de captura — por exemplo, "lavar o tênis no sábado" — e o Nestra descobre o tipo, a data e o ambiente.' }),
+    el('p', { class: 'text-body', text: 'Agora escreva uma frase natural na caixa de captura (por exemplo, "lavar o tênis no sábado") e o Nestra descobre o tipo, a data e o ambiente.' }),
   ]);
 
   const ok = el('button', { class: 'btn btn--primary', text: 'Começar' });
@@ -685,16 +625,9 @@ function showWelcome() {
   ok.addEventListener('click', () => dialog.close());
 }
 
-/* =====================================================================
-   7. ESTRUTURA DA APLICAÇÃO
-   ===================================================================== */
-
 function renderShell() {
   const host = $('#screen-app');
   if (!store.state.user) {
-    /* O mesmo documento continua vivo depois de sair. Se a estrutura da
-       conta anterior ficar marcada como pronta, a próxima conta herda
-       avatar, saudação e caches visuais daquela pessoa. */
     clearTodayBrand();
     clearEnvHeroes();
     host.replaceChildren();
@@ -719,7 +652,6 @@ function renderShell() {
   host.classList.add('app-screen');
   host.replaceChildren();
 
-  /* Barra superior */
   const burger = el('button', {
     class: 'btn btn--ghost btn--icon topbar__burger',
     'aria-label': 'Abrir menu',
@@ -776,7 +708,6 @@ function renderShell() {
     avatar,
   ]);
 
-  /* Barra lateral */
   const sidebar = el('nav', { class: 'sidebar', 'aria-label': 'Navegação principal' });
   const scrim = el('div', {
     class: 'sidebar__scrim',
@@ -787,7 +718,6 @@ function renderShell() {
     el('div', { class: 'main__inner', id: 'viewRoot' }),
   ]);
 
-  /* Barra inferior no celular */
   const mobileBar = el('div', { class: 'mobile-bar' }, [
     el('button', {
       class: 'btn btn--primary grow',
@@ -796,6 +726,12 @@ function renderShell() {
         navigate('today');
         setTimeout(() => $('#viewRoot')?.captureBox?.focusInput(), 220);
       },
+    }),
+    el('button', {
+      class: 'btn btn--ghost btn--icon',
+      'aria-label': 'Reuniões',
+      html: icon('calendar', 17),
+      onClick: () => navigate('meetings'),
     }),
     el('button', {
       class: 'btn btn--ghost btn--icon',
@@ -848,12 +784,12 @@ function paintSidebar() {
   const nav = el('div', { class: 'side-group' }, [
     el('div', { class: 'side-group__title', text: 'Visão' }),
     link('Hoje', 'target', { name: 'today' }, b.overdue.length + b.dueToday.length, r.name === 'today'),
+    link('Reuniões', 'calendar', { name: 'meetings' }, unpreparedToday(), r.name === 'meetings' || r.name === 'meeting'),
     link('Caixa de entrada', 'inbox', { name: 'inbox' }, inbox, r.name === 'inbox'),
     link('Ambientes', 'layers', { name: 'environments' }, null, r.name === 'environments'),
   ]);
   sidebar.appendChild(nav);
 
-  /* Ambientes do usuário */
   const envGroup = el('div', { class: 'side-group' });
   envGroup.appendChild(el('div', { class: 'side-group__title' }, [
     el('span', { text: 'Meus ambientes' }),
@@ -902,7 +838,6 @@ function paintSidebar() {
   });
   sidebar.appendChild(envGroup);
 
-  /* Rodapé da lateral */
   const syncPill = el('div', { class: 'sync-pill', id: 'syncPill', dataset: { state: store.state.syncState } }, [
     el('span', { class: 'sync-pill__dot' }),
     el('span', { id: 'syncLabel', text: syncLabel(store.state.syncState) }),
@@ -938,28 +873,17 @@ function paintSync(state) {
   $('#syncLabel').textContent = syncLabel(state);
 }
 
-/**
- * Redesenha quando a tela estiver livre.
- *
- * A busca automática roda a cada 15 segundos. Se ela redesenhasse a tela
- * no meio de uma frase, a frase iria embora — e perder o que a pessoa
- * estava escrevendo é justamente o que este produto existe para evitar.
- * O mesmo vale para um formulário aberto: espera fechar.
- */
 let repaintTimer = 0;
 
 function repaintWhenIdle() {
   const focused = document.activeElement;
-  /* Foco sozinho não significa que há trabalho em andamento. No celular,
-     a caixa vazia costuma continuar focada depois do cadastro e bloqueava
-     todos os pulls seguintes até um Ctrl+R. Só protege uma captura que
-     realmente tenha texto ou esteja ouvindo. Formulários vivem em modal e
-     já são cobertos por `dialogOpen`. */
   const captureDraft = focused?.matches?.('.capture__input') && focused.value.trim();
   const listening = $('#viewRoot')?.captureBox?.dataset.listening === 'true';
   const dialogOpen = document.querySelector('.overlay[data-open="true"], .palette[data-open="true"]');
+  const meetingBusy = document.querySelector('[data-hold-repaint="true"]') ||
+    (focused?.closest?.('.mtg-body') && /^(INPUT|TEXTAREA|SELECT)$/.test(focused.tagName));
 
-  if (captureDraft || listening || dialogOpen) {
+  if (captureDraft || listening || dialogOpen || meetingBusy) {
     clearTimeout(repaintTimer);
     repaintTimer = setTimeout(repaintWhenIdle, 4000);
     return;
@@ -986,23 +910,20 @@ function renderCurrentView({ animate = false } = {}) {
       }),
     });
     else if (r.name === 'inbox') renderInbox(container, { onNavigate: navigate });
+    else if (r.name === 'meetings') renderMeetings(container, { onNavigate: navigate });
+    else if (r.name === 'meeting') {
+      const [meetingId, day] = String(r.param || '').split('/');
+      renderMeeting(container, meetingId, day, { onNavigate: navigate });
+    }
     else if (r.name === 'settings') renderSettings(container, { onNavigate: navigate, applyPrefs });
 
     paintSidebar();
     initFx(container);
   };
 
-  /* As peças 3D vivem só enquanto a tela delas existe. Sair da tela sem
-     desmontá-las deixaria contextos WebGL pendurados — e o navegador tem
-     um teto baixo deles, ainda mais no celular.
-
-     Mas desmontar cedo demais é pior: o nó continua na tela durante a
-     animação de saída, e um canvas sem contexto vira um retângulo em
-     branco. Por isso a limpeza é entregue ao `swapView`, que a executa
-     no instante exato em que o conteúdo antigo sai do documento. */
   const cleanup = () => {
-    // Sair da tela com o microfone aberto seria péssimo: encerra junto
     root.captureBox?.stopVoice?.();
+    root.__mtgCleanup?.();
     clearOrbs();
     if (r.name !== 'environment') {
       clearEnvHeroes();
@@ -1015,8 +936,6 @@ function renderCurrentView({ animate = false } = {}) {
   };
 
   if (animate) {
-    // Navegar pela barra lateral monta uma tela inteira: a marca girando
-    // por cima do conteúdo mostra que isso está acontecendo.
     const done = viewLoading($('.main'));
     swapView(root, draw, { onSwap: cleanup }).then(done, done);
   } else {
@@ -1025,10 +944,6 @@ function renderCurrentView({ animate = false } = {}) {
     draw(root);
   }
 }
-
-/* =====================================================================
-   8. BUSCA / PALETA DE COMANDOS
-   ===================================================================== */
 
 let palette = null;
 
@@ -1075,6 +990,9 @@ function openPalette() {
     { label: 'Ir para Hoje', hint: 'navegação', run: () => navigate('today') },
     { label: 'Ir para Ambientes', hint: 'navegação', run: () => navigate('environments') },
     { label: 'Caixa de entrada', hint: 'navegação', run: () => navigate('inbox') },
+    { label: 'Ir para Reuniões', hint: 'navegação', run: () => navigate('meetings') },
+    { label: 'Nova reunião', hint: 'ação', run: () => openMeetingForm(null, (m) => m && navigate('meeting', m.id)) },
+    ...store.activeMeetings.map((m) => ({ label: `Preparar ${m.title}`, hint: 'ação', run: () => navigate('meeting', m.id) })),
     { label: 'Configurações', hint: 'navegação', run: () => navigate('settings') },
     { label: 'Criar ambiente', hint: 'ação', run: () => openEnvironmentForm(null, renderCurrentView) },
     { label: 'Exportar meus dados', hint: 'ação', run: () => navigate('settings') },
@@ -1142,10 +1060,6 @@ function openPalette() {
     input.blur();
     palette.dataset.open = 'false';
     palette.setAttribute('aria-hidden', 'true');
-    /* A paleta só some da vista: o nó continua no documento. Sem soltar
-       o foco, o campo de busca invisível continuava recebendo o que era
-       digitado — e todos os atalhos de teclado paravam de funcionar,
-       porque a interface entendia que a pessoa estava escrevendo. */
     input.value = '';
     selected = 0;
     draw();
@@ -1154,10 +1068,6 @@ function openPalette() {
   draw();
   setTimeout(() => input.focus(), 80);
 }
-
-/* =====================================================================
-   9. ATALHOS DE TECLADO (§22: opcionais, nunca obrigatórios)
-   ===================================================================== */
 
 function bindGlobalKeys() {
   document.addEventListener('keydown', (ev) => {
@@ -1176,6 +1086,7 @@ function bindGlobalKeys() {
     if (ev.key === 'c') { ev.preventDefault(); navigate('today'); setTimeout(() => $('#viewRoot')?.captureBox?.focusInput(), 200); }
     if (ev.key === 'h') navigate('today');
     if (ev.key === 'a') navigate('environments');
+    if (ev.key === 'r') navigate('meetings');
     if (ev.key === ',') navigate('settings');
     if (ev.key === '?') showShortcuts();
   });
@@ -1187,6 +1098,7 @@ function showShortcuts() {
     ['C', 'Capturar alguma coisa'],
     ['H', 'Ir para Hoje'],
     ['A', 'Ir para Ambientes'],
+    ['R', 'Ir para Reuniões'],
     [',', 'Configurações'],
     ['Ctrl/⌘ K', 'Paleta de comandos'],
     ['Enter', 'Abrir o item em foco'],
@@ -1206,10 +1118,6 @@ function showShortcuts() {
   ok.addEventListener('click', () => dialog.close());
 }
 
-/* =====================================================================
-   10. NOTIFICAÇÕES DO NAVEGADOR (§9)
-   ===================================================================== */
-
 const notified = new Set();
 
 function scheduleNotifications() {
@@ -1220,6 +1128,29 @@ function scheduleNotifications() {
   const tz = p.timezone;
   const today = toISODate(todayIn(tz));
   const now = new Date();
+
+  if (p.notifyCommitments) {
+    store.meetingsOn(today).forEach((m) => {
+      if (!m.startTime) return;
+      const tag = `meeting:${m.id}:${today}`;
+      if (notified.has(tag)) return;
+      const [h, mi] = m.startTime.split(':').map(Number);
+      const when = new Date(now);
+      when.setHours(h, mi, 0, 0);
+      const minutes = (when - now) / 60000;
+      if (minutes <= 0 || minutes > Math.min(15, p.notifyLeadMinutes || 15)) return;
+      notified.add(tag);
+      const state = prepState(m, today);
+      try {
+        const n = new Notification(`Nestra · ${m.title} às ${m.startTime}`, {
+          body: state.key === 'empty' ? 'Ainda sem pauta. Um minuto para preparar?' : state.label,
+          icon: 'assets/icons/icon-192.png',
+          tag: 'nestra-' + tag,
+        });
+        n.onclick = () => { window.focus(); navigate('meeting', m.id); };
+      } catch {  }
+    });
+  }
 
   store.live.forEach((item) => {
     if (item.status !== 'pending' || notified.has(item.id)) return;
@@ -1258,13 +1189,9 @@ function scheduleNotifications() {
         window.focus();
         openItemDetail(item.id, renderCurrentView);
       };
-    } catch { /* o navegador pode recusar em segundo plano */ }
+    } catch {  }
   });
 }
-
-/* =====================================================================
-   11. PWA
-   ===================================================================== */
 
 function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
@@ -1272,15 +1199,9 @@ function registerServiceWorker() {
 
   const registrar = () => {
     navigator.serviceWorker.register('sw.js').catch(() => {
-      /* sem service worker o app continua funcionando, só sem offline */
     });
   };
 
-  /* Esta função é chamada lá do fim da abertura, que é assíncrona: a
-     essa altura o evento `load` já disparou faz tempo. Ficar esperando
-     por ele significava nunca registrar — e era o que acontecia. O app
-     nunca teve service worker, e portanto nunca funcionou offline, apesar
-     de se apresentar como instalável. */
   if (document.readyState === 'complete') registrar();
   else window.addEventListener('load', registrar, { once: true });
 }
@@ -1288,11 +1209,6 @@ function registerServiceWorker() {
 let installPrompt = null;
 
 window.addEventListener('beforeinstallprompt', (ev) => {
-  /* Não suprime a instalação nativa do Chrome. O preventDefault usado
-     antes escondia o banner mesmo quando este botão estava dentro da
-     landing page invisível para uma conta autenticada, além de deixar um
-     aviso permanente no console. Guardar o evento ainda permite que o
-     botão da apresentação abra o diálogo por um gesto do usuário. */
   installPrompt = ev;
 
   const btn = $('#installBtn');
@@ -1312,8 +1228,6 @@ window.addEventListener('beforeinstallprompt', (ev) => {
 window.addEventListener('appinstalled', () => {
   toast('Instalado. Bom proveito.', { kind: 'success' });
 });
-
-/* ===================================================================== */
 
 document.addEventListener('DOMContentLoaded', () => {
   boot().catch((err) => {

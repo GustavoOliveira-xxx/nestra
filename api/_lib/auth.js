@@ -1,11 +1,3 @@
-/* =====================================================================
-   NESTRA — Autenticação
-   §20: "As credenciais devem ser processadas pelo mecanismo de
-   autenticação escolhido, sem armazenar senhas em texto puro. Tokens de
-   sessão devem ter expiração, proteção contra uso indevido e
-   possibilidade de invalidação."
-   ===================================================================== */
-
 import crypto from 'node:crypto';
 import { sql, asUser } from './db.js';
 import { parseCookies, serverSalt } from './http.js';
@@ -13,9 +5,6 @@ import { parseCookies, serverSalt } from './http.js';
 export const SESSION_COOKIE = 'nestra_session';
 const SESSION_DAYS = 30;
 
-/* --------------------------------------------------------------------
-   Senhas — scrypt, com sal por usuário
-   -------------------------------------------------------------------- */
 export function hashPassword(password) {
   const salt = crypto.randomBytes(16);
   const derived = crypto.scryptSync(password, salt, 64, { N: 16384, r: 8, p: 1 });
@@ -33,9 +22,6 @@ export function verifyPassword(password, stored) {
   return crypto.timingSafeEqual(derived, expected);
 }
 
-/* --------------------------------------------------------------------
-   Sessões — só o hash do token vai para o banco
-   -------------------------------------------------------------------- */
 export function newToken() {
   return crypto.randomBytes(32).toString('base64url');
 }
@@ -57,15 +43,12 @@ export async function createSession(userId, { userAgent, ipHash, deviceLabel }) 
   return { token, expiresAt };
 }
 
-/** Devolve o usuário da sessão atual, ou null. */
 export async function currentUser(req) {
   const token = parseCookies(req)[SESSION_COOKIE];
   if (!token) return null;
 
   const tokenHash = hashToken(token);
   const [, rows] = await sql.transaction([
-    /* A política RLS de `sessions` permite ler apenas a sessão cujo
-       hash veio do cookie. O hash nunca é devolvido ao navegador. */
     sql`select set_config('app.session_hash', ${tokenHash}, true)`,
     sql`
       update sessions s set last_seen_at = now()
@@ -106,9 +89,6 @@ export async function revokeSession(req) {
   ]);
 }
 
-/* --------------------------------------------------------------------
-   Limitação de tentativas (§20)
-   -------------------------------------------------------------------- */
 export function hashEmail(email) {
   return crypto.createHash('sha256')
     .update(String(email).toLowerCase() + serverSalt())
@@ -134,17 +114,15 @@ export async function recordAttempt(emailHash, ipHash, success) {
   `;
 }
 
-/** Registra um evento técnico da conta, sem conteúdo privado (§19). */
 export async function logAccountEvent(userId, type, metadata = {}, ipHash = null) {
   try {
     await sql`
       insert into account_events (user_id, type, metadata_minimized, ip_hash)
       values (${userId}, ${type}, ${JSON.stringify(metadata)}::jsonb, ${ipHash})
     `;
-  } catch { /* telemetria nunca derruba a requisição */ }
+  } catch {  }
 }
 
-/** Exige autenticação; responde 401 e devolve null quando não houver. */
 export async function requireUser(req, res) {
   const user = await currentUser(req);
   if (!user) {

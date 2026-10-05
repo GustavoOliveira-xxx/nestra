@@ -1,12 +1,3 @@
-/* =====================================================================
-   NESTRA — Linha de item e tela de detalhes
-
-   §7.2: "O usuário deve conseguir concluir, adiar, editar, mudar a data
-   e abrir os detalhes sem navegar por múltiplas telas."
-   §7.4: o item principal continua simples; checklist e descrição só
-   aparecem quando pedidos.
-   ===================================================================== */
-
 import { store } from '../store.js';
 import { humanDate, TYPE_LABELS, PRIORITY_LABELS, PERIOD_LABELS, todayIn, toISODate } from '../nlp.js';
 import { el, icon, toast, openModal, openMenu, confirmDialog } from '../ui.js';
@@ -38,9 +29,6 @@ const EVENT_LABELS = {
   snoozed: 'Adiado',
 };
 
-/* ---------------------------------------------------------------------
-   Linha de item
-   --------------------------------------------------------------------- */
 export function renderItem(item, options = {}) {
   const { onChange = null, showEnvironment = true } = options;
   const env = store.environmentById(item.environmentId);
@@ -62,13 +50,11 @@ export function renderItem(item, options = {}) {
 
   row.appendChild(el('span', { class: 'item__type' }));
 
-  /* Caixa de conclusão */
   const check = el('button', {
     class: 'check item__check',
     role: 'checkbox',
     'aria-checked': String(done),
     'aria-label': done ? 'Reabrir item' : 'Concluir item',
-    // concluir precisa ser instantâneo: aqui o carregamento atrapalharia
     'data-noload': true,
   });
 
@@ -76,7 +62,6 @@ export function renderItem(item, options = {}) {
     ev.stopPropagation();
     const willComplete = item.status !== 'done';
 
-    // O dado muda na hora; só o redesenho da tela é que espera.
     store.toggleItem(item.id);
 
     if (!willComplete) {
@@ -84,10 +69,6 @@ export function renderItem(item, options = {}) {
       return;
     }
 
-    /* A própria linha já mostra o novo estado antes de a tela inteira se
-       redesenhar: o visto marca, o título ganha o risco e a trilha do
-       tipo apaga. Sem isso a resposta ao clique chegaria só depois da
-       animação, que é exatamente o que ela não pode custar. */
     row.dataset.status = 'done';
     check.setAttribute('aria-checked', 'true');
     check.setAttribute('aria-label', 'Reabrir item');
@@ -100,7 +81,6 @@ export function renderItem(item, options = {}) {
     setTimeout(() => onChange?.(), wait);
   });
 
-  /* Corpo */
   const main = el('div', { class: 'item__main' });
   main.appendChild(el('div', { class: 'item__title', text: item.title }));
 
@@ -111,9 +91,6 @@ export function renderItem(item, options = {}) {
     html: icon(TYPE_ICON[item.type], 12) + `<span>${TYPE_LABELS[item.type]}</span>`,
   }));
 
-  /* Uma data que não dá para ler não vira ficha nenhuma — nem a de data,
-     nem a de "sem prazo", que seria mentira. Some em silêncio até o dado
-     bom chegar. */
   const dateLabel = humanDate(item.dueDate, store.state.prefs.timezone);
 
   if (dateLabel) {
@@ -175,7 +152,6 @@ export function renderItem(item, options = {}) {
 
   main.appendChild(meta);
 
-  /* Ações rápidas */
   const actions = el('div', { class: 'item__actions' });
 
   const snoozeBtn = el('button', {
@@ -242,7 +218,6 @@ export function renderItem(item, options = {}) {
   actions.append(snoozeBtn, moreBtn);
   row.append(check, main, actions);
 
-  /* Abrir detalhes */
   row.addEventListener('click', (ev) => {
     if (ev.target.closest('button')) return;
     openItemDetail(item.id, onChange);
@@ -277,16 +252,12 @@ async function removeItem(item, onChange, row) {
   }, 240);
 }
 
-/* ---------------------------------------------------------------------
-   Detalhes do item
-   --------------------------------------------------------------------- */
 export function openItemDetail(itemId, onChange = null) {
   const item = store.state.items.find((i) => i.id === itemId);
   if (!item) return;
 
   const body = el('div', { class: 'detail' });
 
-  /* Título */
   const titleInput = el('input', {
     class: 'detail__title-input',
     value: item.title,
@@ -294,7 +265,6 @@ export function openItemDetail(itemId, onChange = null) {
     maxlength: '280',
   });
 
-  /* Frase original, quando veio da captura (§24) */
   if (item.rawInput && item.rawInput !== item.title) {
     body.appendChild(el('div', {
       class: 'chip detail__raw-input',
@@ -308,7 +278,6 @@ export function openItemDetail(itemId, onChange = null) {
 
   body.appendChild(titleInput);
 
-  /* Campos principais */
   const grid = el('div', { class: 'detail__meta-grid' });
 
   const field = (label, control) =>
@@ -349,7 +318,6 @@ export function openItemDetail(itemId, onChange = null) {
   );
   body.appendChild(grid);
 
-  /* Descrição */
   const desc = el('textarea', {
     class: 'textarea',
     placeholder: 'Detalhes, contexto, links…',
@@ -361,7 +329,6 @@ export function openItemDetail(itemId, onChange = null) {
     desc,
   ]));
 
-  /* Checklist */
   const checkWrap = el('div', { class: 'field' });
   checkWrap.appendChild(el('span', { class: 'field__label', text: 'Checklist' }));
   const checkList = el('div', { class: 'checklist' });
@@ -411,7 +378,6 @@ export function openItemDetail(itemId, onChange = null) {
           if (willComplete) {
             box.setAttribute('aria-checked', 'true');
             box.classList.add('check--just-done');
-            // Um passo é menor que um item: o selo vem na medida dele.
             completionEffect(box, { color: resolveColor(null), scale: 0.72 });
             setTimeout(drawChecklist, 260);
             return;
@@ -455,7 +421,6 @@ export function openItemDetail(itemId, onChange = null) {
   drawChecklist();
   body.appendChild(checkWrap);
 
-  /* Histórico */
   const events = store.eventsFor(item.id);
   if (events.length) {
     const hist = el('div', { class: 'field' });
@@ -474,10 +439,6 @@ export function openItemDetail(itemId, onChange = null) {
     body.appendChild(hist);
   }
 
-  /* Rodapé. Os campos principais formam um único cadastro: só são
-     aplicados juntos pelo botão Salvar. Antes cada `change` gravava uma
-     parte em um momento diferente, então fechar o modal podia deixar um
-     item pela metade — sobretudo no celular. */
   const cancelBtn = el('button', {
     class: 'btn btn--ghost',
     text: 'Cancelar',
@@ -533,7 +494,6 @@ export function openItemDetail(itemId, onChange = null) {
       dueTime,
       timePeriod: periodSel.value,
       description: desc.value.trim() || null,
-      // Abrir, conferir e salvar é a confirmação explícita do cadastro.
       needsReview: false,
     };
 
@@ -547,9 +507,6 @@ export function openItemDetail(itemId, onChange = null) {
       store.updateItem(item.id, patch);
     }
 
-    /* Checklist participa do mesmo Salvar/Cancelar do restante do modal.
-       Isso evita que adicionar ou remover um passo seja gravado mesmo
-       quando a pessoa cancela o cadastro. */
     const originalChecklist = item.checklist || [];
     const originalSnapshot = originalChecklist.map(({ id, title, completed, position }) => ({
       id, title, completed: Boolean(completed), position,
@@ -609,13 +566,10 @@ export function openItemDetail(itemId, onChange = null) {
   saveBtn.addEventListener('click', () => saveChanges());
 
   doneBtn.addEventListener('click', () => {
-    // Se a pessoa editou e concluiu no mesmo gesto, nenhuma edição fica
-    // perdida só porque ela não clicou no botão ao lado primeiro.
     if (!saveChanges({ close: false, announce: false })) return;
     const willComplete = item.status !== 'done';
     store.toggleItem(item.id);
     if (willComplete) {
-      // Aqui o alvo é um botão largo: o selo cresce junto com ele.
       completionEffect(doneBtn);
       setTimeout(() => { onChange?.(); dialog.close(); }, 300);
       return;

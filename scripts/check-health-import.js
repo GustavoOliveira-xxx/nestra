@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 delete process.env.DATABASE_URL;
 
 const { default: health } = await import('../api/health.js');

@@ -1,17 +1,8 @@
-/* =====================================================================
-   NESTRA — Efeitos de interface
-   Inclinação 3D, botões magnéticos, ondulação, revelação ao rolar e
-   contadores animados. Tudo respeita a preferência de movimento (§22).
-   ===================================================================== */
-
 const reduced = () =>
   document.documentElement.dataset.motion === 'reduced' ||
   (document.documentElement.dataset.motion !== 'full' &&
    window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
-/* ---------------------------------------------------------------------
-   Inclinação 3D dos cartões, acompanhando o ponteiro
-   --------------------------------------------------------------------- */
 export function bindTilt(root = document, selector = '[data-tilt]') {
   root.querySelectorAll(selector).forEach((el) => {
     if (el.__tilt) return;
@@ -47,9 +38,6 @@ export function bindTilt(root = document, selector = '[data-tilt]') {
   });
 }
 
-/* ---------------------------------------------------------------------
-   Botões magnéticos: o alvo se aproxima levemente do ponteiro
-   --------------------------------------------------------------------- */
 export function bindMagnetic(root = document, selector = '[data-magnetic]') {
   root.querySelectorAll(selector).forEach((el) => {
     if (el.__mag) return;
@@ -73,9 +61,6 @@ export function bindMagnetic(root = document, selector = '[data-magnetic]') {
   });
 }
 
-/* ---------------------------------------------------------------------
-   Ondulação no clique
-   --------------------------------------------------------------------- */
 export function bindRipple(root = document) {
   root.addEventListener('pointerdown', (ev) => {
     const btn = ev.target.closest('.btn, .side-link, .menu__item');
@@ -93,9 +78,6 @@ export function bindRipple(root = document) {
   });
 }
 
-/* ---------------------------------------------------------------------
-   Brilho que acompanha o cursor na página de entrada
-   --------------------------------------------------------------------- */
 export function bindCursorGlow() {
   if (window.matchMedia('(hover: none)').matches) return;
 
@@ -122,9 +104,6 @@ export function bindCursorGlow() {
   if (!reduced()) loop();
 }
 
-/* ---------------------------------------------------------------------
-   Revelação progressiva no rolar
-   --------------------------------------------------------------------- */
 export function bindReveal(root = document) {
   const targets = root.querySelectorAll('[data-reveal]:not([data-reveal="in"])');
   if (!targets.length) return;
@@ -147,9 +126,6 @@ export function bindReveal(root = document) {
   targets.forEach((el) => io.observe(el));
 }
 
-/* ---------------------------------------------------------------------
-   Contadores que sobem até o valor final
-   --------------------------------------------------------------------- */
 export function countUp(el, to, duration = 1100) {
   const from = parseFloat(el.dataset.from || '0');
   if (reduced()) {
@@ -199,9 +175,6 @@ export function bindCounters(root = document) {
   els.forEach((el) => io.observe(el));
 }
 
-/* ---------------------------------------------------------------------
-   Máquina de escrever, usada na demonstração da captura
-   --------------------------------------------------------------------- */
 export function typewriter(el, phrases, opts = {}) {
   const {
     typeSpeed = 46,
@@ -252,9 +225,6 @@ export function typewriter(el, phrases, opts = {}) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/* ---------------------------------------------------------------------
-   Partículas de conclusão: o item que sai da lista vira luz
-   --------------------------------------------------------------------- */
 export function burstAt(x, y, color = '#2F6BFF', count = 14) {
   if (reduced()) return;
 
@@ -291,9 +261,6 @@ export function burstAt(x, y, color = '#2F6BFF', count = 14) {
   setTimeout(() => host.remove(), 900);
 }
 
-/* ---------------------------------------------------------------------
-   Liga tudo de uma vez
-   --------------------------------------------------------------------- */
 export function initFx(root = document) {
   bindTilt(root);
   bindMagnetic(root);

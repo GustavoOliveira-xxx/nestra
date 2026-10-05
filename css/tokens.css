@@ -1,11 +1,4 @@
-/* =====================================================================
-   NESTRA — Tokens de tema
-   §29: "defina o tema visual em tokens — cores, tipografia, espaçamento,
-   bordas, sombras e estados — em vez de espalhar valores fixos pelo código."
-   ===================================================================== */
-
 :root {
-  /* --- Preto suave, evitando contraste absoluto em toda a tela (§12) --- */
   --void:        #04060A;
   --bg:          #070911;
   --bg-2:        #0A0D16;
@@ -14,17 +7,15 @@
   --surface-3:   #182034;
   --surface-hi:  #1D2740;
 
-  /* --- Linhas e separadores discretos --- */
   --line:        #1B2236;
   --line-2:      #242E47;
   --line-hi:     #33415F;
 
-  /* --- Azul: cor principal, usada com parcimônia (§12) --- */
   --blue-100: #E6EEFF;
   --blue-200: #C2D6FF;
   --blue-300: #8FB4FF;
   --blue-400: #5B8CFF;
-  --blue-500: #2F6BFF;   /* cor de ação e identidade */
+  --blue-500: #2F6BFF;
   --blue-600: #1E4FD8;
   --blue-700: #143AA6;
   --blue-800: #0D2870;
@@ -38,13 +29,11 @@
   --cyan:   #4FD8FF;
   --violet: #9B7BFF;
 
-  /* --- Texto: branco suave para títulos, cinza azulado para o resto --- */
   --text:    #E9EDF7;
   --text-2:  #A3AEC6;
   --text-3:  #6B7692;
   --text-4:  #495468;
 
-  /* --- Estados (§12): âmbar/vermelho discretos, sem competir com o azul --- */
   --overdue:     #FFA23D;
   --overdue-dim: color-mix(in srgb, var(--overdue) 14%, transparent);
   --danger:      #FF5F6B;
@@ -53,22 +42,16 @@
   --success-dim: color-mix(in srgb, var(--success) 14%, transparent);
   --done:        #4B5670;
 
-  /* --- Cores por tipo de item (§6) --- */
   --type-task:       var(--blue-400);
   --type-reminder:   var(--cyan);
   --type-commitment: var(--violet);
   --type-idea:       #FFC96B;
 
-  /* --- Prioridade --- */
   --prio-low:    var(--text-4);
   --prio-normal: var(--text-3);
   --prio-high:   var(--overdue);
   --prio-urgent: var(--danger);
 
-  /* --- Cantos
-     A geometria continua reta e técnica, mas o traço ganhou um raio
-     mínimo: as arestas param de "cortar" e o conjunto fica mais limpo,
-     sem virar um produto de cantos redondos. --- */
   --r-0: 0px;
   --r-1: 2px;
   --r-2: 5px;
@@ -76,7 +59,6 @@
   --r-4: 11px;
   --r-pill: 6px;
 
-  /* --- Espaçamento (escala de 4) --- */
   --s-1:  4px;
   --s-2:  8px;
   --s-3:  12px;
@@ -90,7 +72,6 @@
   --s-11: 96px;
   --s-12: 128px;
 
-  /* --- Tipografia --- */
   --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
   --font-body:    'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
@@ -117,7 +98,6 @@
   --tracking-wide:  0.14em;
   --tracking-mega:  0.34em;
 
-  /* --- Sombras e brilhos --- */
   --shadow-1: 0 1px 2px rgba(0,0,0,.5);
   --shadow-2: 0 4px 14px rgba(0,0,0,.5);
   --shadow-3: 0 12px 40px rgba(0,0,0,.6);
@@ -125,10 +105,8 @@
   --glow-blue: 0 0 0 1px var(--accent-line), 0 0 26px -6px var(--accent-glow);
   --glow-soft: 0 0 34px -12px var(--accent-glow);
 
-  /* Intensidade de brilho — controlada nas preferências (§12, §21) */
   --glow-strength: 0.7;
 
-  /* --- Movimento --- */
   --ease-out:    cubic-bezier(.16,1,.3,1);
   --ease-in-out: cubic-bezier(.65,0,.35,1);
   --ease-spring: cubic-bezier(.34,1.56,.64,1);
@@ -139,7 +117,6 @@
   --t-slow:  .42s;
   --t-lazy:  .8s;
 
-  /* --- Camadas --- */
   --z-scene:    0;
   --z-content:  10;
   --z-sticky:   40;
@@ -148,16 +125,12 @@
   --z-toast:    90;
   --z-loader:   100;
 
-  /* --- Medidas do layout --- */
   --sidebar-w:  268px;
   --topbar-h:   62px;
   --content-max: 1180px;
   --rail-w:     4px;
 }
 
-/* ---------------------------------------------------------------------
-   Densidade visual (§21) — o usuário escolhe quanta informação cabe na tela
-   --------------------------------------------------------------------- */
 [data-density='compact'] {
   --s-4: 12px; --s-5: 14px; --s-6: 18px; --s-7: 24px;
   --fs-base: 13px; --fs-md: 14px;
@@ -170,9 +143,6 @@
   --row-pad: 18px 20px;
 }
 
-/* ---------------------------------------------------------------------
-   Alto contraste (§22) — a acessibilidade é parte do produto
-   --------------------------------------------------------------------- */
 [data-contrast='high'] {
   --bg:        #000000;
   --bg-2:      #04060B;
@@ -189,16 +159,10 @@
   --glow-strength: 0.25;
 }
 
-/* ---------------------------------------------------------------------
-   Cantos arredondados — alternativa opcional ao padrão reto (§12)
-   --------------------------------------------------------------------- */
 [data-corners='soft'] {
   --r-2: 8px; --r-3: 10px; --r-4: 14px; --r-pill: 999px;
 }
 
-/* ---------------------------------------------------------------------
-   Movimento reduzido (§22) — respeita a preferência do sistema
-   --------------------------------------------------------------------- */
 [data-motion='reduced'],
 [data-motion='reduced'] * {
   --t-fast: .01ms; --t-base: .01ms; --t-slow: .01ms; --t-lazy: .01ms;

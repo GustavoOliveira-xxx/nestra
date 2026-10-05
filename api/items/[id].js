@@ -1,9 +1,3 @@
-/* =====================================================================
-   PUT    /api/items/:id           — edita campos do item
-   DELETE /api/items/:id           — envia para a lixeira (§24)
-   DELETE /api/items/:id?purge=1   — exclui em definitivo
-   ===================================================================== */
-
 import { asUser, oneAsUser, itemToClient } from '../_lib/db.js';
 import {
   handler, json, fail, readBody, isUuid, isDateOnly, isTimeOnly, validTimestamp,
@@ -24,7 +18,6 @@ export default handler(async (req, res) => {
     return fail(res, 400, 'invalid_id', 'Identificador inválido.');
   }
 
-  /* ---------------- exclusão ---------------- */
   if (req.method === 'DELETE') {
     const purge = String(req.query?.purge || '') === '1';
 
@@ -46,10 +39,8 @@ export default handler(async (req, res) => {
 
   if (req.method !== 'PUT') return fail(res, 405, 'method', 'Método não permitido.');
 
-  /* ---------------- edição ---------------- */
   const body = await readBody(req);
 
-  // Só campos conhecidos entram; o resto é ignorado em silêncio.
   const patch = {};
   if ('title' in body) {
     const t = String(body.title || '').trim();
@@ -107,8 +98,6 @@ export default handler(async (req, res) => {
     }
   }
 
-  // O patch viaja como JSONB: assim um campo ausente permanece e um campo
-  // presente com null é realmente apagado (tirar o prazo, por exemplo).
   const p = JSON.stringify(patch);
 
   const [rows] = await asUser(user.id, (sql) => [

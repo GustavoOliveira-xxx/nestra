@@ -1,24 +1,14 @@
-/* =====================================================================
-   NESTRA — Tela "Hoje" (§7.2)
-
-   A hierarquia é a recomendada no documento:
-     1. Atrasados — sinalização clara, sem tom punitivo
-     2. Para hoje — agrupados por período quando houver
-     3. Alta prioridade — quando não estiverem acima
-     4. Capturas recentes — o que a pessoa acabou de registrar
-   ===================================================================== */
-
 import { store } from '../store.js';
 import { el, icon } from '../ui.js';
 import { renderItem } from './items.js';
 import { createCapture } from './capture.js';
+import { todayMeetingsStrip } from './meetings.js';
 import { humanDate, todayIn, toISODate } from '../nlp.js';
 import { celebrate, bumpBadge } from '../../gfx/interactions.js';
 import { mountEnvHero, clearEnvHeroes } from '../../gfx/envhero.js';
 import { Logo3D } from '../../gfx/logo3d.js';
 import { device, glBudget } from '../../core/device.js';
 
-/** Anel de progresso do dia — quanto do que vencia hoje já saiu da frente. */
 function dayRing(done, total) {
   const pct = total ? done / total : 0;
   const r = 18;
@@ -58,22 +48,9 @@ function greeting(name) {
   return `${part}, ${String(name || '').split(' ')[0] || 'tudo bem'}`;
 }
 
-/* ---------------------------------------------------------------------
-   ABERTURA DA TELA HOJE — a marca do Nestra em três dimensões
-
-   A logo aqui não é um PNG com sombra: é o arquivo original convertido em
-   campo de distância e extrudado por ray marching, então a silhueta em 3D
-   é exatamente a silhueta do desenho, com relevo, chanfro e brilho de
-   borda. Ela acompanha o ponteiro e gira devagar sozinha.
-
-   Ao lado, o retrato do dia em uma frase: quem é você, que dia é hoje e
-   quanto ainda pede atenção.
-   --------------------------------------------------------------------- */
-
-let brand = null;                       // instância viva do Logo3D
+let brand = null;
 const brandToken = { id: 'today-brand' };
 
-/** Desmonta a marca da tela Hoje e devolve a vaga de contexto WebGL. */
 export function clearTodayBrand() {
   if (!brand) return;
   brand.destroy();
@@ -81,7 +58,6 @@ export function clearTodayBrand() {
   brand = null;
 }
 
-/** Uma frase que resume o dia, em vez de só repetir os números. */
 function dayLine({ overdue, dueToday, done }) {
   if (overdue) {
     return overdue === 1
@@ -174,31 +150,22 @@ function todayHero({ b, dayTotal, dayDone, onNavigate }) {
   hero.updateDay = paint;
   hero.dataset.alive = 'pending';
 
-  // O canvas precisa estar no documento para ter tamanho medido
   requestAnimationFrame(() => {
     if (!canvas.isConnected) return;
 
-    // Sem vaga de contexto (ou com menos movimento pedido), o plano B em
-    // CSS empilha a própria imagem em profundidade — continua com volume.
     const roomy = !device.reducedMotion && glBudget.claim(brandToken);
 
     brand = new Logo3D(canvas, {
       src: window.nestraLogoSrc || 'assets/logo/nestra-mark.png',
-      // Mais espessura = mais leitura de totem, sem custar nitidez
       depth: 0.36,
       bevel: 0.032,
-      /* Brilho contido de propósito. Esta é a peça em que a marca precisa
-         estar legível — as hachuras, as estrelinhas, o nome. Glow alto
-         aqui competia com o próprio desenho. */
       glow: 0.30,
-      // A câmera fica mais perto: a marca é o assunto desta abertura,
-      // não um selo no canto.
       zoom: 1.34,
       autoSpin: 0.3,
       colorSide: 1600,
       sdfSide: 620,
       interactive: true,
-      sharp: true,           // pede mais pixels: o desenho tem detalhe fino
+      sharp: true,
       forceFallback: !roomy,
     });
 
@@ -211,15 +178,6 @@ function todayHero({ b, dayTotal, dayDone, onNavigate }) {
   return hero;
 }
 
-/**
- * Reaproveita a marca já montada.
- *
- * A tela Hoje se redesenha a cada item concluído, adiado ou capturado.
- * Reconstruir a marca junto significaria refazer o campo de distância e
- * abrir um contexto WebGL novo a cada clique — caro e, pior, visível: a
- * marca piscaria o tempo todo. Aqui o mesmo nó volta para a tela, só com
- * os números do dia atualizados.
- */
 function keepTodayHero(root, data) {
   const cached = root.__todayHero;
 
@@ -240,7 +198,6 @@ export function renderToday(root, { onNavigate }) {
   const b = store.todayBuckets();
   const tz = store.state.prefs.timezone;
 
-  // Um re-render também é uma saída da captura anterior.
   root.captureBox?.stopVoice?.();
   root.captureBox = null;
   root.replaceChildren();
@@ -248,10 +205,11 @@ export function renderToday(root, { onNavigate }) {
   const dayTotal = b.dueToday.length + b.overdue.length;
   const dayDone = b.dueToday.filter((i) => i.status === 'done').length;
 
-  /* Abertura: a marca em 3D e o retrato do dia */
   root.appendChild(keepTodayHero(root, { b, dayTotal, dayDone, onNavigate }));
 
-  /* Captura rápida */
+  const meetings = todayMeetingsStrip({ onNavigate, compact: true });
+  if (meetings) root.appendChild(meetings);
+
   const capture = createCapture({ onCreated: rerender });
   root.appendChild(capture);
   root.captureBox = capture;
@@ -259,7 +217,6 @@ export function renderToday(root, { onNavigate }) {
   const groups = el('div', {});
   root.appendChild(groups);
 
-  /** Ids já desenhados: nenhum item aparece duas vezes na mesma tela. */
   const shown = new Set();
 
   const section = (title, items, color, extra) => {
@@ -280,7 +237,6 @@ export function renderToday(root, { onNavigate }) {
     groups.appendChild(wrap);
   };
 
-  /* 1. Atrasados — sinalizados, nunca culpabilizadores (§22) */
   section(
     'Passaram da data',
     b.overdue,
@@ -288,7 +244,6 @@ export function renderToday(root, { onNavigate }) {
     b.overdue.length ? 'continuam pendentes, é só escolher uma nova data' : null,
   );
 
-  /* 2. Para hoje, por período */
   const hasToday = b.dueToday.length > 0;
   if (hasToday) {
     const withPeriods = PERIOD_ORDER.filter((p) => b.byPeriod[p].length);
@@ -303,18 +258,13 @@ export function renderToday(root, { onNavigate }) {
     }
   }
 
-  /* 3. Alta prioridade fora da data de hoje */
   section('Merece atenção', b.highPriority, 'var(--danger)', 'prioridade alta com outra data');
 
-  /* 4. Capturas recentes */
   section('Capturado agora há pouco', b.recent, 'var(--cyan)');
 
-  /* 5. Sem prazo — opcional (§21) */
   section('Sem prazo', b.undated, 'var(--text-3)');
 
-  /* Vazio */
   if (!groups.children.length) {
-    // Terminou o dia com coisas concluídas? vale uma comemoração curta.
     const finishedToday = store.live.some(
       (i) => i.status === 'done' && i.completedAt &&
         i.completedAt.slice(0, 10) === toISODate(todayIn(tz)),
@@ -339,7 +289,6 @@ export function renderToday(root, { onNavigate }) {
     ]));
   }
 
-  /* Próximos dias — respeita o futuro sem trazer para o presente */
   const today = toISODate(todayIn(tz));
   const upcoming = store.live
     .filter((i) => i.status === 'pending' && i.dueDate && i.dueDate > today && !shown.has(i.id))
@@ -364,13 +313,6 @@ export function renderToday(root, { onNavigate }) {
   }
 }
 
-/* ---------------------------------------------------------------------
-   Abertura da tela de ambiente
-
-   A peça em 3D não é enfeite solto: a forma vem do ícone, a cor vem do
-   ambiente e o brilho interno vem de quanta coisa está pendente ali. Em
-   volta dela ficam o nome, a descrição e os números do ambiente.
-   --------------------------------------------------------------------- */
 function environmentHero(env, stats, { onEditEnvironment, onNavigate }) {
   const canvas = el('canvas', { class: 'env-hero__canvas', 'aria-hidden': 'true' });
   const kickerIcon = el('span', { class: 'env-hero__kicker-icon', html: icon(env.icon, 13) });
@@ -379,9 +321,6 @@ function environmentHero(env, stats, { onEditEnvironment, onNavigate }) {
     class: 'env-hero__desc',
     text: env.description || 'Tudo o que pertence a este contexto fica reunido aqui.',
   });
-  /* A abertura 3D é reaproveitada entre renderizações. Os callbacks
-     também precisam acompanhar a tela atual; guardar os primeiros fazia
-     os dois botões virarem controles com uma referência envelhecida. */
   let actions = { onEditEnvironment, onNavigate };
 
   const number = (value, label, modifier) =>
@@ -392,9 +331,6 @@ function environmentHero(env, stats, { onEditEnvironment, onNavigate }) {
 
   const statsRow = el('div', { class: 'env-hero__stats' });
 
-  /* O número de concluídos é o placar do ambiente. Quando ele sobe, o
-     número pulsa: quem acabou de marcar um item vê onde a conta foi
-     parar, em vez de ter que procurar a diferença na tela. */
   let lastDone = stats.done;
 
   const paintStats = (s) => {
@@ -461,7 +397,6 @@ function environmentHero(env, stats, { onEditEnvironment, onNavigate }) {
     hero.style.setProperty('--env-color', next.color);
   };
 
-  // O canvas precisa estar no documento para ter tamanho medido
   requestAnimationFrame(() => {
     if (!canvas.isConnected) return;
     mountEnvHero(canvas, {
@@ -474,16 +409,6 @@ function environmentHero(env, stats, { onEditEnvironment, onNavigate }) {
   return hero;
 }
 
-/**
- * Reaproveita a peça já montada.
- *
- * Marcar um item como concluído redesenha a tela inteira. Se a abertura
- * fosse reconstruída junto, cada clique jogaria fora um contexto WebGL e
- * abriria outro — o caminho mais curto para o navegador começar a
- * descartar contextos e a peça sumir. Aqui o mesmo nó volta para a tela,
- * com os números atualizados; só a troca de ambiente (ou de cor e ícone)
- * constrói uma peça nova.
- */
 function keepEnvironmentHero(root, env, stats, options) {
   const cached = root.__envHero;
   const look = env.color + '·' + env.icon;
@@ -498,8 +423,6 @@ function keepEnvironmentHero(root, env, stats, options) {
     return cached;
   }
 
-  // Trocou de ambiente: a peça anterior sai antes, senão as duas
-  // disputam a mesma vaga de contexto WebGL e a nova cai no plano B.
   if (cached) clearEnvHeroes();
 
   const fresh = environmentHero(env, stats, options);
@@ -507,9 +430,6 @@ function keepEnvironmentHero(root, env, stats, options) {
   return fresh;
 }
 
-/* ---------------------------------------------------------------------
-   Tela de um ambiente (§7.3)
-   --------------------------------------------------------------------- */
 export function renderEnvironment(root, envId, { onNavigate, onEditEnvironment }) {
   const rerender = () => renderEnvironment(root, envId, { onNavigate, onEditEnvironment });
   const env = store.environmentById(envId);
@@ -539,7 +459,6 @@ export function renderEnvironment(root, envId, { onNavigate, onEditEnvironment }
   root.appendChild(capture);
   root.captureBox = capture;
 
-  /* Filtros básicos */
   const state = { filter: root.dataset.filter || 'pending' };
   const filters = el('div', { class: 'filters' });
 

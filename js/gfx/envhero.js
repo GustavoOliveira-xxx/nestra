@@ -1,23 +1,3 @@
-/* =====================================================================
-   NESTRA — Peça 3D do topo do ambiente
-
-   Cada ambiente abre com o sólido dele flutuando sobre um piso
-   refletivo, com satélites em órbita e a luz vindo de onde está o
-   ponteiro. A forma vem do ícone escolhido — maleta, livro, coração,
-   casa, lâmpada — e a cor vem do ambiente: entrar em "Trabalho" e entrar
-   em "Estudos" são experiências visuais diferentes sem ninguém precisar
-   configurar nada. Os sólidos moram em gfx/shapes.js, compartilhados com
-   os cartões da grade de ambientes.
-
-   Traçado por ray marching em um único passe de fragment shader — sem
-   biblioteca externa, porque o app precisa abrir offline.
-
-   O custo se ajusta sozinho: o número de passos, o reflexo do piso e a
-   sombra suave entram ou saem conforme o fôlego do aparelho, medido pelo
-   governo de qualidade. No celular a peça continua girando, só que com
-   menos pixels por quadro.
-   ===================================================================== */
-
 import { program, fullscreenQuad } from '../core/gl.js';
 import { device, quality, sizeCanvas, renderWhenVisible, onResize, glBudget } from '../core/device.js';
 import { SHAPES_GLSL, shapeOf } from './shapes.js';
@@ -40,31 +20,26 @@ uniform vec2  uRes;
 uniform float uTime;
 uniform vec3  uColor;
 uniform int   uShape;
-uniform vec2  uSpin;      // giro acumulado: ponteiro + rotação própria
-uniform vec2  uPointer;   // -1..1 dentro do painel
+uniform vec2  uSpin;
+uniform vec2  uPointer;
 uniform float uHover;
 uniform float uPress;
-uniform float uEnergy;    // 0..1 — quanto o ambiente está carregado
-uniform int   uQuality;   // 0 baixo · 1 médio · 2 alto
-uniform float uAppear;    // 0..1 — a peça se montando ao abrir a tela
-uniform float uZoom;      // compensa painéis largos e baixos
-uniform float uOrbit;     // fase acumulada dos satélites
-uniform float uCharge;    // 0..1 — acabou de receber uma conclusão
-uniform float uWave;      // segundos desde a conclusão, para a onda
+uniform float uEnergy;
+uniform int   uQuality;
+uniform float uAppear;
+uniform float uZoom;
+uniform float uOrbit;
+uniform float uCharge;
+uniform float uWave;
 
 const float FLOOR_Y = -0.86;
 
 mat3 rotY(float a) { float c = cos(a), s = sin(a); return mat3(c,0.0,-s, 0.0,1.0,0.0, s,0.0,c); }
 mat3 rotX(float a) { float c = cos(a), s = sin(a); return mat3(1.0,0.0,0.0, 0.0,c,s, 0.0,-s,c); }
 
-mat3 gRot;      // orientação do corpo, montada no main
-vec3 gBase;     // cor do ambiente já em espaço linear
-
-${SHAPES_GLSL}
-
-/* O corpo do ambiente, já com a respiração lenta, o recuo do clique e o
-   susto da conclusão. */
-vec2 bodySDF(vec3 p) {
+mat3 gRot;
+vec3 gBase;
+${SHAPES_GLSL}vec2 bodySDF(vec3 p) {
   float breathe = 1.0
     + sin(uTime * 0.85) * 0.026
     + uHover * 0.05
@@ -73,18 +48,13 @@ vec2 bodySDF(vec3 p) {
 
   vec2 s = envShape(p / breathe, uShape, uTime, uEnergy);
 
-  // Enquanto a tela entra, a peça vem de dentro para fora.
   s.x = s.x * breathe - (1.0 - uAppear) * 0.22;
   return s;
 }
 
-/* x = distância · y = material (0 corpo · 1 detalhe · 2 núcleo · 3 satélite) */
 vec2 mapScene(vec3 p) {
   vec2 res = bodySDF(gRot * p);
 
-  // Satélites: órbita própria, independente do giro do corpo — é o que
-  // dá a leitura de espaço em volta do objeto, e não só de um objeto.
-  // Ao concluir alguma coisa eles aceleram e se abrem por um instante.
   for (int i = 0; i < 3; i++) {
     float fi = float(i);
     float a = uOrbit * (1.0 + fi * 0.36) + fi * 2.0944;
@@ -135,11 +105,8 @@ void main() {
   gRot = rotY(uSpin.x) * rotX(uSpin.y);
   gBase = pow(max(uColor, 0.0), vec3(2.2));
 
-  // A câmera desliza um pouco com o ponteiro: o objeto ganha paralaxe
-  // de verdade, não só uma rotação.
   vec3 ro = vec3(uPointer.x * 0.20, 0.10 - uPointer.y * 0.14, 2.55);
-  // Mira um pouco abaixo do centro: a peça sobe no quadro e sobra
-  // espaço para o reflexo no piso, que senão morre cortado na borda.
+
   vec3 ta = vec3(0.0, -0.10, 0.0);
   vec3 fw = normalize(ta - ro);
   vec3 rt = normalize(cross(fw, vec3(0.0, 1.0, 0.0)));
@@ -178,8 +145,6 @@ void main() {
     float ao = occlusion(p, n);
     float sh = uQuality > 0 ? softShadow(p + n * 0.02, light, 0.03, 3.2, 9.0) : 1.0;
 
-    /* Cada material tem seu jeito de receber a luz: o corpo é a cor do
-       ambiente, o detalhe é metal claro, o núcleo é aceso por dentro. */
     vec3 base = gBase;
     float lit = 0.0;
 
@@ -200,23 +165,19 @@ void main() {
     if (mat > 1.5 && mat < 2.5) col += vec3(1.0) * lit * (1.0 - fres) * 0.20;
 
     if (mat < 0.5) {
-      // faixas percorrendo o corpo, como um núcleo em funcionamento
       vec3 q = gRot * p;
       float rings = sin(q.y * 13.0 - uTime * 1.9) * 0.5 + 0.5;
       col += base * smoothstep(0.72, 1.0, rings) * (0.32 + uEnergy * 0.6);
 
-      // a conclusão sobe pelo corpo como um pulso de energia
       float sweep = exp(-abs((q.y + 0.62) - uWave * 1.9) * 5.5) * exp(-uWave * 1.3);
       col += mix(base, vec3(1.0), 0.55) * sweep * 1.7;
 
-      // céu falso refletido: dá peso de material sem custar um segundo passe
       vec3 refl = reflect(rd, n);
       col += mix(vec3(0.015, 0.025, 0.06), base * 0.55, refl.y * 0.5 + 0.5) * 0.34;
     }
 
     alpha = 1.0;
   } else if (rd.y < -0.001) {
-    /* --- piso: grade, varredura de luz, sombra de contato e reflexo --- */
     float ft = (FLOOR_Y - ro.y) / rd.y;
     if (ft > 0.0 && ft < 11.0) {
       vec3 fp = ro + rd * ft;
@@ -231,7 +192,6 @@ void main() {
           ? softShadow(fp + vec3(0.0, 0.012, 0.0), light, 0.03, 3.0, 7.0)
           : 1.0;
 
-        // onda de choque da conclusão, abrindo a partir da peça
         float shock = exp(-abs(length(fp.xz) - uWave * 2.2) * 5.5) * exp(-uWave * 1.25);
 
         vec3 fcol = gBase * (line * 0.42 + band * 0.20) * fade;
@@ -246,7 +206,7 @@ void main() {
             rt2 += h.x * 0.92;
             if (rt2 > 4.2) break;
           }
-          // o reflexo desaparece com a distância, como em piso polido
+
           refl *= fade * (1.0 - smoothstep(0.4, 2.6, rt2));
           fcol += gBase * refl * 0.5;
         }
@@ -259,7 +219,6 @@ void main() {
     }
   }
 
-  // halo geral em volta da peça
   col += gBase * glow * (0.65 + uHover * 0.85 + uCharge * 1.1);
   alpha = clamp(alpha + glow * 0.55, 0.0, 1.0);
   alpha *= uAppear;
@@ -285,9 +244,6 @@ export class EnvHero {
     this.shape = shapeOf(icon);
     this.energy = Math.max(0, Math.min(1, energy));
 
-    /* De frente e um pouco de cima. A peça é um objeto reconhecível —
-       maleta, livro, casa —, então ela nunca vira de costas: balança em
-       torno desta pose em vez de girar sem parar. */
     this.spin = { x: 0, y: -0.18 };
     this.target = { x: 0, y: -0.18 };
     this.pointer = { x: 0, y: 0, tx: 0, ty: 0 };
@@ -298,10 +254,6 @@ export class EnvHero {
     this.appear = 0;
     this.zoom = 1;
 
-    /* Órbita, susto e onda: a peça responde quando alguma coisa é
-       concluída no ambiente (ver celebrate/pulseEnvHeroes). A fase da
-       órbita é acumulada aqui, e não calculada do tempo, para que
-       acelerar não faça o satélite saltar de lugar. */
     this.orbit = 0;
     this.charge = 0;
     this.wave = 60;
@@ -347,18 +299,10 @@ export class EnvHero {
     return true;
   }
 
-  /* ------------------------------------------------------------------
-     Ponteiro, toque e visibilidade
-     ------------------------------------------------------------------ */
   _bind() {
     const host = this.host;
 
-    /* O ponteiro comanda a peça. Dentro do painel ele manda de verdade;
-       fora dele resta uma influência fraca, só para o objeto não parecer
-       preso enquanto o resto da página se mexe. */
     this._onMove = (ev) => {
-      // Em tela de toque não existe "passar por cima": só o arrasto conta.
-      // Sem isso, rolar a página faria a peça girar junto.
       if (device.touch && !this.dragging) return;
 
       const r = host.getBoundingClientRect();
@@ -379,8 +323,6 @@ export class EnvHero {
       this.targetHover = inside ? 1 : 0;
     };
 
-    /* Arrastar gira à mão — o caminho natural em tela de toque, onde não
-       existe "passar o ponteiro por cima". */
     this._onDown = (ev) => {
       this.dragging = true;
       this._dragFrom = { x: ev.clientX, y: ev.clientY, sx: this.target.x, sy: this.target.y };
@@ -420,11 +362,8 @@ export class EnvHero {
     this._onVis = () => (document.hidden ? this.stop() : this.visible && this.start());
     document.addEventListener('visibilitychange', this._onVis);
 
-    // O canvas é medido só quando muda de tamanho, nunca dentro do laço
     this._unobserve = onResize(this.canvas, () => { this._dirty = true; });
 
-    // Rolou para fora da tela: para de desenhar. É o que segura a rolagem
-    // fluida no celular.
     this._unwatch = renderWhenVisible(host, {
       onEnter: () => { this.visible = true; if (!document.hidden) this.start(); },
       onLeave: () => { this.visible = false; this.stop(); },
@@ -433,10 +372,6 @@ export class EnvHero {
     this._onQuality = () => { this._dirty = true; };
     quality.addEventListener('change', this._onQuality);
 
-    /* O navegador pode tomar de volta o contexto WebGL a qualquer momento
-       — troca de GPU, aba em segundo plano por muito tempo, memória
-       apertada. Sem tratar isso, o canvas fica na tela sem nada dentro.
-       Aqui ele sai de cena e o plano B em CSS entra no lugar. */
     this._onLost = (ev) => {
       ev.preventDefault();
       this.stop();
@@ -450,30 +385,17 @@ export class EnvHero {
   resize() {
     if (!this.gl) return;
 
-    /* A peça é o assunto da página, e o canvas dela é pequeno perto da
-       cena de fundo. Vale mais pixel aqui do que ali: mesmo no degrau
-       mais baixo a silhueta não pode sair serrilhada. */
     const { w, h, changed } = sizeCanvas(this.canvas, {
       cap: Math.min(2, quality.dprCap + 0.5),
     });
     if (changed) this.gl.viewport(0, 0, w, h);
 
-    /* Painel largo e baixo — que é como ele fica no celular — deixaria a
-       peça pequena no meio de muito vazio. O enquadramento fecha na
-       mesma proporção em que o painel se alarga. */
     const aspect = w / Math.max(1, h);
     this.zoom = aspect > 1.5 ? Math.min(1.28, 0.72 + aspect * 0.26) : 1;
 
     this._dirty = false;
   }
 
-  /**
-   * Uma conclusão aconteceu neste ambiente.
-   *
-   * A peça leva o susto: cresce um instante, os satélites aceleram e se
-   * abrem, o núcleo acende e uma onda sai dela pelo piso. É o mesmo
-   * gesto do resto da interface, só que em três dimensões.
-   */
   celebrate(strength = 1) {
     this.charge = Math.min(1.2, this.charge + strength);
     this.wave = 0;
@@ -503,14 +425,9 @@ export class EnvHero {
 
     const now = performance.now();
     const time = (now - this._t0) / 1000;
-    // Quadro perdido (aba parada, janela arrastada) não pode empurrar a
-    // órbita meio giro de uma vez.
     const dt = Math.min(0.05, Math.max(0, (now - this._lastFrame) / 1000));
     this._lastFrame = now;
 
-    /* Balanço próprio somado ao que o ponteiro pede: a peça nunca fica
-       parada, e também nunca gira até ficar de costas — quem chega na
-       tela precisa reconhecer a maleta, o livro ou a casa de imediato. */
     const drift = Math.sin(time * 0.23) * 0.46 + Math.sin(time * 0.11) * 0.14;
     this.spin.x += ((this.target.x + drift) - this.spin.x) * 0.075;
     this.spin.y += (this.target.y + Math.sin(time * 0.5) * 0.055 - this.spin.y) * 0.075;
@@ -574,25 +491,13 @@ export class EnvHero {
       this.gl = null;
     }
 
-    /* Um canvas sem contexto não desenha nada, mas continua ocupando o
-       espaço dele — e em alguns navegadores aparece como um retângulo
-       claro. Tirá-lo de cena junto com o contexto fecha esse buraco de
-       uma vez, mesmo que o nó ainda demore para sair do documento. */
     this.canvas.style.display = 'none';
 
-    // Sem a marca, quem reaproveita o nó sabe que precisa montar de novo
     if (this.host?.dataset?.alive === 'gl') delete this.host.dataset.alive;
     active.delete(this);
   }
 }
 
-/* ---------------------------------------------------------------------
-   Plano B em CSS
-
-   Sem WebGL — ou com o orçamento de contextos esgotado — a página não
-   pode ficar com um buraco no topo. Um sólido em CSS 3D mantém a ideia,
-   inclusive reagindo ao ponteiro e à conclusão de um item.
-   --------------------------------------------------------------------- */
 const fallbacks = new Set();
 
 function mountCssFallback(canvas, { color = '#2F6BFF' } = {}) {
@@ -636,9 +541,6 @@ function mountCssFallback(canvas, { color = '#2F6BFF' } = {}) {
   return stage;
 }
 
-/* ---------------------------------------------------------------------
-   Registro das peças vivas — trocar de tela não pode vazar contexto
-   --------------------------------------------------------------------- */
 const active = new Set();
 
 export function mountEnvHero(canvas, options) {
@@ -647,7 +549,6 @@ export function mountEnvHero(canvas, options) {
 
   if (hero.init()) {
     active.add(hero);
-    // Marca de "esta peça está viva", lida por quem reaproveita o nó
     if (host) host.dataset.alive = 'gl';
     return hero;
   }
@@ -657,12 +558,6 @@ export function mountEnvHero(canvas, options) {
   return null;
 }
 
-/**
- * A peça do ambiente reage a uma conclusão.
- *
- * Quem marca um item como concluído não precisa saber se a peça é WebGL
- * ou o plano B em CSS: chama daqui e cada uma responde do jeito dela.
- */
 export function pulseEnvHeroes(strength = 1) {
   active.forEach((hero) => hero.celebrate(strength));
 

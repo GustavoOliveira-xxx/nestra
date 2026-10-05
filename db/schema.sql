@@ -1,30 +1,9 @@
--- =====================================================================
---  NESTRA — Esquema de banco de dados (PostgreSQL / Neon)
---  "seu espaço para o que importa"
---
---  Baseado no Relatório de Produto e Visão do Sistema (seções 13, 18,
---  19, 20, 21, 24, 25 e 26).
---
---  Princípios aplicados aqui:
---   1. Multiusuário desde o início: TODA entidade carrega owner_id/user_id.
---   2. A autorização acontece no servidor E no banco (RLS).
---   3. Índices por proprietário para consultas rápidas.
---   4. Exclusão passa por lixeira antes de virar definitiva.
---   5. Nenhum dado sensível de tarefa em logs — apenas eventos técnicos.
--- =====================================================================
-
 begin;
 
--- ---------------------------------------------------------------------
--- Extensões
--- ---------------------------------------------------------------------
-create extension if not exists pgcrypto;   -- gen_random_uuid(), digest()
-create extension if not exists citext;     -- e-mail case-insensitive
-create extension if not exists pg_trgm;    -- busca por similaridade
+create extension if not exists pgcrypto;
+create extension if not exists citext;
+create extension if not exists pg_trgm;
 
--- ---------------------------------------------------------------------
--- Tipos enumerados (seção 6 e 8 do documento)
--- ---------------------------------------------------------------------
 do $$ begin
   create type nestra_item_type     as enum ('task','reminder','commitment','idea');
 exception when duplicate_object then null; end $$;
@@ -65,19 +44,11 @@ do $$ begin
   create type nestra_account_status as enum ('active','deactivated','deleted');
 exception when duplicate_object then null; end $$;
 
--- ---------------------------------------------------------------------
--- Helpers de identidade (usados pelas políticas de RLS)
--- A API define `set local app.user_id = '<uuid>'` dentro da transação.
--- ---------------------------------------------------------------------
 create or replace function nestra_current_user_id() returns uuid
 language sql stable as $$
   select nullif(current_setting('app.user_id', true), '')::uuid
 $$;
 
-/* O login ainda não conhece o usuário; ele conhece somente o hash
-   irreversível do cookie. Esta variável transacional permite que a RLS
-   exponha exatamente essa sessão para autenticar e revogar, sem liberar
-   a tabela inteira para a conexão da API. */
 create or replace function nestra_current_session_hash() returns text
 language sql stable as $$
   select nullif(current_setting('app.session_hash', true), '')
@@ -90,15 +61,11 @@ begin
   return new;
 end $$;
 
--- =====================================================================
---  1. CONTAS  (seções 18, 20, 25)
--- =====================================================================
-
 create table if not exists users (
   id                 uuid primary key default gen_random_uuid(),
   email              citext not null unique,
   display_name       text   not null check (length(btrim(display_name)) between 1 and 80),
-  password_hash      text,                      -- nulo quando o login é externo
+  password_hash      text,
   password_provider  text   not null default 'password'
                        check (password_provider in ('password','google','github')),
   timezone           text   not null default 'America/Sao_Paulo',
@@ -111,22 +78,20 @@ create table if not exists users (
   locked_until       timestamptz,
   created_at         timestamptz not null default now(),
   updated_at         timestamptz not null default now(),
-  deactivated_at     timestamptz,               -- §18 desativação temporária
-  deleted_at         timestamptz                -- §18 exclusão / anonimização
+  deactivated_at     timestamptz,
+  deleted_at         timestamptz
 );
-comment on table users is 'Conta de usuário. Senhas nunca em texto puro (§20).';
 
 create index if not exists idx_users_status      on users (status) where deleted_at is null;
 create index if not exists idx_users_deleted_at  on users (deleted_at) where deleted_at is not null;
 
--- Sessões ativas — §18 "visualização e encerramento de sessões"
 create table if not exists sessions (
   id           uuid primary key default gen_random_uuid(),
   user_id      uuid not null references users(id) on delete cascade,
-  token_hash   text not null unique,            -- somente o hash do token
+  token_hash   text not null unique,
   device_label text,
   user_agent   text,
-  ip_hash      text,                            -- §19 nunca o IP em claro
+  ip_hash      text,
   created_at   timestamptz not null default now(),
   last_seen_at timestamptz not null default now(),
   expires_at   timestamptz not null,
@@ -135,7 +100,6 @@ create table if not exists sessions (
 create index if not exists idx_sessions_user   on sessions (user_id, revoked_at);
 create index if not exists idx_sessions_expiry on sessions (expires_at) where revoked_at is null;
 
--- Recuperação de senha — §18
 create table if not exists password_resets (
   id                uuid primary key default gen_random_uuid(),
   user_id           uuid not null references users(id) on delete cascade,
@@ -147,10 +111,9 @@ create table if not exists password_resets (
 );
 create index if not exists idx_password_resets_user on password_resets (user_id, used_at);
 
--- Limitação de tentativas de login — §20 "limitar tentativas de login"
 create table if not exists login_attempts (
   id         bigserial primary key,
-  email_hash text not null,                     -- hash: não revela se o e-mail existe
+  email_hash text not null,
   ip_hash    text,
   success    boolean not null default false,
   created_at timestamptz not null default now()
@@ -158,7 +121,6 @@ create table if not exists login_attempts (
 create index if not exists idx_login_attempts_recent on login_attempts (email_hash, created_at desc);
 create index if not exists idx_login_attempts_ip     on login_attempts (ip_hash, created_at desc);
 
--- Consentimentos — §25 (LGPD, §19)
 create table if not exists user_consents (
   id         uuid primary key default gen_random_uuid(),
   user_id    uuid not null references users(id) on delete cascade,
@@ -170,7 +132,6 @@ create table if not exists user_consents (
 );
 create index if not exists idx_user_consents_user on user_consents (user_id, kind, created_at desc);
 
--- Eventos de conta — §25 (metadados minimizados, sem conteúdo de tarefa)
 create table if not exists account_events (
   id                 bigserial primary key,
   user_id            uuid references users(id) on delete set null,
@@ -180,10 +141,6 @@ create table if not exists account_events (
   created_at         timestamptz not null default now()
 );
 create index if not exists idx_account_events_user on account_events (user_id, created_at desc);
-
--- =====================================================================
---  2. PREFERÊNCIAS  (seção 21)
--- =====================================================================
 
 create table if not exists user_preferences (
   user_id                          uuid primary key references users(id) on delete cascade,
@@ -202,7 +159,7 @@ create table if not exists user_preferences (
   time_format                      text    not null default '24h' check (time_format in ('24h','12h')),
   start_view                       text    not null default 'today'
                                      check (start_view in ('today','last_environment')),
-  default_environment_id           uuid,        -- FK adicionada após environments
+  default_environment_id           uuid,
   show_undated_on_today            boolean not null default false,
   show_high_priority_outside_today boolean not null default true,
   confirm_before_delete            boolean not null default true,
@@ -213,11 +170,6 @@ create table if not exists user_preferences (
   created_at                       timestamptz not null default now(),
   updated_at                       timestamptz not null default now()
 );
-comment on table user_preferences is 'Valores padrão sensatos: ninguém preenche questionário antes de usar (§21).';
-
--- =====================================================================
---  3. AMBIENTES  (seção 5)
--- =====================================================================
 
 create table if not exists environments (
   id          uuid primary key default gen_random_uuid(),
@@ -233,7 +185,6 @@ create table if not exists environments (
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );
-comment on table environments is 'Unidade principal de organização: Trabalho, Estudos, Pessoal... (§5)';
 
 create unique index if not exists uq_environments_owner_slug on environments (owner_id, slug);
 create index        if not exists idx_environments_owner      on environments (owner_id, position)
@@ -245,14 +196,10 @@ alter table user_preferences
   add constraint fk_prefs_default_environment
   foreign key (default_environment_id) references environments(id) on delete set null;
 
--- =====================================================================
---  4. ITENS  (seções 6, 7, 8)
--- =====================================================================
-
 create table if not exists items (
   id               uuid primary key default gen_random_uuid(),
   owner_id         uuid not null references users(id) on delete cascade,
-  environment_id   uuid references environments(id) on delete set null,  -- null = caixa de entrada
+  environment_id   uuid references environments(id) on delete set null,
   type             nestra_item_type   not null default 'task',
   title            text not null check (length(btrim(title)) between 1 and 280),
   description      text,
@@ -264,22 +211,21 @@ create table if not exists items (
   duration_minutes integer check (duration_minutes is null or duration_minutes between 1 and 1440),
   pinned           boolean not null default false,
   position         integer not null default 0,
-  -- captura por linguagem natural (§7.1, §24)
+
   source           text not null default 'manual'
                      check (source in ('manual','quick_capture','recurrence','import')),
-  raw_input        text,                    -- a frase original é sempre preservada
+  raw_input        text,
   parse_confidence numeric(3,2) check (parse_confidence is null or parse_confidence between 0 and 1),
   needs_review     boolean not null default false,
-  -- ciclo de vida (§8, §24)
+
   snoozed_until    date,
   completed_at     timestamptz,
-  deleted_at       timestamptz,             -- lixeira temporária
-  purge_after      timestamptz,             -- exclusão definitiva programada
+  deleted_at       timestamptz,
+  purge_after      timestamptz,
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now(),
   constraint chk_items_time_needs_date check (due_time is null or due_date is not null)
 );
-comment on table items is 'Tarefa, lembrete, compromisso ou ideia. "Atrasado" é calculado, não é estado (§8).';
 
 create index if not exists idx_items_owner_status   on items (owner_id, status)         where deleted_at is null;
 create index if not exists idx_items_owner_due      on items (owner_id, due_date)       where deleted_at is null and status = 'pending';
@@ -290,12 +236,10 @@ create index if not exists idx_items_undated        on items (owner_id, created_
 create index if not exists idx_items_trash          on items (owner_id, deleted_at)     where deleted_at is not null;
 create index if not exists idx_items_needs_review   on items (owner_id)                 where needs_review is true and deleted_at is null;
 
--- Busca textual em português (§10 "busca avançada" é posterior; o índice já fica pronto)
 create index if not exists idx_items_search on items
   using gin (to_tsvector('portuguese', coalesce(title,'') || ' ' || coalesce(description,'')));
 create index if not exists idx_items_title_trgm on items using gin (title gin_trgm_ops);
 
--- Checklists e subtarefas (§7.4)
 create table if not exists checklist_items (
   id           uuid primary key default gen_random_uuid(),
   item_id      uuid not null references items(id) on delete cascade,
@@ -308,7 +252,6 @@ create table if not exists checklist_items (
 );
 create index if not exists idx_checklist_item on checklist_items (item_id, position);
 
--- Etiquetas — evolução prevista na §5 ("etiquetas ou vínculos secundários")
 create table if not exists tags (
   id         uuid primary key default gen_random_uuid(),
   owner_id   uuid not null references users(id) on delete cascade,
@@ -326,7 +269,6 @@ create table if not exists item_tags (
 );
 create index if not exists idx_item_tags_tag on item_tags (tag_id);
 
--- Recorrência — §10 marca como "posterior"; a estrutura já nasce pronta
 create table if not exists item_recurrences (
   id         uuid primary key default gen_random_uuid(),
   item_id    uuid not null unique references items(id) on delete cascade,
@@ -343,7 +285,6 @@ create table if not exists item_recurrences (
 );
 create index if not exists idx_recurrences_next on item_recurrences (next_run) where active is true;
 
--- Vínculos entre itens ("próximos passos claros", §30)
 create table if not exists item_relations (
   id              uuid primary key default gen_random_uuid(),
   item_id         uuid not null references items(id) on delete cascade,
@@ -355,7 +296,6 @@ create table if not exists item_relations (
 );
 create unique index if not exists uq_item_relations on item_relations (item_id, related_item_id, kind);
 
--- Histórico do item — §13 (ItemEvent)
 create table if not exists item_events (
   id         bigserial primary key,
   item_id    uuid references items(id) on delete cascade,
@@ -366,10 +306,6 @@ create table if not exists item_events (
 );
 create index if not exists idx_item_events_item on item_events (item_id, created_at desc);
 create index if not exists idx_item_events_user on item_events (user_id, created_at desc);
-
--- =====================================================================
---  5. NOTIFICAÇÕES  (seção 9)
--- =====================================================================
 
 create table if not exists notification_preferences (
   user_id           uuid primary key references users(id) on delete cascade,
@@ -384,7 +320,6 @@ create table if not exists notification_preferences (
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now()
 );
-comment on table notification_preferences is 'Notificar só quando existir razão temporal clara (§9).';
 
 create table if not exists push_subscriptions (
   id           uuid primary key default gen_random_uuid(),
@@ -399,10 +334,6 @@ create table if not exists push_subscriptions (
 );
 create index if not exists idx_push_user on push_subscriptions (user_id) where revoked_at is null;
 
--- =====================================================================
---  6. EXPORTAÇÃO E PORTABILIDADE  (seção 18)
--- =====================================================================
-
 create table if not exists export_requests (
   id           uuid primary key default gen_random_uuid(),
   user_id      uuid not null references users(id) on delete cascade,
@@ -416,10 +347,6 @@ create table if not exists export_requests (
   expires_at   timestamptz
 );
 create index if not exists idx_exports_user on export_requests (user_id, created_at desc);
-
--- =====================================================================
---  7. COLABORAÇÃO FUTURA  (seção 23) — estrutura pronta, desligada no MVP
--- =====================================================================
 
 create table if not exists environment_members (
   id             uuid primary key default gen_random_uuid(),
@@ -446,16 +373,46 @@ create table if not exists share_invites (
 create index if not exists idx_invites_env   on share_invites (environment_id, status);
 create index if not exists idx_invites_email on share_invites (invitee_email, status);
 
--- =====================================================================
---  8. TRIGGERS
--- =====================================================================
+create table if not exists meetings (
+  id               uuid primary key default gen_random_uuid(),
+  owner_id         uuid not null references users(id) on delete cascade,
+  environment_id   uuid references environments(id) on delete set null,
+  title            text not null check (length(btrim(title)) between 1 and 80),
+  template         text not null default 'free'
+                     check (template in ('free','daily','one_on_one','review')),
+  color            text not null default '#2F6BFF',
+  weekdays         smallint[] not null default '{1,2,3,4,5}',
+  start_time       time,
+  duration_minutes integer not null default 15 check (duration_minutes between 5 and 480),
+  archived_at      timestamptz,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
+);
+create index if not exists idx_meetings_owner on meetings (owner_id) where archived_at is null;
+
+create table if not exists meeting_agendas (
+  id          uuid primary key default gen_random_uuid(),
+  owner_id    uuid not null references users(id) on delete cascade,
+  meeting_id  uuid not null references meetings(id) on delete cascade,
+  occurs_on   date not null,
+  nodes       jsonb not null default '[]'::jsonb,
+  notes       text,
+  summary     text,
+  started_at  timestamptz,
+  ended_at    timestamptz,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  constraint chk_agenda_nodes_array check (jsonb_typeof(nodes) = 'array')
+);
+create unique index if not exists uq_agenda_meeting_day on meeting_agendas (meeting_id, occurs_on);
+create index if not exists idx_agendas_owner_day on meeting_agendas (owner_id, occurs_on desc);
 
 do $$
 declare t text;
 begin
   foreach t in array array[
     'users','user_preferences','environments','items','checklist_items',
-    'item_recurrences','notification_preferences'
+    'item_recurrences','notification_preferences','meetings','meeting_agendas'
   ] loop
     execute format('drop trigger if exists trg_touch_%1$s on %1$I', t);
     execute format(
@@ -464,7 +421,6 @@ begin
   end loop;
 end $$;
 
--- Histórico automático dos itens, sem gravar o conteúdo privado (§19)
 create or replace function nestra_log_item_event() returns trigger
 language plpgsql as $$
 declare act text;
@@ -514,7 +470,6 @@ create trigger trg_items_event_upd after update on items
   for each row when (old.* is distinct from new.*)
   execute function nestra_log_item_event();
 
--- completed_at coerente com o status
 create or replace function nestra_sync_completed_at() returns trigger
 language plpgsql as $$
 begin
@@ -530,7 +485,6 @@ drop trigger if exists trg_items_completed on items;
 create trigger trg_items_completed before insert or update on items
   for each row execute function nestra_sync_completed_at();
 
--- Apenas um ambiente padrão por usuário
 create or replace function nestra_single_default_env() returns trigger
 language plpgsql as $$
 begin
@@ -544,10 +498,6 @@ end $$;
 drop trigger if exists trg_env_single_default on environments;
 create trigger trg_env_single_default after insert or update of is_default on environments
   for each row when (new.is_default) execute function nestra_single_default_env();
-
--- =====================================================================
---  9. VISÕES  (seção 7.2 — a tela "Hoje")
--- =====================================================================
 
 create or replace view v_items_enriched as
 select
@@ -563,8 +513,6 @@ select
 from items i
 left join environments e on e.id = i.environment_id
 where i.deleted_at is null;
-
-comment on view v_items_enriched is 'Itens com atraso calculado a partir da data — não é um estado (§8).';
 
 create or replace view v_environment_stats as
 select
@@ -583,10 +531,6 @@ left join items i on i.environment_id = e.id and i.deleted_at is null
 where e.archived_at is null
 group by e.id, e.owner_id, e.name, e.color;
 
--- =====================================================================
---  10. RLS — a proteção real vive no banco, não só na interface (§19)
--- =====================================================================
-
 do $$
 declare t text;
 begin
@@ -594,14 +538,13 @@ begin
     'environments','items','checklist_items','tags','item_tags','item_recurrences',
     'item_relations','item_events','user_preferences','notification_preferences',
     'push_subscriptions','export_requests','user_consents','sessions',
-    'environment_members','share_invites'
+    'environment_members','share_invites','meetings','meeting_agendas'
   ] loop
     execute format('alter table %I enable row level security', t);
     execute format('alter table %I force row level security', t);
   end loop;
 end $$;
 
--- Políticas diretas (a tabela carrega a coluna do dono)
 do $$
 declare r record;
 begin
@@ -611,7 +554,8 @@ begin
       ('user_preferences','user_id'), ('notification_preferences','user_id'),
       ('push_subscriptions','user_id'), ('export_requests','user_id'),
       ('user_consents','user_id'),
-      ('item_events','user_id'), ('environment_members','user_id')
+      ('item_events','user_id'), ('environment_members','user_id'),
+      ('meetings','owner_id'), ('meeting_agendas','owner_id')
     ) as v(tbl, col)
   loop
     execute format('drop policy if exists p_owner on %I', r.tbl);
@@ -621,8 +565,6 @@ begin
   end loop;
 end $$;
 
--- Sessão pode ser criada pelo dono ou consultada/revogada pelo próprio
--- hash do cookie, sempre dentro da transação curta aberta pela API.
 drop policy if exists p_owner on sessions;
 drop policy if exists p_session on sessions;
 create policy p_session on sessions
@@ -635,7 +577,6 @@ create policy p_session on sessions
     or token_hash = nestra_current_session_hash()
   );
 
--- Políticas indiretas (a posse vem do item pai)
 drop policy if exists p_owner on checklist_items;
 create policy p_owner on checklist_items
   using (exists (select 1 from items i where i.id = item_id and i.owner_id = nestra_current_user_id()))

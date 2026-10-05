@@ -1,9 +1,3 @@
-/* =====================================================================
-   NESTRA — Ajudantes de HTTP: CORS, corpo, cookies e respostas
-   §20: mensagens de erro úteis, mas sem detalhes internos do servidor
-   ou do banco.
-   ===================================================================== */
-
 const ALLOWED = (process.env.NESTRA_ALLOWED_ORIGINS || '')
   .split(',')
   .map((s) => s.trim())
@@ -42,9 +36,6 @@ export function applyCors(req, res) {
   const sameOrigin = host ? `${protocol}://${host}` : null;
   const originAllowed = !origin || origin === sameOrigin || ALLOWED.includes(origin);
 
-  /* CORS sem este bloqueio só esconderia a resposta do site atacante,
-     mas ainda deixaria a requisição chegar ao login/cadastro. Rejeitar a
-     origem fecha login-CSRF e formulários cross-site. */
   if (!originAllowed) {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.status(403).send(JSON.stringify({
@@ -54,7 +45,6 @@ export function applyCors(req, res) {
     return true;
   }
 
-  // Origens externas precisam estar explicitamente configuradas.
   if (origin && ALLOWED.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -129,21 +119,12 @@ export function parseCookies(req) {
     try {
       out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
     } catch {
-      // Cookie malformado não derruba a API nem vira detalhe de servidor.
     }
   });
   return out;
 }
 
 export function setCookie(res, name, value, { maxAge = 60 * 60 * 24 * 30, clear = false } = {}) {
-  /* `SameSite=None` só é necessário quando o site e a API moram em
-     origens diferentes — e é justamente o modo que os navegadores de
-     celular mais restringem. No iOS, com "prevenir rastreamento entre
-     sites" ligado (que vem ligado), um cookie `None` pode simplesmente
-     não ser guardado, e a pessoa entra, recarrega e está deslogada.
-     Publicado tudo na mesma origem, `Lax` é mais seguro e sobrevive a
-     essas proteções. Só quando existe uma lista de origens externas
-     configurada é que o cookie precisa afrouxar. */
   const crossSite = ALLOWED.length > 0;
 
   const bits = [
@@ -160,14 +141,12 @@ export function setCookie(res, name, value, { maxAge = 60 * 60 * 24 * 30, clear 
   res.setHeader('Set-Cookie', list);
 }
 
-/** Envolve um handler com CORS e captura de erro sem vazar detalhes. */
 export function handler(fn) {
   return async (req, res) => {
     if (applyCors(req, res)) return;
     try {
       await fn(req, res);
     } catch (err) {
-      // O detalhe fica no log do servidor; o cliente recebe algo genérico
       console.error('[nestra api]', err?.message || err);
       if (!res.headersSent) fail(
         res,
@@ -187,7 +166,6 @@ export function serverSalt() {
   return salt;
 }
 
-/** Hash estável de IP, usado só para limitar tentativas (§19). */
 export function clientIpHash(req, crypto) {
   const ip =
     (req.headers['x-forwarded-for'] || '').split(',')[0].trim() ||
